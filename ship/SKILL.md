@@ -74,12 +74,24 @@ Run **all of the following in parallel**:
 - `git rev-parse --abbrev-ref HEAD` (current branch)
 - `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` (default branch, unless `--base` is set)
 - Read `.github/PULL_REQUEST_TEMPLATE.md` (if it exists — cache for PR creation later)
+- `cat "$(git rev-parse --git-dir)/info/scratch-session" 2>/dev/null` (scratch-session marker from `tackle --scratch`)
+- `git rev-parse --show-toplevel` (current worktree path)
+- `git rev-parse --git-dir` and `git rev-parse --git-common-dir` (for primary-vs-secondary detection)
+- `git worktree list --porcelain | awk '/^worktree /{print $2; exit}'` (primary worktree path — first entry)
 
 After detecting the base branch (step 4), also run `git rev-list --count <base>..HEAD` to count commits ahead (needed for step 2).
 
 After the above complete:
 
 1. **Detect base branch**: Use `--base` value if provided, otherwise use the auto-detected default branch. Store for all subsequent steps.
+
+1a. **Detect scratch session**: If the scratch-session marker read above is non-empty, store `IS_SCRATCH=true` and `SCRATCH_ID=<marker contents>`. Verify `SCRATCH_ID` equals the current branch (from the `rev-parse --abbrev-ref HEAD` above). On mismatch, log a warning ("stale scratch marker") and treat as non-scratch. Otherwise set `IS_SCRATCH=false`.
+
+1b. **Detect worktree context** (used by step 15 / step 12-multi for worktree-aware cleanup):
+   - `CURRENT_WORKTREE` = output of `git rev-parse --show-toplevel`
+   - `IS_SECONDARY` = `true` iff `git rev-parse --git-dir` != `git rev-parse --git-common-dir`
+   - `PRIMARY_WORKTREE` = first `worktree` path from `git worktree list --porcelain`
+   - `IS_TACKLE_WORKTREE` = `true` iff `CURRENT_WORKTREE` contains the path segment `/.claude/worktrees/` (tackle-managed temporary worktree)
 2. **Empty check**: If there are no staged or unstaged changes and no untracked files, stop with "Nothing to ship."
 3. **Branch ancestry check**: If the current branch is NOT the base branch AND has commits ahead of the base branch (from `git rev-list`), warn via AskUserQuestion: "You are on branch '${branch}' which is ${N} commits ahead of '${base}'. Shipping from here will include all those commits in the PR. Options: [Continue — include all commits] / [Ship only uncommitted changes] / [Abort]".
    - If the user chooses **Ship only uncommitted changes**: Run `git stash --include-untracked`, `git checkout <base-branch>`, `git stash pop`. If stash pop has conflicts, abort with: "Could not cleanly apply your changes to ${base}. Resolve manually." Continue the flow from the base branch.
@@ -152,7 +164,9 @@ After the above complete:
 #### Phase 3a: Single-PR Flow
 
 6. **Derive a branch name** automatically from the changes. Use conventional-commit style: `<type>/<short-slug>` (e.g. `fix/card-selection-bug`, `chore/update-gitignore`, `feat/add-redford-stack`). Keep it lowercase, hyphen-separated, and under 50 characters. If the branch name already exists locally or on the remote, append a numeric suffix (e.g. `fix/card-bug-2`).
-7. **Create and switch** to that branch from the current HEAD.
+   - **Scratch mode** (`IS_SCRATCH=true`): do NOT create a new branch. Rename the current placeholder branch in place: `git branch -m <SCRATCH_ID> <derived-name>`. The worktree follows the branch automatically. Then remove the marker: `rm "$(git rev-parse --git-dir)/info/scratch-session"`.
+   - **Dry-run** + scratch: show "would rename `<SCRATCH_ID>` → `<derived-name>`" in the preview; do not execute.
+7. **Create and switch** to that branch from the current HEAD. **Skip this step when `IS_SCRATCH=true`** — the rename in step 6 already put the worktree on the derived branch.
 8. **Stage and commit**:
    - **Respect staged changes**: If there are already staged changes, ask the user before adding unstaged files on top. If nothing is staged, stage all modified and untracked relevant files.
    - **Exclude secrets**: Before staging, check for files matching `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `credentials*`, `*secret*`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`. If any are found, exclude them and warn the user.
@@ -163,7 +177,37 @@ After the above complete:
 12. **Check merge requirements**: Use `gh pr view <number> --json reviewDecision,mergeStateStatus` to check if the target branch requires review approvals. If reviews are required and none have been granted, inform the user: "This PR requires review approval before it can be merged. Stopping here — merge manually after review or re-run `/ship` once approved." Stop.
 13. **Wait for CI** to pass using `gh pr checks <number> --watch --fail-fast`. If no checks appear within 30 seconds (repo has no CI configured), skip the wait and proceed to merge. If checks have not completed after 10 minutes, report the current status and stop. (Skip if `--no-merge`.)
 14. **Merge** the PR with `gh pr merge <number> --squash --delete-branch`. (Skip if `--no-merge`.)
-15. **Return to base** with `git checkout <base-branch> && git pull --ff-only` and delete the local branch with `git branch -d <branch-name>`. (Skip if `--no-merge`.)
+15. **Return to base and clean up** — worktree-aware. (Skip if `--no-merge`.)
+
+   **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
+   ```
+   git checkout <base-branch>
+   git pull --ff-only
+   git branch -d <branch-name>
+   ```
+
+   **Path B — secondary worktree (`IS_SECONDARY=true`):** `git checkout <base>` would fail (base is checked out in the primary), so cleanup runs against the primary:
+
+   1. Update the primary's base branch in place:
+      ```
+      git -C "$PRIMARY_WORKTREE" pull --ff-only origin <base-branch>
+      ```
+      Non-fatal: if the primary isn't on `<base-branch>` or the pull fails, log a warning and continue.
+
+   2. Dispose of the current worktree by category:
+      - **Tackle-managed or scratch (`IS_TACKLE_WORKTREE=true` OR `IS_SCRATCH=true`)**: the worktree was temporary — remove it.
+        ```
+        cd "$PRIMARY_WORKTREE"
+        git worktree remove "$CURRENT_WORKTREE" --force
+        git branch -D <branch-name> 2>/dev/null || true
+        ```
+        After this the shell's cwd is `$PRIMARY_WORKTREE`. In the step 16 summary, note: `Worktree removed. Now at <PRIMARY_WORKTREE>.`
+      - **User-managed secondary worktree** (not under `.claude/worktrees/`, no scratch marker): keep the worktree; detach HEAD and delete the branch.
+        ```
+        git checkout --detach
+        git branch -D <branch-name>
+        ```
+        Warn: `Worktree at <CURRENT_WORKTREE> is now detached. Remove with 'git worktree remove <path>' when done.`
 16. **Summary**: Print a one-line summary with the merged PR URL (e.g. `Shipped: https://github.com/org/repo/pull/42`).
 
 #### Phase 3b: Multi-PR Flow
@@ -229,10 +273,29 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
       ```
       Then wait for CI to re-run on the retargeted PR before merging it.
 
-**12-multi. Cleanup:**
+**12-multi. Cleanup** — worktree-aware.
+
+   **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
    - Return to the base branch: `git checkout <base-branch> && git pull --ff-only`.
    - Delete the staging branch: `git branch -D ship/staging-<timestamp>`.
    - Delete all local sub-PR branches: `git branch -d <branch1> <branch2> ...`.
+   - If `IS_SCRATCH=true`: also delete the orphaned scratch branch and remove the marker: `git branch -D <SCRATCH_ID> 2>/dev/null || true` and `rm "$(git rev-parse --git-dir)/info/scratch-session"`.
+
+   **Path B — secondary worktree (`IS_SECONDARY=true`):**
+   - Update primary in place: `git -C "$PRIMARY_WORKTREE" pull --ff-only origin <base-branch>` (non-fatal, warn on failure).
+   - **Tackle/scratch (`IS_TACKLE_WORKTREE=true` OR `IS_SCRATCH=true`)**: remove the worktree and all branches.
+     ```
+     cd "$PRIMARY_WORKTREE"
+     git worktree remove "$CURRENT_WORKTREE" --force
+     git branch -D ship/staging-<timestamp> <branch1> <branch2> ... 2>/dev/null || true
+     git branch -D <SCRATCH_ID> 2>/dev/null || true
+     ```
+   - **User-managed secondary worktree**: detach + delete branches, worktree kept.
+     ```
+     git checkout --detach
+     git branch -D ship/staging-<timestamp> <branch1> <branch2> ...
+     ```
+     Warn: `Worktree at <CURRENT_WORKTREE> detached — remove manually when done.`
 
 **13-multi. Summary:**
    Print a table summarizing all sub-PRs:

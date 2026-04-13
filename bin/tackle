@@ -1,0 +1,950 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# tackle — Bootstrap a Claude Code session for a GitHub PR or issue
+# Creates an isolated git worktree, pre-loads context, and launches Claude.
+#
+# Usage: tackle <number|url> [--review] [--cleanup]
+#        tackle --scratch
+#        tackle --list | --help
+
+# --- Constants ---
+
+WORKTREE_BASE=".claude/worktrees"
+CONTEXT_BEGIN="<!-- tackle-context-begin -->"
+CONTEXT_END="<!-- tackle-context-end -->"
+MAX_BODY_LENGTH=3000
+MAX_COMMENTS_LENGTH=5000
+
+# --- Logging ---
+
+_color() { printf "\033[%sm%s\033[0m" "$1" "$2"; }
+
+log_info()    { printf "%s %s\n" "$(_color "34" "[tackle]")" "$*" >&2; }
+log_success() { printf "%s %s\n" "$(_color "32" "[tackle]")" "$*" >&2; }
+log_warn()    { printf "%s %s\n" "$(_color "33" "[tackle]")" "$*" >&2; }
+log_error()   { printf "%s %s\n" "$(_color "31" "[tackle]")" "$*" >&2; }
+die()         { log_error "$@"; exit 1; }
+
+# --- Utilities ---
+
+require_cmd() {
+    command -v "$1" >/dev/null 2>&1 || die "'$1' is required but not found. Install it first."
+}
+
+# Cached repo root — avoids repeated git rev-parse forks
+_REPO_ROOT=""
+repo_root() {
+    if [[ -z "$_REPO_ROOT" ]]; then
+        _REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || die "Not inside a git repository."
+    fi
+    printf '%s\n' "$_REPO_ROOT"
+}
+
+slugify() {
+    local result
+    result=$(printf '%s' "$1" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^a-z0-9]/-/g' \
+        | sed 's/--*/-/g' \
+        | sed 's/^-//' \
+        | sed 's/-$//' \
+        | cut -c1-40)
+    # Fallback for non-ASCII titles that produce empty slugs
+    printf '%s\n' "${result:-task}"
+}
+
+truncate_text() {
+    local text="$1" max="$2"
+    if [[ ${#text} -gt $max ]]; then
+        printf '%s...' "${text:0:$max}"
+    else
+        printf '%s' "$text"
+    fi
+}
+
+human_size() {
+    local bytes=$1
+    if (( bytes > 1048576 )); then echo "$(( bytes / 1048576 ))MB"
+    elif (( bytes > 1024 )); then echo "$(( bytes / 1024 ))KB"
+    else echo "${bytes}B"
+    fi
+}
+
+# --- gh wrapper ---
+# Adds -R flag when GH_REPO_FLAG is set (URL-based invocation targeting another repo)
+
+GH_REPO_FLAG=""
+
+_gh() {
+    if [[ -n "$GH_REPO_FLAG" ]]; then
+        gh -R "$GH_REPO_FLAG" "$@"
+    else
+        gh "$@"
+    fi
+}
+
+# --- Detection ---
+
+# Sets globals: TYPE ("pr" or "issue"), TITLE, SLUG, JSON
+detect_type() {
+    local number="$1"
+
+    # Try PR first (PRs are also issues in GitHub, but gh pr view gives richer data)
+    if JSON=$(_gh pr view "$number" --json title,body,headRefName,baseRefName,number,url,state,isCrossRepository,author,labels,additions,deletions,changedFiles,isDraft,reviewDecision,comments,reviews 2>/dev/null); then
+        TYPE="pr"
+        TITLE=$(printf '%s' "$JSON" | jq -r '.title')
+        SLUG=$(slugify "$TITLE")
+        return 0
+    fi
+
+    # Try issue
+    if JSON=$(_gh issue view "$number" --json title,body,number,url,labels,comments,assignees,state,milestone 2>/dev/null); then
+        TYPE="issue"
+        TITLE=$(printf '%s' "$JSON" | jq -r '.title')
+        SLUG=$(slugify "$TITLE")
+        return 0
+    fi
+
+    local repo_ctx=""
+    [[ -n "$GH_REPO_FLAG" ]] && repo_ctx=" in $GH_REPO_FLAG"
+    die "#$number is neither a PR nor an issue${repo_ctx}."
+}
+
+# --- Worktree helpers ---
+
+worktree_dir_for() {
+    local number="$1"
+    local root
+    root=$(repo_root)
+    local dir
+    for dir in "${root}/${WORKTREE_BASE}/${number}-"*/; do
+        if [[ -d "$dir" ]]; then
+            printf '%s\n' "${dir%/}"
+            return
+        fi
+    done
+}
+
+new_worktree_dir() {
+    local number="$1" slug="$2"
+    printf '%s\n' "$(repo_root)/${WORKTREE_BASE}/${number}-${slug}"
+}
+
+check_gitignore() {
+    local root
+    root=$(repo_root)
+    if ! git -C "$root" check-ignore -q "${WORKTREE_BASE}" 2>/dev/null; then
+        log_warn "Consider adding '${WORKTREE_BASE}/' to .gitignore"
+    fi
+}
+
+# --- PR worktree creation ---
+
+create_worktree_pr() {
+    local number="$1" slug="$2"
+    local worktree_dir
+    worktree_dir=$(new_worktree_dir "$number" "$slug")
+
+    mkdir -p "$(dirname "$worktree_dir")"
+
+    log_info "Creating worktree at ${WORKTREE_BASE}/${number}-${slug}/"
+
+    # Create a detached worktree at HEAD
+    git worktree add --detach "$worktree_dir" >/dev/null 2>&1 \
+        || die "Failed to create worktree. Run 'git worktree prune' and try again."
+
+    # Warn if PR is merged/closed — branch may have been deleted
+    local pr_state
+    pr_state=$(printf '%s' "$JSON" | jq -r '.state' 2>/dev/null || true)
+    if [[ "$pr_state" == "MERGED" || "$pr_state" == "CLOSED" ]]; then
+        log_warn "PR #${number} is ${pr_state} — branch may have been deleted"
+    fi
+
+    # Let gh handle all branch fetch/track/checkout logic (forks, same-repo, etc.)
+    # Capture output for diagnostic on failure
+    local checkout_out
+    if ! checkout_out=$(cd "$worktree_dir" && _gh pr checkout "$number" 2>&1); then
+        # Fallback: branch might be checked out elsewhere, use unique local name
+        if ! checkout_out=$(cd "$worktree_dir" && _gh pr checkout "$number" --branch "${number}-${slug}" 2>&1); then
+            # Total failure — clean up and bail
+            git worktree remove --force "$worktree_dir" 2>/dev/null
+            die "Failed to checkout PR #${number}: ${checkout_out}"
+        fi
+        log_warn "Used local branch '${number}-${slug}' (original branch checked out elsewhere)"
+    fi
+
+    # Save the diff
+    log_info "Saving PR diff..."
+    mkdir -p "${worktree_dir}/.claude"
+    if _gh pr diff "$number" > "${worktree_dir}/.claude/pr-diff.patch" 2>/dev/null; then
+        local diff_size
+        diff_size=$(wc -c < "${worktree_dir}/.claude/pr-diff.patch" | tr -d ' ')
+        log_info "Diff saved ($(human_size "$diff_size"))"
+    else
+        log_warn "Could not fetch PR diff"
+        printf '(diff unavailable)\n' > "${worktree_dir}/.claude/pr-diff.patch"
+    fi
+
+    # Show CI status to stderr (not stdout — stdout is reserved for return value)
+    log_info "CI status:"
+    _gh pr checks "$number" --required 2>/dev/null | head -5 >&2 || true
+
+    # Return value: only stdout from this function
+    printf '%s\n' "$worktree_dir"
+}
+
+# --- Issue worktree creation ---
+
+create_worktree_issue() {
+    local number="$1" slug="$2"
+    local branch_name="${number}-${slug}"
+    local worktree_dir
+    worktree_dir=$(new_worktree_dir "$number" "$slug")
+
+    mkdir -p "$(dirname "$worktree_dir")"
+
+    log_info "Creating worktree at ${WORKTREE_BASE}/${number}-${slug}/"
+
+    # Try gh issue develop first (creates linked branch on GitHub)
+    if _gh issue develop "$number" --name "$branch_name" >/dev/null 2>&1; then
+        log_success "Created linked branch '$branch_name' on GitHub"
+        git fetch origin "$branch_name" >/dev/null 2>&1
+        if ! git worktree add "$worktree_dir" "origin/${branch_name}" >/dev/null 2>&1; then
+            if ! git worktree add "$worktree_dir" --detach "origin/${branch_name}" >/dev/null 2>&1; then
+                die "Failed to create worktree for issue #${number}."
+            fi
+        fi
+        (cd "$worktree_dir" && git checkout -B "$branch_name" "origin/${branch_name}" >/dev/null 2>&1) || true
+    else
+        # Fallback: local branch only
+        log_info "Creating local branch '$branch_name' (gh issue develop unavailable)"
+        local default_branch
+        default_branch=$(_gh repo view --json defaultBranchRef -q '.defaultBranchRef.name' 2>/dev/null || echo "main")
+        git fetch origin "$default_branch" >/dev/null 2>&1 || true
+
+        if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
+            log_warn "Branch '$branch_name' already exists, reusing it"
+            git worktree add "$worktree_dir" "$branch_name" >/dev/null 2>&1 \
+                || die "Failed to create worktree. The branch may be checked out elsewhere."
+        else
+            git worktree add "$worktree_dir" -b "$branch_name" "origin/${default_branch}" >/dev/null 2>&1 \
+                || git worktree add "$worktree_dir" -b "$branch_name" HEAD >/dev/null 2>&1 \
+                || die "Failed to create worktree for issue #${number}."
+        fi
+    fi
+
+    # Verify worktree was created successfully
+    if [[ ! -f "$worktree_dir/.git" ]]; then
+        git worktree remove --force "$worktree_dir" 2>/dev/null || rm -rf "$worktree_dir"
+        git worktree prune 2>/dev/null || true
+        die "Worktree creation failed for issue #${number}."
+    fi
+
+    printf '%s\n' "$worktree_dir"
+}
+
+# --- Scratch worktree creation ---
+
+create_worktree_scratch() {
+    local scratch_id="$1"
+    local worktree_dir
+    worktree_dir="$(repo_root)/${WORKTREE_BASE}/${scratch_id}"
+
+    mkdir -p "$(dirname "$worktree_dir")"
+
+    log_info "Creating scratch worktree at ${WORKTREE_BASE}/${scratch_id}/"
+
+    # Create a new branch `scratch_id` from HEAD in the new worktree.
+    # /ship later renames this branch in place via `git branch -m`.
+    git worktree add -b "$scratch_id" "$worktree_dir" >/dev/null 2>&1 \
+        || die "Failed to create worktree. Run 'git worktree prune' and try again."
+
+    # Marker lives in the worktree-scoped git dir (.git/worktrees/<id>/info/),
+    # so it's never committed and is auto-removed when the worktree is pruned.
+    (
+        cd "$worktree_dir" \
+        && git_dir=$(git rev-parse --git-dir) \
+        && mkdir -p "$git_dir/info" \
+        && printf '%s\n' "$scratch_id" > "$git_dir/info/scratch-session"
+    ) || die "Failed to write scratch marker"
+
+    printf '%s\n' "$worktree_dir"
+}
+
+generate_scratch_md() {
+    local scratch_id="$1"
+    cat <<EOF
+## Scratch Session: ${scratch_id}
+
+This is a scratch worktree — no PR or issue is associated.
+
+When you're done making changes, run \`/ship\` to derive a conventional-commit
+branch name from the diff and open a PR. \`/ship\` detects the scratch marker
+(\`.git/info/scratch-session\`) and renames this placeholder branch in place
+instead of creating a new one.
+
+Manual cleanup (if you don't use /ship):
+
+\`\`\`bash
+cd "\$(git worktree list --porcelain | awk '/^worktree/{print \$2; exit}')"
+git worktree remove .claude/worktrees/${scratch_id}
+git branch -D ${scratch_id}
+\`\`\`
+EOF
+}
+
+# --- CLAUDE.md injection ---
+
+# Shared formatter for .comments arrays (PR and issue comments)
+format_comments() {
+    local json="$1"
+    printf '%s' "$json" | jq -r '
+        [.comments[]? | select(.body != null and .body != "") |
+         "**@\(.author.login // "ghost")** (\(.createdAt[:10] // "?")):\n\(.body)"]
+        | join("\n\n---\n\n")
+    ' 2>/dev/null || echo ""
+}
+
+format_reviews() {
+    local json="$1"
+    printf '%s' "$json" | jq -r '
+        [.reviews[]? | select(.body != null and .body != "") |
+         "**@\(.author.login // "ghost")** [\(.state)]:\n\(.body)"]
+        | join("\n\n---\n\n")
+    ' 2>/dev/null || echo ""
+}
+
+# Inline review comments (per-line code comments) — not included in gh pr view --json reviews
+format_inline_comments() {
+    local number="$1"
+    # gh api resolves {owner}/{repo} from local git remote, ignoring -R.
+    # When GH_REPO_FLAG is set (URL mode), expand the path manually.
+    local api_path
+    if [[ -n "$GH_REPO_FLAG" ]]; then
+        api_path="repos/${GH_REPO_FLAG}/pulls/${number}/comments"
+    else
+        api_path="repos/{owner}/{repo}/pulls/${number}/comments"
+    fi
+    # shellcheck disable=SC2016 # jq interpolation \(...) is not shell expansion
+    gh api --paginate "$api_path" \
+        --jq '[.[] | select(.body != null and .body != "") |
+         "**@\(.user.login // "ghost")** on `\(.path):\(.line // .original_line // "?")`:\n\(.body)"]
+        | join("\n\n---\n\n")' \
+        2>/dev/null || echo ""
+}
+
+inject_claude_md() {
+    local worktree_dir="$1" content="$2"
+    local claude_md="${worktree_dir}/CLAUDE.md"
+
+    # Remove existing tackle section if present
+    if [[ -f "$claude_md" ]] && grep -q "$CONTEXT_BEGIN" "$claude_md" 2>/dev/null; then
+        local tmp
+        tmp=$(mktemp)
+        if awk -v begin="$CONTEXT_BEGIN" -v end="$CONTEXT_END" '
+            $0 == begin { skip=1; next }
+            $0 == end   { skip=0; next }
+            !skip
+        ' "$claude_md" > "$tmp"; then
+            mv "$tmp" "$claude_md"
+        else
+            rm -f "$tmp"
+            log_warn "Failed to update existing CLAUDE.md, appending instead"
+        fi
+    fi
+
+    # Append the new section (separate the test from the write to avoid SC2094)
+    local needs_separator=false
+    [[ -f "$claude_md" ]] && [[ -s "$claude_md" ]] && needs_separator=true
+
+    {
+        [[ "$needs_separator" == "true" ]] && echo ""
+        echo "$CONTEXT_BEGIN"
+        echo "$content"
+        echo "$CONTEXT_END"
+    } >> "$claude_md"
+}
+
+# --- Template generation ---
+# Extracts fields via a single jq call using @sh for safe eval.
+# The || die must be OUTSIDE $() — inside a subshell, exit only exits the subshell.
+
+_extract_pr_fields() {
+    printf '%s' "$1" | jq -r '
+        "title=" + (.title | @sh),
+        "url=" + (.url | @sh),
+        "state=" + (.state | @sh),
+        "author=" + ((.author.login // "ghost") | @sh),
+        "head_ref=" + (.headRefName | @sh),
+        "base_ref=" + (.baseRefName | @sh),
+        "additions=" + (.additions | tostring | @sh),
+        "deletions=" + (.deletions | tostring | @sh),
+        "changed_files=" + (.changedFiles | tostring | @sh),
+        "review_decision=" + ((.reviewDecision // "NONE") | @sh),
+        "is_draft=" + (.isDraft | tostring | @sh),
+        "body=" + ((.body // "") | @sh),
+        "labels=" + ([.labels[]?.name] | join(", ") | @sh)
+    '
+}
+
+generate_pr_work_md() {
+    local number="$1" json="$2"
+
+    local _jq_out
+    _jq_out=$(_extract_pr_fields "$json") || die "Failed to parse PR #${number} metadata"
+    local title url state author head_ref base_ref additions deletions changed_files review_decision is_draft body labels
+    eval "$_jq_out"
+
+    body=$(truncate_text "$body" "$MAX_BODY_LENGTH")
+
+    local reviews inline_comments comments
+    reviews=$(format_reviews "$json")
+    inline_comments=$(format_inline_comments "$number")
+    comments=$(format_comments "$json")
+    reviews=$(truncate_text "$reviews" "$MAX_COMMENTS_LENGTH")
+    inline_comments=$(truncate_text "$inline_comments" "$MAX_COMMENTS_LENGTH")
+    comments=$(truncate_text "$comments" "$MAX_COMMENTS_LENGTH")
+
+    cat <<EOF
+## Current Task: PR #${number}
+
+**${title}**
+**URL:** ${url}
+**State:** ${state} | **Review:** ${review_decision} | **Draft:** ${is_draft}
+**Author:** @${author}${labels:+ | **Labels:** ${labels}}
+**Branch:** \`${head_ref}\` -> \`${base_ref}\`
+**Changes:** +${additions} -${deletions} across ${changed_files} files
+
+### Description
+
+${body:-_No description provided._}
+EOF
+
+    if [[ -n "$reviews" ]]; then
+        cat <<EOF
+
+### Review Comments
+
+${reviews}
+EOF
+    fi
+
+    if [[ -n "$inline_comments" ]]; then
+        cat <<EOF
+
+### Inline Code Comments
+
+${inline_comments}
+EOF
+    fi
+
+    if [[ -n "$comments" ]]; then
+        cat <<EOF
+
+### Discussion
+
+${comments}
+EOF
+    fi
+
+    cat <<EOF
+
+---
+
+### Instructions
+
+You are working on PR #${number}. The full diff is available at \`.claude/pr-diff.patch\` -- read it to understand the current changes.
+
+Your task:
+- Read the diff to understand what has been done so far
+- Address any review feedback noted above
+- Fix bugs, improve code quality, or continue the implementation as needed
+- You can push changes directly — the branch is tracking the PR's head
+- When done, summarize what you changed
+
+Useful commands:
+- \`gh pr checks ${number}\` — check CI status
+- \`gh pr view ${number} --web\` — open PR in browser
+- \`git push\` — push your changes to the PR
+EOF
+}
+
+generate_pr_review_md() {
+    local number="$1" json="$2"
+
+    local _jq_out
+    _jq_out=$(_extract_pr_fields "$json") || die "Failed to parse PR #${number} metadata"
+    local title url state author head_ref base_ref additions deletions changed_files review_decision is_draft body labels
+    eval "$_jq_out"
+
+    body=$(truncate_text "$body" "$MAX_BODY_LENGTH")
+
+    local reviews inline_comments
+    reviews=$(format_reviews "$json")
+    inline_comments=$(format_inline_comments "$number")
+    reviews=$(truncate_text "$reviews" "$MAX_COMMENTS_LENGTH")
+    inline_comments=$(truncate_text "$inline_comments" "$MAX_COMMENTS_LENGTH")
+
+    cat <<EOF
+## Code Review: PR #${number}
+
+**${title}**
+**URL:** ${url}
+**State:** ${state} | **Review:** ${review_decision}
+**Author:** @${author}${labels:+ | **Labels:** ${labels}}
+**Branch:** \`${head_ref}\` -> \`${base_ref}\`
+**Changes:** +${additions} -${deletions} across ${changed_files} files
+
+### Description
+
+${body:-_No description provided._}
+EOF
+
+    if [[ -n "$reviews" ]]; then
+        cat <<EOF
+
+### Existing Reviews
+
+${reviews}
+EOF
+    fi
+
+    if [[ -n "$inline_comments" ]]; then
+        cat <<EOF
+
+### Inline Code Comments
+
+${inline_comments}
+EOF
+    fi
+
+    cat <<EOF
+
+---
+
+### Instructions
+
+You are reviewing PR #${number}. The full diff is at \`.claude/pr-diff.patch\`.
+
+Perform a thorough code review:
+1. Read the full diff at \`.claude/pr-diff.patch\`
+2. Examine changed files in their full context (not just the diff lines)
+3. Check for: correctness, edge cases, error handling, performance, security, readability, test coverage
+4. Look at test files to verify adequate coverage
+5. Check for unintended side effects or regressions
+
+Produce a structured review:
+- **Summary:** One-paragraph overview
+- **Verdict:** APPROVE, REQUEST_CHANGES, or COMMENT
+- **Findings:** Categorized (critical / suggestion / nit) with file:line references
+- **Questions:** Anything unclear that needs author clarification
+
+You can submit your review:
+- \`gh pr review ${number} --approve --body "..."\`
+- \`gh pr review ${number} --request-changes --body "..."\`
+- \`gh pr review ${number} --comment --body "..."\`
+
+You are in read-only plan mode. Do not modify files unless asked.
+EOF
+}
+
+generate_issue_md() {
+    local number="$1" json="$2" branch_name="$3"
+
+    local _jq_out
+    _jq_out=$(printf '%s' "$json" | jq -r '
+        "title=" + (.title | @sh),
+        "url=" + (.url | @sh),
+        "state=" + (.state | @sh),
+        "body=" + ((.body // "") | @sh),
+        "labels=" + ([.labels[]?.name] | join(", ") | @sh),
+        "assignees=" + ([.assignees[]?.login] | join(", ") | @sh)
+    ') || die "Failed to parse issue #${number} metadata"
+    local title url state body labels assignees
+    eval "$_jq_out"
+
+    body=$(truncate_text "$body" "$MAX_BODY_LENGTH")
+
+    local comments
+    comments=$(format_comments "$json")
+    comments=$(truncate_text "$comments" "$MAX_COMMENTS_LENGTH")
+
+    cat <<EOF
+## Current Task: Issue #${number}
+
+**${title}**
+**URL:** ${url}
+**State:** ${state}${labels:+ | **Labels:** ${labels}}${assignees:+ | **Assignees:** @${assignees}}
+**Branch:** \`${branch_name}\`
+
+### Description
+
+${body:-_No description provided._}
+EOF
+
+    if [[ -n "$comments" ]]; then
+        cat <<EOF
+
+### Discussion
+
+${comments}
+EOF
+    fi
+
+    cat <<EOF
+
+---
+
+### Instructions
+
+You are working on issue #${number} on branch \`${branch_name}\`.
+
+Your task:
+- Understand the requirements described above
+- Explore the codebase to understand the relevant architecture
+- Implement a solution that addresses the issue
+- Write or update tests as appropriate
+- When done, summarize your changes
+
+Useful commands:
+- \`gh pr create --fill\` — create a PR from this branch
+- \`gh issue view ${number} --web\` — open issue in browser
+- \`git push -u origin ${branch_name}\` — push your branch
+EOF
+}
+
+# --- Dependency installation ---
+
+install_deps() {
+    local dir="$1"
+    if [[ -f "$dir/pnpm-lock.yaml" ]]; then
+        log_info "Installing dependencies (pnpm)..."
+        (cd "$dir" && pnpm install --frozen-lockfile >&2) || log_warn "pnpm install failed"
+    elif [[ -f "$dir/yarn.lock" ]]; then
+        log_info "Installing dependencies (yarn)..."
+        (cd "$dir" && yarn install --frozen-lockfile >&2) || log_warn "yarn install failed"
+    elif [[ -f "$dir/package-lock.json" ]]; then
+        log_info "Installing dependencies (npm)..."
+        (cd "$dir" && npm ci >&2) || log_warn "npm ci failed"
+    elif [[ -f "$dir/Gemfile.lock" ]]; then
+        log_info "Installing dependencies (bundler)..."
+        (cd "$dir" && bundle install >&2) || log_warn "bundle install failed"
+    elif [[ -f "$dir/go.sum" ]]; then
+        log_info "Downloading dependencies (go)..."
+        (cd "$dir" && go mod download >&2) || log_warn "go mod download failed"
+    elif [[ -f "$dir/poetry.lock" ]]; then
+        log_info "Installing dependencies (poetry)..."
+        (cd "$dir" && poetry install >&2) || log_warn "poetry install failed"
+    elif [[ -f "$dir/uv.lock" ]]; then
+        log_info "Installing dependencies (uv)..."
+        (cd "$dir" && uv sync >&2) || log_warn "uv sync failed"
+    fi
+}
+
+# --- Launch ---
+
+launch_claude() {
+    local worktree_dir="$1" session_name="$2" review="${3:-false}"
+
+    cd "$worktree_dir"
+
+    local claude_args=(--name "$session_name")
+
+    if [[ "$review" == "true" ]]; then
+        claude_args+=(--permission-mode plan)
+    fi
+
+    log_success "Launching Claude Code (session: $session_name)"
+    echo "" >&2
+    exec claude "${claude_args[@]}"
+}
+
+# --- Cleanup ---
+
+do_cleanup() {
+    local number="$1"
+    local root
+    root=$(repo_root)
+    local found=0
+    local branches_to_delete=()
+
+    # Find any worktree directory matching this number
+    for dir in "${root}/${WORKTREE_BASE}/${number}-"*/; do
+        [[ -d "$dir" ]] || continue
+        local name
+        name=$(basename "$dir")
+
+        # Check for uncommitted changes and warn
+        if (cd "$dir" && ! git diff --quiet HEAD 2>/dev/null); then
+            log_warn "Worktree '$name' has uncommitted changes!"
+        fi
+
+        # Capture the actual branch checked out in this worktree (precise cleanup)
+        local branch_in_wt
+        branch_in_wt=$(cd "$dir" && git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        if [[ -n "$branch_in_wt" && "$branch_in_wt" != "HEAD" ]]; then
+            branches_to_delete+=("$branch_in_wt")
+        fi
+
+        log_info "Removing worktree: $name"
+        if ! git worktree remove --force "$dir" 2>/dev/null; then
+            log_warn "git worktree remove failed — removing directory"
+            rm -rf "$dir"
+            git worktree prune 2>/dev/null || true
+        fi
+        found=1
+    done
+
+    # Delete only the branches that were actually checked out in tackle worktrees
+    for branch in "${branches_to_delete[@]+"${branches_to_delete[@]}"}"; do
+        if git show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
+            log_info "Deleting local branch: $branch"
+            git branch -D "$branch" 2>/dev/null || true
+        fi
+    done
+
+    if [[ "$found" -eq 0 ]]; then
+        die "No worktree found for #${number}"
+    fi
+
+    log_success "Cleaned up #${number}"
+}
+
+# --- List ---
+
+do_list() {
+    local root
+    root=$(repo_root)
+    local base="${root}/${WORKTREE_BASE}"
+
+    if [[ ! -d "$base" ]] || [[ -z "$(ls -A "$base" 2>/dev/null)" ]]; then
+        log_info "No active worktrees"
+        return
+    fi
+
+    printf "\n  %-25s %-30s %s\n" "WORKTREE" "BRANCH" "LAST COMMIT"
+    printf "  %-25s %-30s %s\n" "--------" "------" "-----------"
+
+    for dir in "$base"/*/; do
+        [[ -d "$dir" ]] || continue
+        local name branch last_commit
+        name=$(basename "$dir")
+        branch=$(cd "$dir" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+        last_commit=$(cd "$dir" && git log -1 --format='%s (%ar)' 2>/dev/null || echo "unknown")
+        # Truncate for display
+        [[ ${#last_commit} -gt 50 ]] && last_commit="${last_commit:0:47}..."
+        printf "  %-25s %-30s %s\n" "$name" "$branch" "$last_commit"
+    done
+    echo ""
+}
+
+# --- Help ---
+
+show_help() {
+    cat <<'EOF'
+tackle — Bootstrap a Claude Code session for a GitHub PR or issue
+
+USAGE
+  tackle <number|url>          Work on PR or issue (number or GitHub URL)
+  tackle <number|url> --review Review PR (read-only mode)
+  tackle <number|url> --cleanup Remove worktree
+  tackle --scratch             Start a scratch session (branch name derived later by /ship)
+  tackle --list                List active worktrees
+  tackle --help                Show this help
+
+HOW IT WORKS
+  1. Auto-detects whether the number is a PR or issue
+  2. Creates a git worktree at .claude/worktrees/<number>-<slug>/
+  3. For PRs: checks out the PR branch (handles forks automatically)
+     For issues: creates a linked branch via `gh issue develop`
+  4. Pre-loads context (description, comments, diff) into CLAUDE.md
+  5. Launches Claude Code with the session named for easy resume
+
+  Re-running `tackle <number>` when a worktree exists resumes the session.
+
+SCRATCH MODE
+  `tackle --scratch` creates an empty worktree at
+  .claude/worktrees/scratch-<ts>-<pid>/ with a placeholder branch of the same
+  name. A marker file in the worktree's .git/info/ tells /ship to rename this
+  branch in place (instead of creating a new one) once the diff is ready.
+
+REQUIREMENTS
+  gh (GitHub CLI), git, jq, claude (Claude Code CLI)
+  `--scratch` needs only git and claude.
+
+EXAMPLES
+  tackle 42                                              # Work on PR #42
+  tackle https://github.com/org/repo/pull/42             # Same, from URL
+  tackle https://github.com/org/repo/issues/99           # Work on issue #99
+  tackle 42 --review                                     # Review PR #42
+  tackle 42 --cleanup                                    # Remove worktree
+  tackle --scratch                                       # Scratch session (name-later)
+  tackle --list                                          # Show active worktrees
+EOF
+}
+
+# --- Main ---
+
+main() {
+    local number="" flag_review=false flag_cleanup=false flag_list=false flag_scratch=false
+    local gh_repo_flag=""  # -R flag for gh when using cross-repo URLs
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --review)   flag_review=true; shift ;;
+            --cleanup)  flag_cleanup=true; shift ;;
+            --list)     flag_list=true; shift ;;
+            --scratch)  flag_scratch=true; shift ;;
+            --help|-h)  show_help; exit 0 ;;
+            -*)         die "Unknown flag: $1. Run 'tackle --help' for usage." ;;
+            *)
+                if [[ -n "$number" ]]; then
+                    die "Multiple arguments provided. Only one PR/issue number or URL is supported."
+                fi
+                number="$1"; shift ;;
+        esac
+    done
+
+    # --scratch conflicts and argument shape
+    if [[ "$flag_scratch" == "true" ]]; then
+        [[ -n "$number" ]]           && die "--scratch does not take a PR/issue number or URL."
+        [[ "$flag_review" == "true" ]]  && die "--scratch and --review cannot be used together."
+        [[ "$flag_cleanup" == "true" ]] && die "--scratch and --cleanup cannot be used together."
+        [[ "$flag_list" == "true" ]]    && die "--scratch and --list cannot be used together."
+    fi
+
+    # Validate commands
+    require_cmd gh
+    require_cmd git
+    require_cmd jq
+    require_cmd claude
+
+    # Validate arguments before requiring a git repo
+    if [[ "$flag_list" != "true" && "$flag_scratch" != "true" ]]; then
+        if [[ -z "$number" ]]; then
+            die "Missing PR/issue number or URL. Run 'tackle --help' for usage."
+        fi
+
+        # Parse GitHub URLs: extract number and repo context
+        if [[ "$number" =~ ^https?://[^/]+/([^/]+/[^/]+)/(pull|issues)/([0-9]+) ]]; then
+            gh_repo_flag="${BASH_REMATCH[1]}"
+            number="${BASH_REMATCH[3]}"
+            log_info "Parsed URL: repo=$gh_repo_flag #$number"
+        elif ! [[ "$number" =~ ^[0-9]+$ ]]; then
+            die "Invalid input: '$number'. Provide a number or a GitHub PR/issue URL."
+        fi
+    fi
+
+    # Set global for _gh wrapper
+    GH_REPO_FLAG="$gh_repo_flag"
+
+    # Now validate git repo context
+    repo_root >/dev/null
+
+    if [[ "$flag_list" == "true" ]]; then
+        do_list
+        exit 0
+    fi
+
+    # Reject mutually exclusive flags
+    if [[ "$flag_review" == "true" && "$flag_cleanup" == "true" ]]; then
+        die "--review and --cleanup cannot be used together."
+    fi
+
+    # Scratch mode: no GitHub API needed, skip straight to worktree creation
+    if [[ "$flag_scratch" == "true" ]]; then
+        check_gitignore
+        local scratch_id="scratch-$(date +%s)-$$"
+        local worktree_dir
+        worktree_dir=$(create_worktree_scratch "$scratch_id")
+
+        local content
+        content=$(generate_scratch_md "$scratch_id")
+        inject_claude_md "$worktree_dir" "$content"
+
+        install_deps "$worktree_dir"
+
+        log_success "Scratch worktree ready at ${WORKTREE_BASE}/${scratch_id}/"
+        launch_claude "$worktree_dir" "$scratch_id" "false"
+    fi
+
+    # Check gh auth
+    if ! gh auth status &>/dev/null; then
+        die "GitHub CLI is not authenticated. Run 'gh auth login' first."
+    fi
+
+    # Cleanup mode
+    if [[ "$flag_cleanup" == "true" ]]; then
+        do_cleanup "$number"
+        exit 0
+    fi
+
+    # Check for existing worktree (resume)
+    local existing_dir
+    existing_dir=$(worktree_dir_for "$number")
+    if [[ -n "$existing_dir" && -d "$existing_dir" ]]; then
+        local existing_name
+        existing_name=$(basename "$existing_dir")
+        log_info "Found existing worktree: $existing_name"
+
+        # If --review, re-inject review context and fork the session
+        if [[ "$flag_review" == "true" ]]; then
+            detect_type "$number"
+            if [[ "$TYPE" != "pr" ]]; then
+                die "--review is only valid for pull requests, but #$number is an issue."
+            fi
+            local review_content
+            review_content=$(generate_pr_review_md "$number" "$JSON")
+            inject_claude_md "$existing_dir" "$review_content"
+            log_warn "Switching existing session to review mode (forking session history)"
+            cd "$existing_dir"
+            exec claude --continue --fork-session --permission-mode plan
+        fi
+
+        log_info "Resuming session..."
+        cd "$existing_dir"
+        exec claude --continue
+    fi
+
+    # Fresh start: detect type
+    detect_type "$number"
+    log_info "Detected #$number as ${TYPE}: $TITLE"
+
+    # Validate --review with issues
+    if [[ "$flag_review" == "true" && "$TYPE" != "pr" ]]; then
+        die "--review is only valid for pull requests, but #$number is an issue."
+    fi
+
+    check_gitignore
+
+    local worktree_dir session_name="${number}-${SLUG}"
+
+    if [[ "$TYPE" == "pr" ]]; then
+        worktree_dir=$(create_worktree_pr "$number" "$SLUG")
+
+        local content
+        if [[ "$flag_review" == "true" ]]; then
+            content=$(generate_pr_review_md "$number" "$JSON")
+        else
+            content=$(generate_pr_work_md "$number" "$JSON")
+        fi
+        inject_claude_md "$worktree_dir" "$content"
+    else
+        worktree_dir=$(create_worktree_issue "$number" "$SLUG")
+
+        local branch_name="${number}-${SLUG}"
+        local content
+        content=$(generate_issue_md "$number" "$JSON" "$branch_name")
+        inject_claude_md "$worktree_dir" "$content"
+    fi
+
+    # Install dependencies if a lockfile is present
+    install_deps "$worktree_dir"
+
+    log_success "Worktree ready at ${WORKTREE_BASE}/${number}-${SLUG}/"
+    launch_claude "$worktree_dir" "$session_name" "$flag_review"
+}
+
+main "$@"
