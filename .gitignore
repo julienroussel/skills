@@ -1,1 +1,10 @@
 .DS_Store
+.claude/settings.local.json
+.claude/review-profile.json
+.claude/review-baseline.json
+.claude/review-config.md
+.claude/secret-warnings*.json
+.claude/secret-hook-patterns.txt
+.claude/audit-history.json
+.claude/precommit-hook-uninstall
+.claude/worktrees/
