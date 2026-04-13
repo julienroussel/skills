@@ -16,7 +16,7 @@ Shell utilities that partner with the skills. Not invoked by Claude — you run 
 
 | Command | Path | Description |
 |---------|------|-------------|
-| `tackle` | `bin/tackle` | Bootstrap a Claude Code session for a GitHub PR/issue or a scratch worktree. Creates an isolated worktree at `.claude/worktrees/<id>/`, pre-loads context, and launches Claude. `tackle --scratch` drops a marker that `/ship` detects to rename the scratch branch in place from the diff. |
+| `tackle` | `bin/tackle` | Bootstrap a Claude Code session for a GitHub PR/issue or a scratch worktree. Creates an isolated worktree at `.claude/worktrees/<id>/`, pre-loads context into `CLAUDE.local.md` (auto-loaded by Claude, not committed), launches Claude with `--dangerously-skip-permissions` for non-review sessions (or `--permission-mode plan` with `--review`), and pre-types a starter prompt into the input box (not submitted; macOS only — needs Accessibility permission, see Setup). `tackle --scratch` drops a marker that `/ship` detects to rename the scratch branch in place from the diff. |
 
 ## Setup on a new device
 
@@ -24,6 +24,8 @@ Shell utilities that partner with the skills. Not invoked by Claude — you run 
 git clone git@github.com:julienroussel/skills.git ~/.claude/skills
 ln -sf ~/.claude/skills/bin/tackle ~/.local/bin/tackle
 ```
+
+**macOS only — one-time Accessibility permission for `tackle`'s prompt prefill**: System Settings → Privacy & Security → Accessibility → enable your terminal app (Terminal.app or iTerm2). Without it, `tackle` still works but the starter prompt won't be pre-typed into Claude's input box. Edit the `PROMPT_*_TEMPLATE` constants at the top of `bin/tackle` to customize the starter prompts.
 
 ## Plugin dependencies
 
