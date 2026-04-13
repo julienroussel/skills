@@ -34,6 +34,57 @@ Each `SKILL.md` has:
 - **Reviewer dimension boundaries**: Strict ownership of finding categories to prevent duplicates (e.g., silent failures → error-handling-reviewer, not security or typescript).
 - **`nofix` mode**: Every skill that implements fixes supports a findings-only mode that skips implementation and validation phases.
 
+## Worktree architecture: `bin/tackle` ↔ `/ship`
+
+### Role split
+- **`bin/tackle`** — user-invoked shell CLI. Not a skill; Claude does not invoke it. Bootstraps Claude Code sessions against a GitHub PR/issue (`tackle <N>`) or an empty scratch worktree (`tackle --scratch`).
+- **`/ship`** — skill Claude invokes when the user types `/ship`. Consumes the worktree state tackle set up.
+- **Coordination**: no IPC. They agree on filesystem conventions (paths + marker files). Changing one end of the contract requires changing the other.
+
+### Worktree layout convention
+- All tackle worktrees live at `<repo>/.claude/worktrees/<id>/`.
+- `<id>` = `<N>-<slug>` for PR/issue worktrees (slug from PR/issue title), `scratch-<ts>-<pid>` for scratch worktrees.
+- Branch naming per mode:
+  - **Scratch**: branch equals `<id>` (tackle uses `git worktree add -b <scratch-id>`).
+  - **Issue**: branch equals `<id>` (tackle uses `gh issue develop --name <N>-<slug>`, or a local-branch fallback with the same name).
+  - **PR**: branch is the PR's own branch name (via `gh pr checkout <N>`), NOT `<id>`. Fork PRs use the PR branch directly; if the branch is already checked out elsewhere, tackle falls back to a local name `<N>-<slug>`.
+- `/ship` treats any worktree whose path contains the segment `/.claude/worktrees/` as tackle-managed (`IS_TACKLE_WORKTREE=true`) and ephemeral — it auto-removes them after merge. (Running `/ship` inside a PR worktree is unusual; use `git push` to update the existing PR instead.)
+
+### Why tackle does NOT use `claude -w`
+- `claude -w <name>` forces the branch to be named `worktree-<name>` (Claude Code convention).
+- That defeats tackle's naming scheme (`<N>-<slug>` / `scratch-<id>`) and conflicts with `/ship`'s conventional-commit branch derivation.
+- tackle creates worktrees itself via raw `git worktree add` and invokes Claude with `claude --name <id>` for a friendly session label without the branch-name constraint. **Do not replace `--name` with `-w` — it breaks the architecture.**
+
+### Scratch-session contract
+- `tackle --scratch` creates a placeholder branch `scratch-<ts>-<pid>` from HEAD and drops a marker at `<worktree>/.git/info/scratch-session` whose contents are the scratch-id.
+- `.git/info/` is the worktree-scoped git info dir (resolves to `<repo>/.git/worktrees/<id>/info/` for linked worktrees). It is **never committed** and is auto-cleaned when the worktree is pruned — no `.gitignore` entry needed.
+- `/ship` Phase 1 reads this marker. If non-empty AND matches current HEAD, it sets `IS_SCRATCH=true` and `SCRATCH_ID=<marker>`.
+- When set, `/ship` step 6 **renames the placeholder branch in place** via `git branch -m <SCRATCH_ID> <derived-name>` instead of creating a new branch. It then `rm`s the marker so re-running `/ship` on the same worktree doesn't retrigger the rename path.
+- Stale marker (scratch-id ≠ current HEAD): warn "stale scratch marker", treat as non-scratch, continue normal flow.
+
+### Worktree-aware cleanup in `/ship`
+`/ship` runs from any worktree. A secondary worktree cannot `git checkout <base>` (dual-checkout protection) and cannot `git branch -d` the currently-checked-out branch. So step 15 (single-PR) and step 12-multi (split-PR) split into two paths.
+
+Detection primitives computed in Phase 1 (step 1b):
+- `CURRENT_WORKTREE` = `git rev-parse --show-toplevel`
+- `IS_SECONDARY` = `git rev-parse --git-dir` ≠ `git rev-parse --git-common-dir`
+- `PRIMARY_WORKTREE` = first `worktree` entry from `git worktree list --porcelain`
+- `IS_TACKLE_WORKTREE` = `CURRENT_WORKTREE` contains `/.claude/worktrees/`
+
+Cleanup paths:
+- **Path A (primary worktree)**: existing behavior — `checkout <base> && pull --ff-only && branch -d`.
+- **Path B (secondary worktree)**: `git -C $PRIMARY_WORKTREE pull --ff-only origin <base>` (non-fatal warn on failure), then by category:
+  - Tackle/scratch (`IS_TACKLE_WORKTREE=true` OR `IS_SCRATCH=true`): `cd $PRIMARY_WORKTREE && git worktree remove $CURRENT_WORKTREE --force && git branch -D <branch>`.
+  - User-managed secondary: `git checkout --detach && git branch -D <branch>`. Worktree kept; warn the user.
+
+### Anti-patterns (don't do these)
+- **Don't use `claude -w` in tackle.** Forces `worktree-<name>` branch prefix and breaks the deferred-naming contract with `/ship`. tackle must create worktrees itself and launch Claude with `claude --name`.
+- **Don't `git checkout <base>` from a secondary worktree.** Git's dual-checkout protection will fail. Use `git -C $PRIMARY_WORKTREE` for any operation targeting the base branch.
+- **Don't delete the scratch marker before `/ship` step 6 runs.** Breaks rename detection; `/ship` will silently fall into the create-new-branch path.
+- **Don't put tackle under `skills/<name>/`.** The `skills/` subtree has semantic meaning for Claude Code's skill loader. tackle is a CLI, not a skill; it lives at `bin/tackle` with a symlink from `~/.local/bin/tackle` for `$PATH` invocation.
+- **Don't commit the scratch marker or the `.claude/worktrees/` directory.** Marker is in `.git/info/` precisely to avoid this. Worktree dirs should be in the consuming repo's `.gitignore`.
+- **Don't expect cleanup in `--no-merge` / `--draft` / `--split-only` flows.** Step 15 / 12-multi are skipped in those modes — tackle worktrees persist until manually removed via `tackle --cleanup` or `git worktree remove`.
+
 ## Plugin dependencies
 
 Required: `agent-teams@claude-code-workflows` (team-reviewer, team-implementer, TeamCreate/TeamDelete).
