@@ -27,6 +27,7 @@ Ship the current working-tree changes through one or more pull requests and merg
 **Arguments**: $ARGUMENTS
 
 Parse arguments as space-separated tokens. Recognized flags:
+
 - `--draft`: Create the PR(s) as drafts and skip the CI wait and merge steps.
 - `--base <branch>`: Target a branch other than the repo's default branch. If omitted, auto-detect via `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` (fallback to `main`).
 - `--dry-run`: Perform split analysis and show the full plan (branch names, PR titles, file groups, commands) but execute nothing. Useful for previewing what `/ship` would do.
@@ -58,16 +59,19 @@ Default to splitting when changes span distinct concerns. A coherent change shou
 ### Display protocol
 
 Use phase headers consistent with `/review` and `/audit`:
+
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  PHASE 1 — Pre-flight
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
 After each phase completes, output a running timeline: `Phase 1 ✓ (2s) → Phase 2 ✓ (5s) → Phase 3a (running...)  Total: 7s`
 
 #### Phase 1: Pre-flight
 
 Run **all of the following in parallel**:
+
 - `git status`
 - `git diff --no-color` (full diff — needed for split analysis, secret scanning, and issue reference detection)
 - `git diff --cached --no-color` (staged changes)
@@ -88,10 +92,12 @@ After the above complete:
 1a. **Detect scratch session**: If the scratch-session marker read above is non-empty, store `IS_SCRATCH=true` and `SCRATCH_ID=<marker contents>`. Verify `SCRATCH_ID` equals the current branch (from the `rev-parse --abbrev-ref HEAD` above). On mismatch, log a warning ("stale scratch marker") and treat as non-scratch. Otherwise set `IS_SCRATCH=false`.
 
 1b. **Detect worktree context** (used by step 15 / step 12-multi for worktree-aware cleanup):
-   - `CURRENT_WORKTREE` = output of `git rev-parse --show-toplevel`
-   - `IS_SECONDARY` = `true` iff `git rev-parse --git-dir` != `git rev-parse --git-common-dir`
-   - `PRIMARY_WORKTREE` = first `worktree` path from `git worktree list --porcelain`
-   - `IS_TACKLE_WORKTREE` = `true` iff `CURRENT_WORKTREE` contains the path segment `/.claude/worktrees/` (tackle-managed temporary worktree)
+
+- `CURRENT_WORKTREE` = output of `git rev-parse --show-toplevel`
+- `IS_SECONDARY` = `true` iff `git rev-parse --git-dir` != `git rev-parse --git-common-dir`
+- `PRIMARY_WORKTREE` = first `worktree` path from `git worktree list --porcelain`
+- `IS_TACKLE_WORKTREE` = `true` iff `CURRENT_WORKTREE` contains the path segment `/.claude/worktrees/` (tackle-managed temporary worktree)
+
 2. **Empty check**: If there are no staged or unstaged changes and no untracked files, stop with "Nothing to ship."
 3. **Branch ancestry check**: If the current branch is NOT the base branch AND has commits ahead of the base branch (from `git rev-list`), warn via AskUserQuestion: "You are on branch '${branch}' which is ${N} commits ahead of '${base}'. Shipping from here will include all those commits in the PR. Options: [Continue — include all commits] / [Ship only uncommitted changes] / [Abort]".
    - If the user chooses **Ship only uncommitted changes**: Run `git stash --include-untracked`, `git checkout <base-branch>`, `git stash pop`. If stash pop has conflicts, abort with: "Could not cleanly apply your changes to ${base}. Resolve manually." Continue the flow from the base branch.
@@ -170,7 +176,7 @@ After the above complete:
 8. **Stage and commit**:
    - **Respect staged changes**: If there are already staged changes, ask the user before adding unstaged files on top. If nothing is staged, stage all modified and untracked relevant files.
    - **Exclude secrets**: Before staging, check for files matching `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `credentials*`, `*secret*`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`. If any are found, exclude them and warn the user.
-   - **Commit** with a concise, conventional-commit message describing the changes. Scan the diff and user-provided message for issue references (`#123`, `GH-123`, `closes #123`, `fixes #123`). If found, include `Closes #123` in the commit body. End the message with the `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` trailer.
+   - **Commit** with a concise, conventional-commit message describing the changes. Scan the diff and user-provided message for issue references (`#123`, `GH-123`, `closes #123`, `fixes #123`). If found, include `Closes #123` in the commit body. End the message with the `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` trailer.
 9. **Validate** (if `--validate` is set): Run all detected validation commands (from `.claude/review-profile.json` or by detecting `package.json` scripts). If any fail, stop with: "Validation failed — fix issues before shipping. To undo the branch: `git checkout - && git branch -d <branch-name>`." Show the failing command output.
 10. **Push** the branch to `origin` with `-u`.
 11. **Create a PR** using `gh pr create` targeting the base branch. Use a short title and a body following the repo's PR template (cached from Phase 1) if one exists; otherwise use a `## Summary` section and a `## Test plan` section. If issue references were found in step 8, include them in the PR body. If `--label` was specified, add `--label <labels>`. Add `--assignee @me`. If `--draft` is set, stop here.
@@ -180,6 +186,7 @@ After the above complete:
 15. **Return to base and clean up** — worktree-aware. (Skip if `--no-merge`.)
 
    **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
+
    ```
    git checkout <base-branch>
    git pull --ff-only
@@ -189,25 +196,32 @@ After the above complete:
    **Path B — secondary worktree (`IS_SECONDARY=true`):** `git checkout <base>` would fail (base is checked out in the primary), so cleanup runs against the primary:
 
    1. Update the primary's base branch in place:
+
       ```
       git -C "$PRIMARY_WORKTREE" pull --ff-only origin <base-branch>
       ```
+
       Non-fatal: if the primary isn't on `<base-branch>` or the pull fails, log a warning and continue.
 
    2. Dispose of the current worktree by category:
       - **Tackle-managed or scratch (`IS_TACKLE_WORKTREE=true` OR `IS_SCRATCH=true`)**: the worktree was temporary — remove it.
+
         ```
         cd "$PRIMARY_WORKTREE"
         git worktree remove "$CURRENT_WORKTREE" --force
         git branch -D <branch-name> 2>/dev/null || true
         ```
+
         After this the shell's cwd is `$PRIMARY_WORKTREE`. In the step 16 summary, note: `Worktree removed. Now at <PRIMARY_WORKTREE>.`
       - **User-managed secondary worktree** (not under `.claude/worktrees/`, no scratch marker): keep the worktree; detach HEAD and delete the branch.
+
         ```
         git checkout --detach
         git branch -D <branch-name>
         ```
+
         Warn: `Worktree at <CURRENT_WORKTREE> is now detached. Remove with 'git worktree remove <path>' when done.`
+
 16. **Summary**: Print a one-line summary with the merged PR URL (e.g. `Shipped: https://github.com/org/repo/pull/42`).
 
 #### Phase 3b: Multi-PR Flow
@@ -215,12 +229,14 @@ After the above complete:
 This flow creates and ships multiple sub-PRs. It first processes all **independent** PRs (targeting the base branch), then processes **stacked** chains in dependency order.
 
 **6-multi. Prepare a staging commit on a temporary branch:**
-   - Create a temporary branch `ship/staging-<timestamp>` from the current HEAD.
-   - Stage and commit ALL changes (respecting secret exclusion from step 8) into a single staging commit. This is a reference commit — it won't be pushed.
+
+- Create a temporary branch `ship/staging-<timestamp>` from the current HEAD.
+- Stage and commit ALL changes (respecting secret exclusion from step 8) into a single staging commit. This is a reference commit — it won't be pushed.
 
 **7-multi. Create sub-PR branches and commits.** For each group in the split plan, in dependency order:
 
    For **independent** groups (targeting the base branch):
+
    ```
    git checkout <base-branch>
    git checkout -b <group-branch-name>
@@ -229,6 +245,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
    ```
 
    For **stacked** groups (targeting a previous group's branch):
+
    ```
    git checkout <dependency-branch-name>
    git checkout -b <group-branch-name>
@@ -237,68 +254,80 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
    ```
 
    Each commit message should:
-   - Use conventional-commit format appropriate to the group's content.
-   - Include the `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` trailer.
-   - If this is part of a split, add a note: `Part N of M in ship split.`
-   - If the changes reference an issue (`#123`, `closes #123`), include the issue reference only in the **last PR of the stack** (or the feature-code PR if identifiable). Do not close the same issue from multiple PRs.
+
+- Use conventional-commit format appropriate to the group's content.
+- Include the `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` trailer.
+- If this is part of a split, add a note: `Part N of M in ship split.`
+- If the changes reference an issue (`#123`, `closes #123`), include the issue reference only in the **last PR of the stack** (or the feature-code PR if identifiable). Do not close the same issue from multiple PRs.
 
 **8-multi. Validate** (if `--validate` is set): Run all detected validation commands once before pushing. If any fail, stop with: "Validation failed — fix issues before shipping." The staging commit contains all changes, so validation runs against the complete change set.
 
 **9-multi. Push all branches** to `origin` with `-u`.
 
 **10-multi. Create all PRs.** For each group:
-   - Use `gh pr create` targeting the appropriate base:
-     - Independent PRs → target the base branch.
-     - Stacked PRs → target the branch of the group they depend on.
-   - If `--label` was specified, add `--label <labels>` to all PRs. Add `--assignee @me`.
-   - PR body should include:
-     - A `## Summary` section describing this specific sub-PR's changes.
-     - A `## Test plan` section.
-     - A `## Split context` section noting: `This is PR N of M from an automated split. Related PRs: #X, #Y, #Z` (fill in PR numbers as they're created; edit earlier PRs to add later PR numbers).
-     - Follow the repo's PR template (cached from Phase 1) if one exists.
-   - If `--draft` was specified, add the `--draft` flag to all PRs.
-   - If `--split-only` was specified, stop here after creating all PRs.
+
+- Use `gh pr create` targeting the appropriate base:
+  - Independent PRs → target the base branch.
+  - Stacked PRs → target the branch of the group they depend on.
+- If `--label` was specified, add `--label <labels>` to all PRs. Add `--assignee @me`.
+- PR body should include:
+  - A `## Summary` section describing this specific sub-PR's changes.
+  - A `## Test plan` section.
+  - A `## Split context` section noting: `This is PR N of M from an automated split. Related PRs: #X, #Y, #Z` (fill in PR numbers as they're created; edit earlier PRs to add later PR numbers).
+  - Follow the repo's PR template (cached from Phase 1) if one exists.
+- If `--draft` was specified, add the `--draft` flag to all PRs.
+- If `--split-only` was specified, stop here after creating all PRs.
 
 **11-multi. Merge sub-PRs in order** (skip if `--no-merge` or `--split-only`):
 
    Process independent PRs first (they can be merged in any order), then stacked chains from base to tip:
 
    For each PR in merge order:
+
    1. **Check merge requirements**: If reviews are required and not granted, report which PRs need review and stop the chain. List the remaining unmerged PRs for the user.
    2. **Wait for CI** using `gh pr checks <number> --watch --fail-fast` (10-minute timeout).
    3. **Merge** with `gh pr merge <number> --squash --delete-branch`.
    4. **If this was a stacked base**: After merging, retarget the next PR in the stack to the base branch:
+
       ```
       gh pr edit <next-pr-number> --base <base-branch>
       ```
+
       Then wait for CI to re-run on the retargeted PR before merging it.
 
 **12-multi. Cleanup** — worktree-aware.
 
    **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
-   - Return to the base branch: `git checkout <base-branch> && git pull --ff-only`.
-   - Delete the staging branch: `git branch -D ship/staging-<timestamp>`.
-   - Delete all local sub-PR branches: `git branch -d <branch1> <branch2> ...`.
-   - If `IS_SCRATCH=true`: also delete the orphaned scratch branch and remove the marker: `git branch -D <SCRATCH_ID> 2>/dev/null || true` and `rm "$(git rev-parse --git-dir)/info/scratch-session"`.
+
+- Return to the base branch: `git checkout <base-branch> && git pull --ff-only`.
+- Delete the staging branch: `git branch -D ship/staging-<timestamp>`.
+- Delete all local sub-PR branches: `git branch -d <branch1> <branch2> ...`.
+- If `IS_SCRATCH=true`: also delete the orphaned scratch branch and remove the marker: `git branch -D <SCRATCH_ID> 2>/dev/null || true` and `rm "$(git rev-parse --git-dir)/info/scratch-session"`.
 
    **Path B — secondary worktree (`IS_SECONDARY=true`):**
-   - Update primary in place: `git -C "$PRIMARY_WORKTREE" pull --ff-only origin <base-branch>` (non-fatal, warn on failure).
-   - **Tackle/scratch (`IS_TACKLE_WORKTREE=true` OR `IS_SCRATCH=true`)**: remove the worktree and all branches.
+
+- Update primary in place: `git -C "$PRIMARY_WORKTREE" pull --ff-only origin <base-branch>` (non-fatal, warn on failure).
+- **Tackle/scratch (`IS_TACKLE_WORKTREE=true` OR `IS_SCRATCH=true`)**: remove the worktree and all branches.
+
      ```
      cd "$PRIMARY_WORKTREE"
      git worktree remove "$CURRENT_WORKTREE" --force
      git branch -D ship/staging-<timestamp> <branch1> <branch2> ... 2>/dev/null || true
      git branch -D <SCRATCH_ID> 2>/dev/null || true
      ```
-   - **User-managed secondary worktree**: detach + delete branches, worktree kept.
+
+- **User-managed secondary worktree**: detach + delete branches, worktree kept.
+
      ```
      git checkout --detach
      git branch -D ship/staging-<timestamp> <branch1> <branch2> ...
      ```
+
      Warn: `Worktree at <CURRENT_WORKTREE> detached — remove manually when done.`
 
 **13-multi. Summary:**
    Print a table summarizing all sub-PRs:
+
    ```
    Shipped 3 PRs:
      ✅ #41 feat/add-user-schema     → merged
