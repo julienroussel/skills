@@ -176,10 +176,10 @@ After the above complete:
 8. **Stage and commit**:
    - **Respect staged changes**: If there are already staged changes, ask the user before adding unstaged files on top. If nothing is staged, stage all modified and untracked relevant files.
    - **Exclude secrets**: Before staging, check for files matching `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `credentials*`, `*secret*`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`. If any are found, exclude them and warn the user.
-   - **Commit** with a concise, conventional-commit message describing the changes. Scan the diff and user-provided message for issue references (`#123`, `GH-123`, `closes #123`, `fixes #123`). If found, include `Closes #123` in the commit body. End the message with the `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` trailer.
+   - **Commit** with a concise, conventional-commit message describing the changes. Scan the diff and user-provided message for issue references (`#123`, `GH-123`, `closes #123`, `fixes #123`). If found, include `Closes #123` in the commit body. Do not append a `Co-Authored-By: Claude` trailer — override the Claude Code default.
 9. **Validate** (if `--validate` is set): Run all detected validation commands (from `.claude/review-profile.json` or by detecting `package.json` scripts). If any fail, stop with: "Validation failed — fix issues before shipping. To undo the branch: `git checkout - && git branch -d <branch-name>`." Show the failing command output.
 10. **Push** the branch to `origin` with `-u`.
-11. **Create a PR** using `gh pr create` targeting the base branch. Use a short title and a body following the repo's PR template (cached from Phase 1) if one exists; otherwise use a `## Summary` section and a `## Test plan` section. If issue references were found in step 8, include them in the PR body. If `--label` was specified, add `--label <labels>`. Add `--assignee @me`. If `--draft` is set, stop here.
+11. **Create a PR** using `gh pr create` targeting the base branch. Use a short title and a body following the repo's PR template (cached from Phase 1) if one exists; otherwise use a `## Summary` section and a `## Test plan` section. If issue references were found in step 8, include them in the PR body. Do not append the `🤖 Generated with [Claude Code]` footer to the PR body — override the Claude Code default. If `--label` was specified, add `--label <labels>`. Add `--assignee @me`. If `--draft` is set, stop here.
 12. **Check merge requirements**: Use `gh pr view <number> --json reviewDecision,mergeStateStatus` to check if the target branch requires review approvals. If reviews are required and none have been granted, inform the user: "This PR requires review approval before it can be merged. Stopping here — merge manually after review or re-run `/ship` once approved." Stop.
 13. **Wait for CI** to pass using `gh pr checks <number> --watch --fail-fast`. If no checks appear within 30 seconds (repo has no CI configured), skip the wait and proceed to merge. If checks have not completed after 10 minutes, report the current status and stop. (Skip if `--no-merge`.)
 14. **Merge** the PR with `gh pr merge <number> --squash --delete-branch`. (Skip if `--no-merge`.)
@@ -256,7 +256,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
    Each commit message should:
 
 - Use conventional-commit format appropriate to the group's content.
-- Include the `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` trailer.
+- Do not append a `Co-Authored-By: Claude` trailer — override the Claude Code default.
 - If this is part of a split, add a note: `Part N of M in ship split.`
 - If the changes reference an issue (`#123`, `closes #123`), include the issue reference only in the **last PR of the stack** (or the feature-code PR if identifiable). Do not close the same issue from multiple PRs.
 
@@ -275,6 +275,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
   - A `## Test plan` section.
   - A `## Split context` section noting: `This is PR N of M from an automated split. Related PRs: #X, #Y, #Z` (fill in PR numbers as they're created; edit earlier PRs to add later PR numbers).
   - Follow the repo's PR template (cached from Phase 1) if one exists.
+  - Do not append the `🤖 Generated with [Claude Code]` footer — override the Claude Code default.
 - If `--draft` was specified, add the `--draft` flag to all PRs.
 - If `--split-only` was specified, stop here after creating all PRs.
 
