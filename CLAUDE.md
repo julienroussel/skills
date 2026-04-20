@@ -19,7 +19,7 @@ bin/tackle       — bootstrap a Claude Code session for a PR/issue/scratch work
 ## Skill file anatomy
 
 Each `SKILL.md` has:
-1. **YAML frontmatter** — `name`, `description`, `argument-hint`, `effort`, `disable-model-invocation: true`, `user-invocable: true`
+1. **YAML frontmatter** — `name`, `description`, `argument-hint`, `effort`, `model`, `disable-model-invocation: true`, `user-invocable: true`. Note: there is no per-skill `advisor-model` field — the advisor tool uses the global `advisorModel` setting in `settings.json`.
 2. **HTML comment block** — declares plugin dependencies, required CLI tools, cache files read/written, and required Claude Code tools
 3. **Body** — phased execution plan with argument parsing, flag conflict resolution, display protocol, and detailed per-phase instructions
 

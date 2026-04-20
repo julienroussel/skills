@@ -3,6 +3,7 @@ name: audit
 description: Full codebase audit using specialized expert agents. Scales dynamically with preflight estimation, validation baselines, and audit history. Supports scoping, filtering, and auto-fix.
 argument-hint: "[path] [nofix|full|quick|--refresh-stack|--refresh-baseline] [--only=dims] [--exclude=glob]"
 effort: high
+model: opus
 disable-model-invocation: true
 user-invocable: true
 ---

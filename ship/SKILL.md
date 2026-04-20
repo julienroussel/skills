@@ -3,6 +3,7 @@ name: ship
 description: Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs. Handles branching, CI wait, squash-merge, and cleanup.
 argument-hint: "[message] [--draft|--base|--no-split|--no-merge|--dry-run|--split-only|--validate|--label]"
 effort: high
+model: opus
 disable-model-invocation: true
 user-invocable: true
 ---
