@@ -3,6 +3,7 @@ name: review
 description: Multi-agent PR review swarm. Spawns specialized reviewers, deduplicates findings, gets approval, auto-fixes, and validates. Scales dynamically based on diff size.
 argument-hint: "[nofix|full|quick|--converge[=N]|--auto-approve|--refresh-stack|--refresh-baseline|--only=dims|--scope=path|--pr=N] [max-retries]"
 effort: high
+model: opus
 disable-model-invocation: true
 user-invocable: true
 ---
