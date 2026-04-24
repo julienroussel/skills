@@ -9,5 +9,6 @@ ralph-tui*
 .claude/secret-warnings*.json
 .claude/secret-hook-patterns.txt
 .claude/audit-history.json
+.claude/audit-report-*.md
 .claude/precommit-hook-uninstall
 .claude/worktrees/
