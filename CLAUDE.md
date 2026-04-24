@@ -9,12 +9,26 @@ A collection of personal Claude Code skills (slash commands) — `/audit`, `/rev
 ## Repo structure
 
 ```
-audit/SKILL.md   — full codebase audit swarm
-review/SKILL.md  — multi-agent PR review swarm
-ship/SKILL.md    — ship working-tree changes via PR (split analysis, branching, CI, merge)
-bin/tackle       — bootstrap a Claude Code session for a PR/issue/scratch worktree
-                   (drops a marker that /ship reads to rename the scratch branch in place)
+audit/SKILL.md                     — full codebase audit swarm
+review/SKILL.md                    — multi-agent PR review swarm
+ship/SKILL.md                      — ship working-tree changes via PR (split analysis, branching, CI, merge)
+shared/reviewer-boundaries.md      — canonical dimension-ownership table, severity rubric, confidence levels
+shared/untrusted-input-defense.md  — canonical prompt-injection defense block for subagent prompts
+shared/gitignore-enforcement.md    — canonical write-safety protocol for .claude/* cache + audit-trail files
+bin/tackle                         — bootstrap a Claude Code session for a PR/issue/scratch worktree
+                                     (drops a marker that /ship reads to rename the scratch branch in place)
 ```
+
+### `shared/` — single source of truth
+
+Files in `shared/` are referenced by `/audit` and `/review` at Phase 1 Track A. Each SKILL.md reads them in parallel with the other config files and enforces a **hard-fail guard**: if any shared file is missing, empty, or fails to Read, Phase 1 aborts immediately. Rationale: the inline duplicates at former call-sites were removed to eliminate drift; a missing shared file means the skill's guarantees (reviewer boundaries, untrusted-input safety, cache-write .gitignore checks) cannot be enforced, and silently degrading coverage is worse than aborting.
+
+Usage pattern per file:
+- `reviewer-boundaries.md` — passed verbatim into every reviewer subagent prompt.
+- `untrusted-input-defense.md` — passed verbatim into every reviewer, implementer, simplification, convergence, and fresh-eyes subagent prompt.
+- `gitignore-enforcement.md` — the lead agent applies the protocol at each `.claude/*` write site (cache files, audit reports, suppressions). Call-sites keep the `git ls-files --error-unmatch <path>` command and a per-site "Why" reason inline for reliability; the prose expansion of warn/append behavior lives in the shared file only.
+
+**Exception — secret-warnings.json**: `/review` Phase 5.6 writes `.claude/secret-warnings.json` under a site-specific atomic-write protocol (`flock` + `.tmp` + `mv`, per-session filename variants). That inline block is NOT a gitignore-enforcement duplicate — it's a different protocol that happens to start with a similar security check — so it stays fully inline.
 
 ## Skill file anatomy
 
@@ -30,9 +44,14 @@ Each `SKILL.md` has:
 - **Silent agents, noisy lead**: Reviewer/implementer subagents report via TaskCreate and SendMessage only — no console output. Only the lead agent prints progress.
 - **Shared cache files** in `.claude/`: `review-profile.json` (stack/package-manager detection), `review-baseline.json` (validation command baselines), `review-config.md` (suppressions and auto-learned rules), `audit-history.json` (append-only audit log).
 - **Model routing**: Reviewer and implementer agents spawn with `model: "opus"`. Mechanical phases (context gathering, dedup, validation, cleanup) use the default model.
-- **Severity rubric**: critical → high → medium → low, with confidence levels certain → likely → speculative. Low-severity findings are dropped unless trivially fixable.
-- **Reviewer dimension boundaries**: Strict ownership of finding categories to prevent duplicates (e.g., silent failures → error-handling-reviewer, not security or typescript).
+- **Severity rubric** (canonical: `shared/reviewer-boundaries.md`): critical → high → medium → low, with confidence levels certain → likely → speculative. Low-severity findings are dropped unless trivially fixable.
+- **Reviewer dimension boundaries** (canonical: `shared/reviewer-boundaries.md`): Strict ownership of finding categories to prevent duplicates (e.g., silent failures → error-handling-reviewer, not security or typescript).
+- **Finding format**: Every reviewer finding must include `file`, `line`, AND a `codeExcerpt` (3 consecutive lines from the cited file, verbatim). Phase 3 step 0 sanity-check reads the cited range and rejects any finding whose excerpt doesn't match — catches line-number AND content hallucinations. Per-reviewer 25% rejection rate escalates to Phase 7 `ACTION REQUIRED`.
+- **Fix verification (Phase 5.55)**: After implementers mark findings "addressed", the lead re-reads the cited `file:line` (±5 lines) and confirms the issue described in the finding is no longer present. Classifies each as verified / unverified / moved. Soft flag — informs user, does not auto-revert.
 - **`nofix` mode**: Every skill that implements fixes supports a findings-only mode that skips implementation and validation phases.
+- **Memory integration**: `/audit` and `/review` Phase 1 Track A read (a) project memory at `~/.claude/projects/"${PWD//[.\/]/-}"/memory/` (all types — applies to this project), and (b) user-global memory at `~/.claude/projects/-Users-jroussel--claude-skills/memory/` (**`user_*.md` only** — role/expertise/preferences that apply across projects; framework-specific `feedback_*` stays per-repo). Phase 4.5 cross-run rejection promotion writes a `feedback`-type memory to the user-global dir when the same `dimension+category` has been rejected in 3+ separate runs (with explicit user consent and security dimension excluded).
+- **Graph integration (optional)**: When `codebase-memory-mcp` is available and the repo is indexed, reviewers prefer `search_graph` / `trace_path` / `detect_changes` over Grep for structural questions (call-chain impact, dead-code detection, import edges). Grep fallback preserved when the graph is unavailable. `/audit` probes in Phase 0 Track 3; `/review` probes in Phase 1 Pre-checks (only for diffs ≥ 20 files and non-headless sessions). `/ship` Phase 2 uses `detect_changes` + `trace_path` for split analysis when available.
+- **Advisor calls**: `/ship` calls `advisor()` before `gh pr merge` (single-PR step 14 and multi-PR step 11-multi 2a) and before committing to a split plan (step 5). `/review --converge` calls `advisor()` before convergence iteration 3+. All three are irreversible junctures; the advisor provides a second opinion without seeing the outcome.
 
 ## Worktree architecture: `bin/tackle` ↔ `/ship`
 
