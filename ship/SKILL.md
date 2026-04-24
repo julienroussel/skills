@@ -18,6 +18,8 @@ user-invocable: true
     - github@claude-plugins-official            — GitHub MCP for authenticated API access (not strictly required if gh CLI is authenticated)
     - codebase-memory-mcp (MCP)                 — detect_changes + trace_path used in Phase 2 step 3 (group-dependency detection) when the repo is indexed. Import-parse heuristic fallback when unavailable.
     - .claude/review-profile.json               — reuses stack cache from /review for --validate flag
+  Shared protocol references (see ../shared/):
+    - shared/untrusted-input-defense.md         — applied to the split-analysis Agent subagent prompt when delegated
   Required tools:
     - Bash, Read, Write, Glob, AskUserQuestion, Agent (split analysis only), advisor (pre-merge + pre-split-commit sanity checks)
 -->

@@ -22,6 +22,10 @@ user-invocable: true
     - .claude/review-baseline.json              — validation baseline cache (Phase 1 step 9)
   Memory (auto-memory system, read-only):
     - ~/.claude/projects/<encoded-cwd>/memory/  — MEMORY.md + referenced files (Phase 0 Track 2 / Phase 1 Track A)
+  Shared protocol references (read at Phase 1 Track A; see ../shared/):
+    - shared/reviewer-boundaries.md             — dimension ownership table, severity rubric, confidence levels
+    - shared/untrusted-input-defense.md         — the mandatory subagent prompt block
+    - shared/gitignore-enforcement.md           — cache/audit-trail write-safety protocol
   Files written:
     - .claude/audit-report-YYYY-MM-DD.md        — audit report (Phase 7)
     - .claude/audit-history.json                — append-only audit history (Phase 7)
@@ -207,6 +211,7 @@ Read **all of the following in parallel** using multiple Read tool calls in a si
 - `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md` (project standards — override generic best practices)
 - `.claude/review-config.md` (suppressions, severity overrides, custom reviewers, validation commands, finding budgets, auto-learned suppressions)
 - `.claude/audit-history.json` (hot spots from 2+ past audits, per-dimension false positive rates — add calibration note to reviewers exceeding 40%)
+- **Shared protocol references** (resolve paths relative to this SKILL.md — one directory up then into `shared/`): `../shared/reviewer-boundaries.md`, `../shared/untrusted-input-defense.md`, `../shared/gitignore-enforcement.md`. These are the canonical sources for rules that appear inline throughout this skill; when the inline text and the shared file disagree, the shared file is authoritative. Pass `reviewer-boundaries.md` content to reviewers as part of their prompt so boundaries, severity rubric, and confidence levels come from a single place.
 - **Project memory** (auto-memory system, silent no-op if absent — new project): compute the memory dir via `memoryDir=~/.claude/projects/"${PWD//[.\/]/-}"/memory` (the encoding replaces `/` and `.` in `$PWD` with `-`). Read `"$memoryDir/MEMORY.md"` first; the file is an index of `- [Title](file.md)` pointers. Then fan out in parallel to read every referenced `feedback_*.md`, `project_*.md`, `reference_*.md`, and `user_*.md` file in `$memoryDir`. These entries are explicit user decisions from prior sessions in this project — treat them with the same precedence as `CLAUDE.md`. Pass the concatenated content to reviewers in Phase 2 as an additional **Project memory** block alongside the existing project-standards context.
 
 ### Track B — Collect file inventory
