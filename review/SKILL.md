@@ -1144,15 +1144,18 @@ Converge:  Phase 1 ✓ (3s) → Pass 1 [P2-6] ✓ (45s) → Pass 2 [P2-6] ✓ (2
 13. **Diff summary**: Output of `git diff --stat` showing exactly what changed (or "N/A" if `nofix`)
 14. **Skipped**: Any findings intentionally left unchanged, with reasoning
 15. **Remaining failures** (if any): Unresolved validation regressions after max retries, or unconverged findings if max iterations reached
-16. **Abort markers** (if any): When `abortMode=true`, render the marker corresponding to `abortReason`. Implementation note: render the marker via Bash `case "$abortReason" in ... ;; esac` (no glob — every value is matched explicitly). Mapping (each `;` separates a `case` arm):
-    - `head-moved-phase-5.6 | head-moved-convergence-start | head-moved-convergence-5.6 | head-moved-fresh-eyes-pre-spawn | head-moved-fresh-eyes-findings) → [ABORT — HEAD MOVED]`
-    - `symlink-escape) → [REVERT BLOCKED — SYMLINK ESCAPES REPO]`
-    - `symlink-readlink-failed) → [REVERT BLOCKED — READLINK FAILED]`
-    - `symlink-readlink-empty) → [REVERT BLOCKED — READLINK RETURNED EMPTY]`
-    - `symlink-dangling) → [REVERT BLOCKED — SYMLINK DANGLING OR UNRESOLVABLE]`
-    - `nul-sort-newline) → [REVERT BLOCKED — NUL-SORT UNAVAILABLE + NEWLINE IN PATH]`
-    - `fresh-eyes-terminal-failure) → [FRESH-EYES TERMINAL FAILURE]`
-    - `secret-halt-phase-1 | secret-halt-phase-5.6 | secret-halt-phase-5.6-user-abort | secret-halt-phase-6-regression | secret-halt-convergence-5.6 | secret-halt-convergence-5.6-user-abort | secret-halt-fresh-eyes | secret-halt-fresh-eyes-user-abort) → use the existing [SECRET DETECTED — ...] markers from the secret-halt protocol; do NOT render an additional [ABORT — *] marker for these reasons (avoid duplicate marker emission for the same event)`
+16. **Abort markers** (if any): When `abortMode=true`, render the marker corresponding to `abortReason`. Implementation note: render the marker via Bash `case "$abortReason" in ... ;; esac` (no glob — every value is matched explicitly). Mapping table — each row is one `case` arm. Multiple `abortReason` values on a single row share the same marker:
+
+    | `abortReason` value(s) | Rendered marker |
+    |------------------------|-----------------|
+    | `head-moved-phase-5.6`, `head-moved-convergence-start`, `head-moved-convergence-5.6`, `head-moved-fresh-eyes-pre-spawn`, `head-moved-fresh-eyes-findings` | `[ABORT — HEAD MOVED]` |
+    | `symlink-escape` | `[REVERT BLOCKED — SYMLINK ESCAPES REPO]` |
+    | `symlink-readlink-failed` | `[REVERT BLOCKED — READLINK FAILED]` |
+    | `symlink-readlink-empty` | `[REVERT BLOCKED — READLINK RETURNED EMPTY]` |
+    | `symlink-dangling` | `[REVERT BLOCKED — SYMLINK DANGLING OR UNRESOLVABLE]` |
+    | `nul-sort-newline` | `[REVERT BLOCKED — NUL-SORT UNAVAILABLE + NEWLINE IN PATH]` |
+    | `fresh-eyes-terminal-failure` | `[FRESH-EYES TERMINAL FAILURE]` |
+    | `secret-halt-*` (all 8 variants: `secret-halt-phase-1`, `secret-halt-phase-5.6`, `secret-halt-phase-5.6-user-abort`, `secret-halt-phase-6-regression`, `secret-halt-convergence-5.6`, `secret-halt-convergence-5.6-user-abort`, `secret-halt-fresh-eyes`, `secret-halt-fresh-eyes-user-abort`) | use the existing `[SECRET DETECTED — ...]` markers from the secret-halt protocol; do NOT render an additional `[ABORT — *]` marker for these reasons (avoid duplicate marker emission for the same event) |
     - `user-abort) → [ABORT — USER ABORT]`
     - `*) → [ABORT — UNLABELED] (this is a contract violation — abortMode=true was set without setting abortReason; surface as ACTION REQUIRED so the gap is visible)`
 
