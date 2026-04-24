@@ -16,6 +16,7 @@ user-invocable: true
     - gh                                        — repo view (default branch), pr create, pr view, pr checks, pr merge, pr edit (merge requirements, CI wait, stacked PR retargeting)
   Optional:
     - github@claude-plugins-official            — GitHub MCP for authenticated API access (not strictly required if gh CLI is authenticated)
+    - codebase-memory-mcp (MCP)                 — detect_changes + trace_path used in Phase 2 step 3 (group-dependency detection) when the repo is indexed. Import-parse heuristic fallback when unavailable.
     - .claude/review-profile.json               — reuses stack cache from /review for --validate flag
   Required tools:
     - Bash, Read, Write, Glob, AskUserQuestion, Agent (split analysis only), advisor (pre-merge + pre-split-commit sanity checks)
@@ -124,7 +125,8 @@ After the above complete:
    - Don't create a sub-PR for fewer than 2 files unless those files are high-impact (e.g. a single migration file). Fold trivially small groups into the nearest related group.
 
 3. **Detect dependencies between groups** to decide whether sub-PRs should be stacked or independent:
-   - Use your judgment to determine the right analysis depth for the situation. For simple projects or small diffs, directory and filename heuristics are sufficient. For larger or more complex diffs, parse imports/requires in the changed files to detect cross-group references.
+   - **Graph-backed path (preferred when available)**: Probe for `codebase-memory-mcp` by attempting to call `mcp__codebase-memory-mcp__list_projects` (via ToolSearch if the schema isn't loaded). If the tool loads AND the current repo is indexed, call `mcp__codebase-memory-mcp__detect_changes()` to enumerate the symbols touched by the working-tree diff. For each modified symbol, call `mcp__codebase-memory-mcp__trace_path(function_name=..., direction="both", depth=2)` to identify cross-file consumers. A group-to-group dependency exists when any symbol in group B has an inbound edge from a file in group A (A → B stacked). If the tool is unavailable, not indexed, or errors out, fall through to the heuristic path below — do NOT block split analysis on graph absence.
+   - **Heuristic fallback**: Use your judgment to determine the right analysis depth for the situation. For simple projects or small diffs, directory and filename heuristics are sufficient. For larger or more complex diffs, parse imports/requires in the changed files to detect cross-group references.
    - If group B imports or references something **newly added or modified** by group A → mark B as **depending on** A (these will be stacked).
    - Schema/migration groups are always the **base** of any stack they participate in.
    - If two groups share no dependency relationship → they are **independent** (parallel PRs targeting the base branch directly).

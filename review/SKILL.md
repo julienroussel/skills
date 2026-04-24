@@ -13,6 +13,7 @@ user-invocable: true
     - agent-teams@claude-code-workflows        — team-reviewer agents (Phase 2), team-implementer agents (Phase 5), TeamCreate/TeamDelete (Phase 2/7)
   Enhanced by plugins (integrated methodologies):
     - pr-review-toolkit@claude-plugins-official — pr-test-analyzer → testing-reviewer, code-simplifier → Phase 5.5, silent-failure-hunter → error-handling
+    - codebase-memory-mcp (MCP)                 — detect_changes, trace_path, search_graph (Phase 1 pre-check probe; Phase 2 cross-file impact analysis when GRAPH_INDEXED=true). Grep fallback when unavailable.
   Required CLI:
     - git                                       — diff, status, log (Phase 1), diff --stat (Phase 7)
     - gh                                        — pr diff, pr view, pr comment (--pr mode); issue list, issue create (Phase 8)
@@ -286,6 +287,13 @@ Verify `git --version` succeeds. If `--pr` is set, also verify `gh auth status`.
 
 **AUTO_APPROVE export (when `--auto-approve` is set)**: If `--auto-approve` was parsed in the argument-parsing step, `export AUTO_APPROVE=1` for the remainder of the session. The canonical `isHeadless` shell predicate (see "Shared secret-scan protocols" → "Headless/CI detection") checks the env var, not the parsed flag. Failure to export silently downgrades headless behavior to interactive — defeats the purpose of `--auto-approve`. This duplicates the mandate at line 86 for visibility in the Phase 1 linear flow.
 
+**Codebase-memory graph probe**: After Track B's diff is collected and the changed-file count is known, if the count is **20 or more** AND `isHeadless` is `false`, probe for `codebase-memory-mcp`:
+1. Attempt to call `mcp__codebase-memory-mcp__list_projects` (via ToolSearch if the schema isn't loaded). On any failure (tool unavailable, load error), set `GRAPH_AVAILABLE=false` and `GRAPH_INDEXED=false` — do NOT block the review on graph absence.
+2. If the tool loads, check whether the current repo (`git rev-parse --show-toplevel`) is indexed. Set `GRAPH_AVAILABLE=true` and `GRAPH_INDEXED=<true|false>` accordingly.
+3. If `GRAPH_AVAILABLE=true` and `GRAPH_INDEXED=false`, offer via AskUserQuestion: `Codebase graph is available but not indexed. Indexing improves cross-file impact analysis on this diff. Options: [Index now, then proceed (Recommended)] / [Proceed without indexing]`. On **Index now**, call `mcp__codebase-memory-mcp__index_repository` and wait for completion; set `GRAPH_INDEXED=true`. On **Proceed**, continue with `GRAPH_INDEXED=false`.
+4. For diffs under 20 files, or when `isHeadless=true`, skip the probe entirely — set both flags to `false`. Rationale: small diffs don't benefit enough to justify the index cost, and headless sessions shouldn't block on a user prompt.
+5. Pass `GRAPH_AVAILABLE` and `GRAPH_INDEXED` to Phase 2 so reviewers know whether to call graph tools or fall back to Grep.
+
 ### PR mode (if `--pr=<number>` is set)
 
 When reviewing a remote PR, replace Tracks B and D:
@@ -488,7 +496,7 @@ Every finding must include a confidence level alongside its severity:
 
 ### Cross-file impact analysis
 
-After reviewing the diff itself, each reviewer must also check whether changed exports (functions, types, components, constants) have dependents elsewhere in the codebase. Use Grep to search for imports of any modified export. If a change could break or degrade a consumer, flag it as a finding with the appropriate severity — even if the consumer file is outside the diff scope.
+After reviewing the diff itself, each reviewer must also check whether changed exports (functions, types, components, constants) have dependents elsewhere in the codebase. The lead captured `GRAPH_AVAILABLE` and `GRAPH_INDEXED` during Phase 1 pre-checks and passes both flags to every reviewer. When `GRAPH_INDEXED=true`, prefer graph tools: call `mcp__codebase-memory-mcp__detect_changes()` to enumerate symbols touched by the diff, then `mcp__codebase-memory-mcp__trace_path(function_name=..., direction="inbound", depth=3)` on each symbol to find consumers. The graph has exact import and call edges — no string-match false positives from comments, dynamic imports, or stale re-exports. When `GRAPH_INDEXED=false`, fall back to Grep on the export name across the codebase as before. If a change could break or degrade a consumer, flag it as a finding with the appropriate severity — even if the consumer file is outside the diff scope. Include both flags in each reviewer's prompt so they know which path to take.
 
 ### Finding format
 
