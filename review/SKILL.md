@@ -700,6 +700,27 @@ Instruct the simplification agent: "Do NOT run any `git` commands. Only modify f
 
 **Display**: `Phase 5.5 — Simplification: N improvements applied` (or skip line if none)
 
+## Phase 5.55 — Fix verification (read-after-write)
+
+**Skip if `nofix` flag is set** (no fixes were applied). Skip findings marked `contested` by their implementer (the implementer explicitly declined to fix; there is nothing to verify).
+
+For each finding that Phase 5 marked as "addressed", the lead agent performs a targeted re-read to confirm the fix actually resolved the cited issue. This catches the failure mode where an implementer technically modified the file but did not address the finding (e.g., added `// @ts-expect-error` instead of handling the null, renamed a variable but left the bug, or fixed the wrong line). The check is lightweight and strictly additive — it does NOT re-review the rest of the file.
+
+For each addressed finding, **in parallel** (batch Read calls into a single message across findings):
+
+1. Re-read the cited `file` over the range `[line - 5, line + 5]` (clamped to file bounds).
+2. Evaluate against the finding's description and suggested fix: is the issue described as "wrong" still present at (or near) the cited line? Consider small line-number drift (±5) from the implementer's edit.
+3. Classify the finding into one of:
+   - **verified**: the fix is visible and plausibly resolves the cited issue. No action.
+   - **unverified**: the fix is not visible, the cited line is unchanged, or the fix looks like a suppression (`@ts-expect-error`, `eslint-disable`, swallowing catch) rather than a resolution. Mark the finding with a `verified=false` flag and surface in the Phase 7 report under `ACTION REQUIRED: Fix did not resolve cited issue: <dimension>/<category> at <file>:<line>`.
+   - **moved**: the cited line no longer contains the problem but the fix is at a different nearby line (common with formatter adjustments). Treat as verified and note the line shift in the Phase 7 report.
+
+**Thresholds**:
+- If more than **30% of findings** in a single dimension are `unverified`, surface a Phase 7 `ACTION REQUIRED` note: `High unverified rate in <dimension> (<N>/<M>). Review implementer output manually.` Do NOT auto-revert — `unverified` is a soft flag that informs the user, not a halt signal. The user decides whether to run `/review` again or revert.
+- If any `critical`-severity finding is `unverified`, escalate to a single targeted AskUserQuestion in interactive mode: `Critical finding "<description>" may not have been resolved. Options: [Accept as-is — I'll verify manually] / [Revert all Phase 5 changes and re-run]`. In headless/CI mode, skip the prompt but keep the ACTION REQUIRED entry and exit non-zero.
+
+**Display**: `Phase 5.55 — Verification: M/N fixes verified (K unverified, L moved)` (or skip line if zero fixes).
+
 ## Phase 5.6 — Secret re-scan
 
 **Skip if `nofix` flag is set** (Phase 5 and 5.5 are skipped entirely, so no files were modified). **Otherwise, run unconditionally** whenever Phase 5 implementers or Phase 5.5 simplification modified any files. Rationale: Phase 4 user approval covers the *findings*, not the implementer or simplification agent output — those agents modify code autonomously after approval, and their changes are never directly reviewed by the user.

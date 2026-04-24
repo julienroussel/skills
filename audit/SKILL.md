@@ -451,6 +451,20 @@ Aim for 2–4 implementers per wave. Set `max_turns: 25`.
 
 **Display**: Compact implementer summary. Update timeline.
 
+## Phase 5.55 — Fix verification (read-after-write)
+
+**Skip entirely if `nofix` is set** (no fixes were applied). Skip findings marked `contested` by their implementer.
+
+For each finding that Phase 5 marked as "addressed", the lead re-reads the cited `file:line` (±5 lines) **in parallel** and evaluates whether the fix actually resolved the issue described by the finding. Classify each into:
+
+- **verified**: fix visible, plausibly resolves the issue. No action.
+- **unverified**: cited line unchanged, or the "fix" looks like suppression (`@ts-expect-error`, `eslint-disable`, empty catch block) rather than resolution. Mark with `verified=false` and surface in the Phase 7 report under `ACTION REQUIRED: Fix did not resolve cited issue: <dimension>/<category> at <file>:<line>`.
+- **moved**: the problem is gone but the fix landed at a different nearby line (formatter drift). Treat as verified; note the shift in Phase 7.
+
+If more than **30% of findings in a single dimension** are `unverified`, emit a Phase 7 `ACTION REQUIRED` note flagging that dimension for manual review. If any `critical`-severity finding is `unverified`, surface it explicitly — do NOT auto-revert (soft flag, not halt). Rationale: Phase 6 validation catches regressions, but lint/typecheck passing doesn't prove a finding was actually resolved. This check reads the cited lines and confirms the described issue is no longer present.
+
+**Display**: `Phase 5.55 — Verification: M/N fixes verified (K unverified, L moved)` (or skip if zero fixes).
+
 ## Phase 5.6 — Secret re-scan
 
 **Skip if `nofix` flag is set.**
