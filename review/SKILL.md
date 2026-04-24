@@ -20,8 +20,10 @@ user-invocable: true
     - .claude/review-profile.json               — stack detection cache (Track C)
     - .claude/review-baseline.json              — validation baseline cache (Track D)
     - .claude/review-config.md                  — auto-learned suppressions (Phase 4.5)
+  Memory (auto-memory system, read-only):
+    - ~/.claude/projects/<encoded-cwd>/memory/  — MEMORY.md + referenced files (Track A)
   Required tools:
-    - Agent, TaskCreate, TaskList, TeamCreate, TeamDelete, SendMessage, AskUserQuestion
+    - Agent, TaskCreate, TaskList, TeamCreate, TeamDelete, SendMessage, AskUserQuestion, advisor
     - Bash, Read, Write, Glob, Grep
 -->
 
@@ -301,6 +303,7 @@ Maximize parallelism — run all tracks simultaneously using parallel tool calls
 Read **all of the following files in parallel** using multiple Read tool calls in a single message:
 - `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md` (project standards, if they exist)
 - `.claude/review-config.md` (suppressions, tuning, overrides from past reviews)
+- **Project memory** (auto-memory system, silent no-op if absent — new project): compute the memory dir via `memoryDir=~/.claude/projects/"${PWD//[.\/]/-}"/memory` (the encoding replaces `/` and `.` in `$PWD` with `-`). Read `"$memoryDir/MEMORY.md"` first; the file is an index of `- [Title](file.md)` pointers. Then fan out in parallel to read every referenced `feedback_*.md`, `project_*.md`, `reference_*.md`, and `user_*.md` file in `$memoryDir`. These entries are explicit user decisions from prior sessions in this project — treat them with the same precedence as `CLAUDE.md`. Pass the concatenated content to reviewers in Phase 2 as an additional **Project memory** block alongside the existing project-standards context.
 
 These rules override generic best practices. If a pattern is suppressed, no reviewer should flag it.
 
@@ -947,6 +950,7 @@ After Phase 6 of the previous iteration completes, check:
 2. **`iteration >= maxIterations`** — Max iterations reached. Output an explicit console banner: `⚠ Convergence did not converge — <N> findings remain unaddressed after <maxIterations> iterations.` Set `convergenceFailed = true`. Phase 7 MUST exit the review with a non-zero status when `convergenceFailed` is set, and the Phase 7 report's Mode field (item 1 in the report structure) MUST clearly state whether convergence succeeded or hit the max-iterations limit. Skip to fresh-eyes check with a note about the unconverged state.
 3. **Wall-clock timeout exceeded** — If `Date.now() - convergenceStartTime > 600000` (10 minutes), halt the convergence loop. Output: 'Convergence timed out after 10 minutes. Proceeding to fresh-eyes check.' Note the timeout in the Phase 7 report under 'Remaining failures'. Proceed to fresh-eyes check.
 4. **Otherwise** — Start a new convergence pass. Before starting the convergence pass, verify the base commit anchor is still valid: `if [ "$(git rev-parse HEAD)" != "$baseCommit" ]; then` warn: 'HEAD has moved unexpectedly — an implementer may have run git commands. Aborting convergence for safety.' and apply the full revert sequence (see Phase 5 "Base commit anchor"), set `abortMode=true` and `abortReason="head-moved-convergence-start"`, and proceed to Phase 7 in abort mode (run steps 1, 2, and 4 only; skip step 3 so the `secret-warnings.json` audit trail persists), and exit the review with a non-zero status.
+   - **Pre-iteration advisor check (iteration ≥ 3 only)**: If the upcoming iteration number is 3 or higher, call `advisor()` (no parameters — the full transcript is auto-forwarded) before spawning the new pass. Two convergence passes without terminating means fixes keep producing new findings, which is a signal the loop may be going in circles or chasing a wrong root cause. The advisor sees the iteration log (`iterationLog`) and can spot drift. If the advisor concurs with continuing, proceed silently. If the advisor raises a concrete concern (e.g., "iteration 2 introduced regressions in the same dimension that iteration 1 flagged — the fix strategy may be wrong"), halt the loop and present to the user via AskUserQuestion: `Advisor flagged a convergence concern before iteration N: <one-line summary>. Options: [Continue iterating] / [Stop here — proceed to fresh-eyes check] / [Abort and revert all changes since $baseCommit]`. On **Stop here**, set `converged = false` and treat as early termination — skip to the fresh-eyes check. On **Abort**, apply the full revert sequence (see Phase 5 "Base commit anchor"), set `abortMode=true` and `abortReason="user-abort"`, and proceed to Phase 7 in abort mode. This check runs at most `maxIterations - 2` times per `/review --converge` invocation (once before each iteration from 3 onward).
 
 **Intra-iteration timeout checks**: Additionally, the lead agent should check the wall-clock before dispatching implementers in Convergence Phase 5 and before spawning the fresh-eyes reviewer. If `Date.now() - convergenceStartTime > 600000` at these checkpoints, skip the remaining sub-phases of the current iteration, note the incomplete iteration in the Phase 7 report under 'Remaining failures', and proceed directly to the fresh-eyes check (or Phase 7 if already in the fresh-eyes pass).
 

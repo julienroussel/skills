@@ -18,7 +18,7 @@ user-invocable: true
     - github@claude-plugins-official            — GitHub MCP for authenticated API access (not strictly required if gh CLI is authenticated)
     - .claude/review-profile.json               — reuses stack cache from /review for --validate flag
   Required tools:
-    - Bash, Read, Write, Glob, AskUserQuestion, Agent (split analysis only)
+    - Bash, Read, Write, Glob, AskUserQuestion, Agent (split analysis only), advisor (pre-merge + pre-split-commit sanity checks)
 -->
 
 ## Ship Changes via PR
@@ -166,7 +166,7 @@ After the above complete:
    - If `--dry-run` is set, show the plan without options and stop: "Dry run complete — this is what /ship would do."
    - If the user chooses **Edit grouping**, let them move files between groups, merge groups, or re-split. Then re-display the plan.
    - If the user chooses **Ship as single PR**, proceed with the single-PR flow (skip to step 6).
-   - If the user chooses **Continue**, proceed with the multi-PR flow (skip to step 6-multi).
+   - If the user chooses **Continue**: before proceeding to step 6-multi, call `advisor()` (no parameters — the full transcript is auto-forwarded) for a second opinion on the split. The advisor reviews the proposed grouping and stacked-vs-independent decisions. If the advisor concurs or offers only minor notes, proceed silently to step 6-multi. If the advisor raises a concrete concern (e.g., a dependency was missed, a group should be merged, stacking is wrong), surface it via AskUserQuestion: `Advisor flagged a concern with the split: <one-line summary>. Options: [Edit grouping — revise] / [Continue anyway — I accept the risk] / [Ship as single PR] / [Abort]`. Do NOT silently override the user's choice. This check runs once per `/ship` invocation, before branches are created, because the split is hard to undo once PRs are pushed.
 
 #### Phase 3a: Single-PR Flow
 
@@ -177,13 +177,14 @@ After the above complete:
 8. **Stage and commit**:
    - **Respect staged changes**: If there are already staged changes, ask the user before adding unstaged files on top. If nothing is staged, stage all modified and untracked relevant files.
    - **Exclude secrets**: Before staging, check for files matching `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `credentials*`, `*secret*`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`. If any are found, exclude them and warn the user.
-   - **Commit** with a concise, conventional-commit message describing the changes. Scan the diff and user-provided message for issue references (`#123`, `GH-123`, `closes #123`, `fixes #123`). If found, include `Closes #123` in the commit body. Do not append a `Co-Authored-By: Claude` trailer — override the Claude Code default.
+   - **Commit** with a concise, conventional-commit message describing the changes. Scan the diff and user-provided message for issue references (`#123`, `GH-123`, `closes #123`, `fixes #123`). If found, include `Closes #123` in the commit body. Omit any `Co-Authored-By: Claude` trailer from the commit message. Write the message without it — do NOT pass `--trailer "Co-Authored-By="` to git to suppress it; git emits "left an empty trailer" warnings for that form, which then prompts pointless "let me clean it up" follow-up work. The trailer is only added when Claude includes it in the message itself, so leaving it out at compose time is sufficient.
 9. **Validate** (if `--validate` is set): Run all detected validation commands (from `.claude/review-profile.json` or by detecting `package.json` scripts). If any fail, stop with: "Validation failed — fix issues before shipping. To undo the branch: `git checkout - && git branch -d <branch-name>`." Show the failing command output.
 10. **Push** the branch to `origin` with `-u`.
 11. **Create a PR** using `gh pr create` targeting the base branch. Use a short title and a body following the repo's PR template (cached from Phase 1) if one exists; otherwise use a `## Summary` section and a `## Test plan` section. If issue references were found in step 8, include them in the PR body. Do not append the `🤖 Generated with [Claude Code]` footer to the PR body — override the Claude Code default. If `--label` was specified, add `--label <labels>`. Add `--assignee @me`. If `--draft` is set, stop here.
 12. **Check merge requirements**: Use `gh pr view <number> --json reviewDecision,mergeStateStatus` to check if the target branch requires review approvals. If reviews are required and none have been granted, inform the user: "This PR requires review approval before it can be merged. Stopping here — merge manually after review or re-run `/ship` once approved." Stop.
 13. **Wait for CI** to pass using `gh pr checks <number> --watch --fail-fast`. If no checks appear within 30 seconds (repo has no CI configured), skip the wait and proceed to merge. If checks have not completed after 10 minutes, report the current status and stop. (Skip if `--no-merge`.)
 14. **Merge** the PR with `gh pr merge <number> --squash --delete-branch`. (Skip if `--no-merge`.)
+    - **Pre-merge advisor check**: Before calling `gh pr merge`, call `advisor()` (no parameters — the full transcript is auto-forwarded) for a second opinion on the merge. The advisor sees the branch, commits, PR title/body, CI state, and recent conversation. If the advisor concurs or has only minor notes, proceed silently with the merge. If the advisor raises a concrete concern (e.g., unexpected commit, PR body doesn't match the diff, missing test for a critical path, risky change in a hotspot file), surface via AskUserQuestion: `Advisor flagged a concern before merge: <one-line summary>. Options: [Merge anyway — I accept the risk] / [Edit PR first] / [Abort merge]`. On **Edit PR first**, stop here and report the advisor's concern; the user manually addresses and re-runs `/ship`. On **Abort merge**, stop without merging. Merge is irreversible once CI-squashed — this check has high ROI and runs only once per PR.
 15. **Return to base and clean up** — worktree-aware. (Skip if `--no-merge`.)
 
    **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
@@ -257,7 +258,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
    Each commit message should:
 
 - Use conventional-commit format appropriate to the group's content.
-- Do not append a `Co-Authored-By: Claude` trailer — override the Claude Code default.
+- Omit any `Co-Authored-By: Claude` trailer from the commit message. Write the message without it — do NOT pass `--trailer "Co-Authored-By="` to git to suppress it; git emits "left an empty trailer" warnings for that form, which then prompts pointless "let me clean it up" follow-up work. The trailer is only added when Claude includes it in the message itself, so leaving it out at compose time is sufficient.
 - If this is part of a split, add a note: `Part N of M in ship split.`
 - If the changes reference an issue (`#123`, `closes #123`), include the issue reference only in the **last PR of the stack** (or the feature-code PR if identifiable). Do not close the same issue from multiple PRs.
 
@@ -288,6 +289,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
 
    1. **Check merge requirements**: If reviews are required and not granted, report which PRs need review and stop the chain. List the remaining unmerged PRs for the user.
    2. **Wait for CI** using `gh pr checks <number> --watch --fail-fast` (10-minute timeout).
+   2a. **Pre-merge advisor check**: Before calling `gh pr merge` for this PR, call `advisor()` (no parameters). Apply the same red-flag handling as step 14 (single-PR): if advisor raises a concrete concern, surface via AskUserQuestion `[Merge anyway] / [Edit PR first] / [Abort chain]`. On **Abort chain**, stop the loop and report which PRs merged, which are still open, and why. The advisor runs once per PR in the chain — a bad merge early can cascade through the stack via retargeting in step 4.
    3. **Merge** with `gh pr merge <number> --squash --delete-branch`.
    4. **If this was a stacked base**: After merging, retarget the next PR in the stack to the base branch:
 

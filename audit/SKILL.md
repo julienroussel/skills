@@ -19,6 +19,8 @@ user-invocable: true
   Cache files (shared with /review):
     - .claude/review-profile.json               — stack detection cache (Phase 1 Track C)
     - .claude/review-baseline.json              — validation baseline cache (Phase 1 step 9)
+  Memory (auto-memory system, read-only):
+    - ~/.claude/projects/<encoded-cwd>/memory/  — MEMORY.md + referenced files (Phase 0 Track 2 / Phase 1 Track A)
   Files written:
     - .claude/audit-report-YYYY-MM-DD.md        — audit report (Phase 7)
     - .claude/audit-history.json                — append-only audit history (Phase 7)
@@ -171,6 +173,7 @@ Run **two tracks in parallel**:
 ### Track 2 — Config pre-read (head start on Phase 1 Track A)
 Start reading configuration files **in parallel** with Track 1 — these have no dependency on the user's Phase 0 decision:
 - Read `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md`, `.claude/review-config.md`, `.claude/audit-history.json` — **all in parallel** using multiple Read tool calls in a single message.
+- Also pre-read project memory: `~/.claude/projects/"${PWD//[.\/]/-}"/memory/MEMORY.md` and every file it references (see Phase 1 Track A for the full rule). Silent no-op if the directory is absent.
 - If the user aborts, discard the results. If they proceed, Phase 1 Track A is already complete.
 
 ### After Track 1 completes
@@ -195,6 +198,7 @@ Read **all of the following in parallel** using multiple Read tool calls in a si
 - `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md` (project standards — override generic best practices)
 - `.claude/review-config.md` (suppressions, severity overrides, custom reviewers, validation commands, finding budgets, auto-learned suppressions)
 - `.claude/audit-history.json` (hot spots from 2+ past audits, per-dimension false positive rates — add calibration note to reviewers exceeding 40%)
+- **Project memory** (auto-memory system, silent no-op if absent — new project): compute the memory dir via `memoryDir=~/.claude/projects/"${PWD//[.\/]/-}"/memory` (the encoding replaces `/` and `.` in `$PWD` with `-`). Read `"$memoryDir/MEMORY.md"` first; the file is an index of `- [Title](file.md)` pointers. Then fan out in parallel to read every referenced `feedback_*.md`, `project_*.md`, `reference_*.md`, and `user_*.md` file in `$memoryDir`. These entries are explicit user decisions from prior sessions in this project — treat them with the same precedence as `CLAUDE.md`. Pass the concatenated content to reviewers in Phase 2 as an additional **Project memory** block alongside the existing project-standards context.
 
 ### Track B — Collect file inventory
 
