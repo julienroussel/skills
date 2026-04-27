@@ -6,7 +6,7 @@ Personal skills and companion CLIs for [Claude Code](https://claude.ai/code), ta
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| **audit** | `/audit [path] [nofix\|full\|quick] [--only=dims] [--exclude=glob]` | Full codebase audit using a swarm of specialized expert agents. Scales dynamically with preflight estimation, validation baselines, and audit history. |
+| **audit** | `/audit [path] [nofix\|full\|quick\|--converge[=N]] [--only=dims] [--exclude=glob]` | Full codebase audit using a swarm of specialized expert agents. Scales dynamically with preflight estimation, validation baselines, and audit history. Converge mode re-audits modified files until clean (default 2 iterations, max 5). |
 | **review** | `/review [nofix\|full\|quick\|--converge[=N]\|--auto-approve] [--only=dims] [--scope=path] [--pr=N]` | Multi-agent PR review. Spawns specialized reviewers, deduplicates findings, gets approval, auto-fixes, and validates. Converge mode loops until clean. |
 | **ship** | `/ship [message] [--draft\|--no-split\|--no-merge\|--dry-run\|--validate]` | Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs, handles branching, CI wait, squash-merge, and cleanup. |
 
@@ -17,6 +17,7 @@ Shell utilities that partner with the skills. Not invoked by Claude — you run 
 | Command | Path | Description |
 |---------|------|-------------|
 | `tackle` | `bin/tackle` | Bootstrap a Claude Code session for a GitHub PR/issue or a scratch worktree. Creates an isolated worktree at `.claude/worktrees/<id>/`, pre-loads context into `CLAUDE.local.md` (auto-loaded by Claude, not committed), launches Claude with `--dangerously-skip-permissions` for non-review sessions (or `--permission-mode plan` with `--review`), and pre-types a starter prompt into the input box (not submitted; macOS only — needs Accessibility permission, see Setup). `tackle --scratch` drops a marker that `/ship` detects to rename the scratch branch in place from the diff. |
+| `seed-project-memory` | `bin/seed-project-memory` | One-shot helper to bootstrap a project's auto-memory entry. Drafts a `project_<name>.md` with placeholder sections for goals and conventions — the facts NOT derivable from the live repo (stack, git log, and `CLAUDE.md` are read fresh every run, so duplicating them would just decay). Opens the draft in `$EDITOR`, then writes to `~/.claude/projects/<encoded-cwd>/memory/` and updates the `MEMORY.md` index. Refuses to overwrite existing entries. Run once per new project. |
 
 ## How the skills work
 
@@ -35,19 +36,24 @@ Design principles and key behaviors shared across the three skills. Detailed pha
 - **Cache semantic re-verification** — cached lint/typecheck commands are probed with `--version` / `--help` before use. Stale caches (PATH change, removed binary, pruned devDependencies) are invalidated rather than silently trusted.
 - **Dimension ownership + severity rubric** — strict reviewer boundaries and a `critical | high | medium | low` × `certain | likely | speculative` grid prevent duplicate findings and keep noise low (see `shared/reviewer-boundaries.md`).
 
-### Convergence loop (`/review --converge`)
+### Convergence loop (`/audit --converge`, `/review --converge`)
 
-- Wraps Phases 2–6 in a repeatable cycle with auto-approval, iterating until no remaining findings or the iteration cap is hit.
-- After convergence, a **fresh-eyes security pass** runs with a clean reviewer context to catch regressions introduced by auto-fixes.
-- From iteration 3 onwards, the lead calls `advisor()` to catch compound drift before more iterations fire.
+Both `/audit` and `/review` support `--converge[=N]`: a re-audit/re-review loop that wraps Phases 2–6 in a repeatable cycle with auto-approval, iterating until no remaining findings, no files modified, or the iteration cap is hit.
+
+- `/review --converge` defaults to **3 iterations** (max 10). After convergence, a **fresh-eyes security pass** runs with a clean reviewer context to catch regressions introduced by auto-fixes. From iteration 3+ the lead calls `advisor()` to spot compound drift before another iteration fires.
+- `/audit --converge` defaults to **2 iterations** (max 5) — lower because the per-iteration blast radius is higher (full-codebase scope vs. PR diff). Pre-iteration `advisor()` fires from iteration 2+ for the same drift detection.
+- Convergence passes scale down reviewer count regardless of the original `full`/`quick` setting to keep tokens bounded as iterations stack: `/review` caps at **max 2 reviewers** (small-diff scaling); `/audit` runs the **top 3 dimensions only**.
 
 ### Advisor integration
 
-The `advisor()` tool (stronger reviewer model that sees the full transcript) is consulted at three irreversible junctures:
+The `advisor()` tool (stronger reviewer model that sees the full transcript) is consulted at irreversible / high-blast-radius junctures:
 
 - `/ship` before `gh pr merge` — single-PR and each multi-PR merge.
 - `/ship` before committing to a split plan — pushing the wrong split is hard to undo.
 - `/review --converge` before iteration 3+ — wasteful passes compound quickly.
+- `/audit` Phase 4 pre-approval when finding count ≥ 20 OR a single dimension contributes ≥ 60% of all findings (skewed-reviewer signal — strongest empirical hallucination cue).
+- `/audit` Phase 5 pre-dispatch — multi-implementer parallel modifications across the full codebase are the highest blast radius.
+- `/audit --converge` before iteration 2+ — lower bar than `/review` because `/audit`'s default iteration cap is also lower.
 
 Advisor is advisory-only; the user still gates the action if advisor flags concerns.
 
@@ -66,7 +72,9 @@ When `codebase-memory-mcp` is available and the repo is indexed:
 Rejection patterns feed back into future runs:
 
 - **Per-repo** — 2+ same-pattern rejections in one run write a suppression to `.claude/review-config.md`.
-- **Cross-run promotion** — 3+ same-pattern rejections tracked across recent runs prompt to promote the rule to user-global `feedback_*.md` memory. Explicit consent required; security dimension excluded.
+- **Cross-run promotion** — 2+ same-pattern rejections in 2+ separate runs prompt to promote the rule to user-global `feedback_*.md` memory. Explicit consent required; security dimension excluded. (Lowered from 3+, which empirically never fired in practice.)
+- **Cross-skill shared state** — `/audit` and `/review` write to the same `.claude/audit-history.json` schema (`runs[]`, `runSummaries[]`, `reviewerStats[]`, `lastPromptedAt`), so a rejection in one skill counts toward promotion thresholds in the other and `lastPromptedAt` suppresses re-prompts across both.
+- **FP-rate calibration** — running rejection rate per reviewer dimension is computed from `reviewerStats[]`; any dimension averaging ≥ 25% rejected gets a calibration note prepended to its Phase 2 prompt.
 
 ### Worktree architecture (`bin/tackle` ↔ `/ship`)
 
@@ -111,7 +119,7 @@ Optional (enhance skills but not strictly needed):
 
 `/audit` and `/review` read user-global and project-scoped auto-memory at Phase 1 Track A:
 
-- **Project memory**: `~/.claude/projects/<encoded-cwd>/memory/` — all memory types (`user`, `feedback`, `project`, `reference`) apply to this project.
+- **Project memory**: `~/.claude/projects/<encoded-cwd>/memory/` — all memory types (`user`, `feedback`, `project`, `reference`) apply to this project. Bootstrap a fresh project quickly with `bin/seed-project-memory` (see Companion CLIs).
 - **User-global memory**: `~/.claude/projects/-Users-jroussel--claude-skills/memory/` — only `user_*.md` entries are consumed globally (role, expertise, communication preferences). `feedback_*.md` and others stay strictly per-repo to avoid framework-specific preferences leaking across stacks.
 
-Phase 4.5 auto-learns rejections: 2+ same-pattern rejections in one run write to `.claude/review-config.md` (repo-local); 3+ across recent runs prompt to promote the rule to user-global `feedback_*.md` (explicit consent, security dimension excluded).
+Phase 4.5 auto-learns rejections: 2+ same-pattern rejections in one run write to `.claude/review-config.md` (repo-local); 2+ across 2+ separate runs prompt to promote the rule to user-global `feedback_*.md` (explicit consent, security dimension excluded).
