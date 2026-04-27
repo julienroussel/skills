@@ -78,8 +78,13 @@ slugify() {
 
 truncate_text() {
     local text="$1" max="$2"
-    if [[ ${#text} -gt $max ]]; then
-        printf '%s...' "${text:0:$max}"
+    local original_len=${#text}
+    if (( original_len > max )); then
+        # Append a visible HTML comment marker so a human (or Claude) reading
+        # CLAUDE.local.md notices the truncation. Bare ellipsis is too subtle —
+        # the original PR/issue body might have ended with "..." legitimately.
+        printf '%s...\n\n<!-- TRUNCATED by tackle: %d → %d chars; fetch the full source via gh -->\n' \
+            "${text:0:$max}" "$original_len" "$max"
     else
         printf '%s' "$text"
     fi
@@ -143,17 +148,21 @@ worktree_dir_for() {
     for dir in "${root}/${WORKTREE_BASE}/${number}-"*/; do
         if [[ -d "$dir" ]]; then
             local trimmed="${dir%/}"
-            # Warn if this worktree is missing the init-complete sentinel —
-            # tackle may have been interrupted mid-creation. Don't auto-delete;
-            # let the user decide.
             local _wt_git_dir
             if _wt_git_dir=$(cd "$trimmed" && git rev-parse --git-dir 2>/dev/null); then
+                # Warn if this worktree is missing the init-complete sentinel —
+                # tackle may have been interrupted mid-creation. Don't auto-delete;
+                # let the user decide.
                 if [[ ! -f "$_wt_git_dir/info/tackle-init-complete" ]]; then
                     log_warn "Worktree $trimmed was previously created but the init-complete sentinel is missing. The worktree may be in an incomplete state. Run 'tackle $number --cleanup' to remove it, then re-tackle."
                 fi
+                printf '%s\n' "$trimmed"
+                return
             fi
-            printf '%s\n' "$trimmed"
-            return
+            # Directory exists at the expected path but is NOT a git worktree.
+            # Refuse to resume — a user-created directory matching the naming
+            # pattern would silently masquerade as a tackle worktree otherwise.
+            log_warn "Found $trimmed matching pattern '${number}-*' but it is not a git worktree (git rev-parse --git-dir failed). Skipping it. Remove the directory or move it aside before re-running tackle ${number}."
         fi
     done
 }

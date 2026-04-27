@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# seed-project-memory — bootstrap auto-memory for a project the first time.
+#
+# Drafts a `project_<name>.md` memory file with placeholder sections for the
+# project's goals and conventions — the kind of context that is NOT derivable
+# from code, git history, or CLAUDE.md. /audit and /review already read those
+# live every run; duplicating them here would just decay into stale snapshots
+# that get re-injected into every reviewer prompt forever.
+#
+# Opens the draft in $EDITOR for the user to fill in, then writes it to
+# ~/.claude/projects/<encoded-cwd>/memory/ alongside an updated MEMORY.md index.
+#
+# This is a ONE-SHOT helper, NOT a recurring skill. The /audit and /review skills
+# read the memory dir at Phase 1 Track A; seeding a project once means every
+# future reviewer in that project sees the project context.
+#
+# Usage:
+#   seed-project-memory             # operate on current working directory
+#   seed-project-memory <path>      # operate on a specific project path
+#   seed-project-memory -h | --help # show this help
+#
+# The script never overwrites existing memory files. If a project_<name>.md already
+# exists in the memory dir, the script aborts with a hint to manually edit instead.
+
+set -euo pipefail
+
+usage() {
+    sed -n 's/^# \{0,1\}//p; /^[^#]/q' "$0"
+}
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
+target="${1:-$PWD}"
+if [[ ! -d "$target" ]]; then
+    echo "error: $target is not a directory" >&2
+    exit 1
+fi
+
+target=$(cd "$target" && pwd)
+project_name=$(basename "$target")
+
+# Encode CWD into the memory dir path the same way /audit and /review do:
+# replace / with - and . with -.
+encoded="${target//[.\/]/-}"
+memory_dir="$HOME/.claude/projects/${encoded}/memory"
+mkdir -p "$memory_dir"
+
+# Refuse to overwrite existing entries — the user's own edits should win.
+slug=$(printf '%s' "$project_name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_' '_' | sed 's/_\{2,\}/_/g; s/^_//; s/_$//')
+[[ -z "$slug" ]] && slug="project"
+out_file="$memory_dir/project_${slug}.md"
+if [[ -f "$out_file" ]]; then
+    echo "error: $out_file already exists." >&2
+    echo "       Edit it directly with \$EDITOR rather than re-running this helper." >&2
+    exit 1
+fi
+
+# Draft a project_<slug>.md with only the sections that hold facts NOT derivable
+# from the live repo state. The user fills these in via $EDITOR before save.
+draft=$(mktemp -t "seed-project-memory.XXXXXX.md")
+trap 'rm -f "$draft"' EXIT
+
+cat > "$draft" <<EOF
+---
+name: ${project_name} project context
+description: Goals and conventions for ${project_name} — the why behind the work
+type: project
+---
+
+# ${project_name}
+
+<!-- Edit this draft. Lines starting with HTML comments are hints; remove or replace them.
+     Stack, recent commits, and CLAUDE.md are read live by /audit and /review at Phase 1
+     Track A — do not copy them here. Only record facts a fresh Claude session cannot
+     infer from the code or git history. -->
+
+## Goals / current focus
+<!-- What is this project actually for, and what is the current focus? Stakeholder
+     constraints, deadlines, the "why" behind ongoing work. Aim for 2–4 sentences.
+     Update when the focus shifts; stale focus drifts into every reviewer prompt. -->
+
+## Conventions worth knowing
+<!-- Load-bearing decisions a fresh Claude session should respect: branching model,
+     deploy gates, "we tried X and it did not work because Y", regulatory constraints,
+     stakeholder preferences. Only add what is non-obvious from CLAUDE.md or the code. -->
+
+EOF
+
+# Open in $EDITOR for the user to refine. Default to vi for portability.
+editor="${EDITOR:-${VISUAL:-vi}}"
+"$editor" "$draft"
+
+# Refuse to write empty / unedited drafts. Unedited check: still contains the
+# placeholder marker. Empty check: zero bytes.
+if [[ ! -s "$draft" ]]; then
+    echo "error: draft is empty after edit. Aborting." >&2
+    exit 1
+fi
+if grep -qF '<!-- Edit this draft.' "$draft"; then
+    echo "error: draft still contains the placeholder marker. Aborting — edit and remove the marker before saving." >&2
+    exit 1
+fi
+
+mv "$draft" "$out_file"
+trap - EXIT
+echo "wrote $out_file"
+
+# Update MEMORY.md index. Append a one-line pointer if not already present.
+index="$memory_dir/MEMORY.md"
+pointer="- [${project_name} project context](project_${slug}.md) — auto-seeded by seed-project-memory"
+if [[ ! -f "$index" ]]; then
+    printf '%s\n' "$pointer" > "$index"
+    echo "created $index"
+elif ! grep -F -q "project_${slug}.md" "$index"; then
+    printf '%s\n' "$pointer" >> "$index"
+    echo "appended to $index"
+else
+    echo "$index already references project_${slug}.md — left unchanged"
+fi
+
+echo
+echo "Done. /audit and /review will pick this up at Phase 1 Track A on the next run in $target."
