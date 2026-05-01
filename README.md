@@ -9,6 +9,7 @@ Personal skills and companion CLIs for [Claude Code](https://claude.ai/code), ta
 | **audit** | `/audit [path] [nofix\|full\|quick\|--converge[=N]] [--only=dims] [--exclude=glob]` | Full codebase audit using a swarm of specialized expert agents. Scales dynamically with preflight estimation, validation baselines, and audit history. Converge mode re-audits modified files until clean (default 2 iterations, max 5). |
 | **review** | `/review [nofix\|full\|quick\|--converge[=N]\|--auto-approve] [--only=dims] [--scope=path] [--pr=N\|--branch[=<base>]]` | Multi-agent PR review. Spawns specialized reviewers, deduplicates findings, gets approval, auto-fixes, and validates. Three diff scopes: bare = working-tree only; `--pr=N` = read-only review of a remote PR; `--branch` = full feature-branch (committed-on-branch + working tree) for in-flight PR work. Converge mode loops until clean. |
 | **ship** | `/ship [message] [--draft\|--no-split\|--merge\|--dry-run\|--validate]` | Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs, handles branching, and waits for CI. By default, once CI is green, returns to the base branch and cleans up the local feature branch + tackle worktree — the PR stays open for team review (safer than auto-merging). Pass `--merge` to squash-merge instead of leaving the PR open. `--merge` from a clean tree on a non-base branch with an open ready PR resumes that PR (skips create/push). |
+| **doctor** | `/doctor [--fix] [--yes]` | Health-check the user's Claude Code setup and the current repo. Reports per-check status (CLI tools, plugins, settings.json, installed skills, shared protocol files, gitignore coverage) with remediation hints for using `/audit`, `/review`, `/ship`, and `tackle`. `--fix` appends missing patterns to the current repo's `.gitignore` (per-change confirmation; never edits settings.json or installs anything). |
 
 ## Companion CLIs
 
@@ -21,7 +22,7 @@ Shell utilities that partner with the skills. Not invoked by Claude — you run 
 
 ## How the skills work
 
-Design principles and key behaviors shared across the three skills. Detailed phase-by-phase logic lives in each skill's `SKILL.md`.
+Design principles and key behaviors shared across `/audit`, `/review`, and `/ship`. Detailed phase-by-phase logic lives in each skill's `SKILL.md`. (`/doctor` is intentionally simpler — it's a low-effort diagnostic that does not run reviewers, agents, or validation; the conventions below do not apply to it.)
 
 ### Execution model
 
@@ -99,6 +100,8 @@ Canonical sources for rules referenced at Phase 1 Track A of `/audit` and `/revi
 git clone git@github.com:julienroussel/skills.git ~/.claude/skills
 ln -sf ~/.claude/skills/bin/tackle ~/.local/bin/tackle
 ```
+
+After installing, run `/doctor` from any repo to verify the setup is wired up — it checks CLI tools, plugins, `settings.json` keys, installed skills, shared protocol files, hooks, and (per-repo) `.gitignore` coverage. `/doctor --fix` appends missing patterns to the current repo's `.gitignore` (per-change confirmation; never edits `settings.json` or installs anything).
 
 **macOS only — one-time Accessibility permission for `tackle`'s prompt prefill**: System Settings → Privacy & Security → Accessibility → enable your terminal app (Terminal.app or iTerm2). Without it, `tackle` still works but the starter prompt won't be pre-typed into Claude's input box. Edit the `PROMPT_*_TEMPLATE` constants at the top of `bin/tackle` to customize the starter prompts.
 

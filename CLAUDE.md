@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A collection of personal Claude Code skills (slash commands) — `/audit`, `/review`, `/ship` — plus companion shell CLIs that partner with those skills. Each skill is a `SKILL.md` file in its own directory; companion CLIs live under `bin/`. There is no application code, no build system, no tests — just markdown skill definitions and shell scripts.
+A collection of personal Claude Code skills (slash commands) — `/audit`, `/review`, `/ship`, plus the diagnostic `/doctor` — and companion shell CLIs that partner with those skills. Each skill is a `SKILL.md` file in its own directory; companion CLIs live under `bin/`. There is no application code, no build system, no tests — just markdown skill definitions and shell scripts.
 
 ## Repo structure
 
@@ -12,6 +12,10 @@ A collection of personal Claude Code skills (slash commands) — `/audit`, `/rev
 audit/SKILL.md                     — full codebase audit swarm (--converge for re-audit loops)
 review/SKILL.md                    — multi-agent PR review swarm (--converge for re-review loops)
 ship/SKILL.md                      — ship working-tree changes via PR (split analysis, branching, CI, merge)
+doctor/SKILL.md                    — health-check the user's Claude Code setup + current repo
+                                     (CLI tools, plugins, settings.json, installed skills, shared
+                                     files, gitignore); --fix appends to repo .gitignore on
+                                     per-change confirmation (never edits settings.json)
 shared/reviewer-boundaries.md      — canonical dimension-ownership table, severity rubric, confidence levels
 shared/untrusted-input-defense.md  — canonical prompt-injection defense block for subagent prompts
 shared/gitignore-enforcement.md    — canonical write-safety protocol for .claude/* cache + audit-trail files
@@ -44,7 +48,9 @@ Each `SKILL.md` has:
 2. **HTML comment block** — declares plugin dependencies, required CLI tools, cache files read/written, and required Claude Code tools
 3. **Body** — phased execution plan with argument parsing, flag conflict resolution, display protocol, and detailed per-phase instructions
 
-## Shared conventions across all three skills
+## Shared conventions across `/audit`, `/review`, `/ship`
+
+(`/doctor` is intentionally simpler — it's a low-effort diagnostic that does not run reviewers, agents, or validation; the conventions below do not apply to it.)
 
 - **Phased execution**: Every skill runs in numbered phases. Each phase has a prominent `━━━` header and a running cumulative timeline (`Phase 1 ✓ (3s) → Phase 2 ✓ (18s) → ...`).
 - **Parallel-first**: Tracks within a phase run simultaneously via multiple tool calls in a single message. Independent Bash/Read/Grep calls are always batched.
