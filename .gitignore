@@ -1,6 +1,5 @@
 .DS_Store
 find-skills
-codebase-memory/
 ralph-tui*
 .claude/settings.local.json
 .claude/review-profile.json
