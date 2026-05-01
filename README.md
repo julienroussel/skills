@@ -7,7 +7,7 @@ Personal skills and companion CLIs for [Claude Code](https://claude.ai/code), ta
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **audit** | `/audit [path] [nofix\|full\|quick\|--converge[=N]] [--only=dims] [--exclude=glob]` | Full codebase audit using a swarm of specialized expert agents. Scales dynamically with preflight estimation, validation baselines, and audit history. Converge mode re-audits modified files until clean (default 2 iterations, max 5). |
-| **review** | `/review [nofix\|full\|quick\|--converge[=N]\|--auto-approve] [--only=dims] [--scope=path] [--pr=N]` | Multi-agent PR review. Spawns specialized reviewers, deduplicates findings, gets approval, auto-fixes, and validates. Converge mode loops until clean. |
+| **review** | `/review [nofix\|full\|quick\|--converge[=N]\|--auto-approve] [--only=dims] [--scope=path] [--pr=N\|--branch[=<base>]]` | Multi-agent PR review. Spawns specialized reviewers, deduplicates findings, gets approval, auto-fixes, and validates. Three diff scopes: bare = working-tree only; `--pr=N` = read-only review of a remote PR; `--branch` = full feature-branch (committed-on-branch + working tree) for in-flight PR work. Converge mode loops until clean. |
 | **ship** | `/ship [message] [--draft\|--no-split\|--no-merge\|--dry-run\|--validate]` | Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs, handles branching, CI wait, squash-merge, and cleanup. |
 
 ## Companion CLIs
