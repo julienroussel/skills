@@ -1,7 +1,7 @@
 ---
 name: ship
-description: Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs. Handles branching, CI wait, squash-merge, and cleanup.
-argument-hint: "[message] [--draft|--base|--no-split|--no-merge|--dry-run|--split-only|--validate|--label]"
+description: Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs. Handles branching, CI wait, and (with --merge) squash-merge + cleanup.
+argument-hint: "[message] [--draft|--base|--no-split|--merge|--dry-run|--split-only|--validate|--label]"
 effort: high
 model: opus
 disable-model-invocation: true
@@ -26,7 +26,7 @@ user-invocable: true
 
 ## Ship Changes via PR
 
-Ship the current working-tree changes through one or more pull requests and merge once CI passes. Automatically analyzes changes for coherent splitting opportunities.
+Ship the current working-tree changes through one or more pull requests. By default, waits for CI to pass, then returns to the base branch with the local feature branch and tackle worktree cleaned up — the PR stays open for team review (safer for team work than auto-merging). Use `--merge` to auto-merge the PR once CI is green instead of leaving it open, or to merge an already-shipped PR (resume mode: clean tree on a non-base branch with an open ready PR). Automatically analyzes changes for coherent splitting opportunities.
 
 **Arguments**: $ARGUMENTS
 
@@ -36,19 +36,20 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--base <branch>`: Target a branch other than the repo's default branch. If omitted, auto-detect via `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` (fallback to `main`).
 - `--dry-run`: Perform split analysis and show the full plan (branch names, PR titles, file groups, commands) but execute nothing. Useful for previewing what `/ship` would do.
 - `--no-split`: Skip the split analysis entirely and ship everything as a single PR.
-- `--split-only`: Create sub-PRs but do not wait for CI or merge.
-- `--no-merge`: Create the PR(s) but skip CI wait and merge.
+- `--split-only`: Force the multi-PR flow (override the split-vs-single heuristic). Otherwise behaves like the default — waits for CI, does not merge.
+- `--merge`: After creating the PR(s) and waiting for CI to pass, merge with `--squash --delete-branch`. Without this flag, `/ship` still returns to the base branch and cleans up the local feature branch + tackle worktree once CI is green — but leaves the PR open for review (safer default for team work; reviewers get a window to catch issues CI does not). Also enables resume: from a clean working tree on a non-base branch with an open ready-for-review PR, `/ship --merge` skips create/push and merges that existing PR.
 - `--validate`: Run lint/typecheck/test before creating the PR. If any fail, stop and report. Use detected validation commands from `.claude/review-profile.json` if available.
 - `--label <labels>`: Add comma-separated labels to all created PRs. Example: `--label feature,auth`.
 - Any remaining text is used as the commit message / PR title.
 
-Examples: `/ship`, `/ship --draft`, `/ship fix login bug --no-split`, `/ship --base develop --split-only`, `/ship --validate`, `/ship --label feature,v2`
+Examples: `/ship`, `/ship --draft`, `/ship fix login bug --no-split`, `/ship --merge`, `/ship --validate`, `/ship --label feature,v2`
 
 ### Flag conflicts
 
 - `--no-split` + `--split-only` — `--no-split` wins. Ignore `--split-only`.
-- `--draft` + `--no-merge` — compatible. PR is created as draft, no CI wait or merge.
+- `--draft` + `--merge` — drafts cannot be merged via `gh pr merge`. Warn `"ignoring --merge for draft PR"` and proceed without merge/cleanup.
 - `--draft` + `--split-only` — compatible. PRs are created as drafts, no CI wait or merge.
+- `--merge` + `--split-only` — compatible. Multi-PR flow waits for CI on each sub-PR, then merges in dependency order with retargeting.
 - `--dry-run` overrides everything — nothing is executed regardless of other flags.
 
 ### Philosophy
@@ -102,13 +103,27 @@ After the above complete:
 - `PRIMARY_WORKTREE` = first `worktree` path from `git worktree list --porcelain`
 - `IS_TACKLE_WORKTREE` = `true` iff `CURRENT_WORKTREE` contains the path segment `/.claude/worktrees/` (tackle-managed temporary worktree)
 
-2. **Empty check**: If there are no staged or unstaged changes and no untracked files, stop with "Nothing to ship."
-3. **Branch ancestry check**: If the current branch is NOT the base branch AND has commits ahead of the base branch (from `git rev-list`), warn via AskUserQuestion: "You are on branch '${branch}' which is ${N} commits ahead of '${base}'. Shipping from here will include all those commits in the PR. Options: [Continue — include all commits] / [Ship only uncommitted changes] / [Abort]".
-   - If the user chooses **Ship only uncommitted changes**: Run `git stash --include-untracked`, `git checkout <base-branch>`, `git stash pop`. If stash pop has conflicts, abort with: "Could not cleanly apply your changes to ${base}. Resolve manually." Continue the flow from the base branch.
-4. **Secret content scan**: Grep the diff for secret patterns (same patterns as `/review` Track B step 7). If matches found, warn before proceeding.
-5. **Pre-check gh auth**: Run `gh auth status` silently. If it fails, warn: "GitHub CLI not authenticated. Run `gh auth login` first." and abort.
+1c. **Pre-check gh auth**: Run `gh auth status` silently. If it fails, warn: "GitHub CLI not authenticated. Run `gh auth login` first." and abort. This runs **before** step 1d so a broken `gh` does not silently route the resume `gh pr list` call (1d) into `RESUME_MODE=false`, which would mask the auth error behind a misleading "Nothing to ship." in step 2.
 
-#### Phase 2: Split Analysis (skip if `--no-split`)
+1d. **Resume detection** (only relevant when `--merge` is set):
+
+- `CLEAN_TREE` = (`git diff --cached` empty AND `git diff` empty AND `git status --porcelain` shows no untracked files). Derive from the existing Phase 1 pre-flight outputs — no extra git commands.
+- If `--merge` is set AND `CLEAN_TREE` AND `CURRENT_BRANCH` ≠ `BASE_BRANCH`:
+  - Run: `gh pr list --head "$CURRENT_BRANCH" --state open --json number,isDraft --jq '.[0]'`. (`gh` is now known authenticated, so an empty result genuinely means "no open PR".)
+  - If non-empty AND `.isDraft == false` → set `RESUME_MODE=true`, `RESUME_PR_NUMBER=<.number>`. Print: `Resume mode: merging existing PR #<number> for branch '<branch>'.`
+  - Elif non-empty AND `.isDraft == true` → stop with: `"Cannot --merge: PR #<number> is a draft. Mark it ready for review first, then re-run."`
+  - Else (no open PR) → disambiguate already-merged / closed / never-shipped with a second query: `gh pr list --head "$CURRENT_BRANCH" --state all --json number,state --jq '.[0]'`.
+    - If `.state == "MERGED"` → stop with: `"PR #<N> on branch '<branch>' is already merged. Clean up with: git checkout <base> && git pull --ff-only && git branch -D <branch> (or 'git worktree remove' for a tackle worktree)."`
+    - If `.state == "CLOSED"` → stop with: `"PR #<N> on branch '<branch>' is closed (not merged). Reopen on GitHub or push new changes to start fresh."`
+    - Else (no PR ever existed) → stop with: `"Working tree is clean and no PR found for branch '<branch>'. Nothing to ship or merge."`
+- Else → set `RESUME_MODE=false`.
+
+2. **Empty check** (skip if `RESUME_MODE=true`): If there are no staged or unstaged changes and no untracked files, stop with "Nothing to ship."
+3. **Branch ancestry check** (skip if `RESUME_MODE=true` — the user is intentionally on a feature branch ahead of base): If the current branch is NOT the base branch AND has commits ahead of the base branch (from `git rev-list`), warn via AskUserQuestion: "You are on branch '${branch}' which is ${N} commits ahead of '${base}'. Shipping from here will include all those commits in the PR. Options: [Continue — include all commits] / [Ship only uncommitted changes] / [Abort]".
+   - If the user chooses **Ship only uncommitted changes**: Run `git stash --include-untracked`, `git checkout <base-branch>`, `git stash pop`. If stash pop has conflicts, abort with: "Could not cleanly apply your changes to ${base}. Resolve manually." Continue the flow from the base branch.
+4. **Secret content scan** (skip if `RESUME_MODE=true` — clean tree, no diff to scan): Grep the diff for secret patterns (same patterns as `/review` Track B step 7). If matches found, warn before proceeding.
+
+#### Phase 2: Split Analysis (skip if `--no-split` or `RESUME_MODE=true` — no diff to split)
 
 2. **Classify changed files into semantic groups**. Analyze every changed/added/deleted file and assign it to a group using these heuristics (in priority order):
 
@@ -133,7 +148,9 @@ After the above complete:
    - Schema/migration groups are always the **base** of any stack they participate in.
    - If two groups share no dependency relationship → they are **independent** (parallel PRs targeting the base branch directly).
 
-4. **Decide whether to split**. Splitting is recommended when:
+4. **Decide whether to split**. **If `--split-only` is set, force the multi-PR flow regardless of the heuristic** — proceed to step 5 with all detected groups (the user's explicit override of the split-vs-single decision). Otherwise apply the heuristic below.
+
+   Splitting is recommended when:
    - Changes span 2+ clearly distinct concerns (e.g. a feature + an unrelated config change).
    - The total diff exceeds ~300 lines and can be cleanly separated into groups of ≤300 lines each.
    - There are changes to shared infrastructure (migrations, CI) mixed with feature code.
@@ -143,7 +160,7 @@ After the above complete:
    - The total diff is small (<150 lines) and tightly coupled.
    - Splitting would produce groups that don't make sense in isolation (e.g. a type definition in one PR and its only consumer in another, with no other uses).
 
-   If splitting is not recommended, proceed with the single-PR flow (skip to step 6).
+   If splitting is not recommended AND `--split-only` is not set, proceed with the single-PR flow (skip to step 6).
 
 5. **Present the split plan** to the user and wait for confirmation:
 
@@ -174,6 +191,8 @@ After the above complete:
 
 #### Phase 3a: Single-PR Flow
 
+In **resume mode** (`RESUME_MODE=true`), steps 6–11 are SKIPPED — the PR already exists. Jump directly to step 12 with `PR_NUMBER=$RESUME_PR_NUMBER`.
+
 6. **Derive a branch name** automatically from the changes. Use conventional-commit style: `<type>/<short-slug>` (e.g. `fix/card-selection-bug`, `chore/update-gitignore`, `feat/add-redford-stack`). Keep it lowercase, hyphen-separated, and under 50 characters. If the branch name already exists locally or on the remote, append a numeric suffix (e.g. `fix/card-bug-2`).
    - **Scratch mode** (`IS_SCRATCH=true`): do NOT create a new branch. Rename the current placeholder branch in place: `git branch -m <SCRATCH_ID> <derived-name>`. The worktree follows the branch automatically. Then remove the marker: `rm "$(git rev-parse --git-dir)/info/scratch-session"`.
    - **Dry-run** + scratch: show "would rename `<SCRATCH_ID>` → `<derived-name>`" in the preview; do not execute.
@@ -185,11 +204,13 @@ After the above complete:
 9. **Validate** (if `--validate` is set): Run all detected validation commands (from `.claude/review-profile.json` or by detecting `package.json` scripts). If any fail, stop with: "Validation failed — fix issues before shipping. To undo the branch: `git checkout - && git branch -d <branch-name>`." Show the failing command output.
 10. **Push** the branch to `origin` with `-u`.
 11. **Create a PR** using `gh pr create` targeting the base branch. Use a short title and a body following the repo's PR template (cached from Phase 1) if one exists; otherwise use a `## Summary` section and a `## Test plan` section. If issue references were found in step 8, include them in the PR body. Do not append the `🤖 Generated with [Claude Code]` footer to the PR body — override the Claude Code default. If `--label` was specified, add `--label <labels>`. Add `--assignee @me`. If `--draft` is set, stop here.
-12. **Check merge requirements**: Use `gh pr view <number> --json reviewDecision,mergeStateStatus` to check if the target branch requires review approvals. If reviews are required and none have been granted, inform the user: "This PR requires review approval before it can be merged. Stopping here — merge manually after review or re-run `/ship` once approved." Stop.
-13. **Wait for CI** to pass using `gh pr checks <number> --watch --fail-fast`. If no checks appear within 30 seconds (repo has no CI configured), skip the wait and proceed to merge. If checks have not completed after 10 minutes, report the current status and stop. (Skip if `--no-merge`.)
-14. **Merge** the PR with `gh pr merge <number> --squash --delete-branch`. (Skip if `--no-merge`.)
+12. **Check merge requirements**: Use `gh pr view <number> --json reviewDecision,mergeStateStatus` to check if the target branch requires review approvals. The check fires only when `reviewDecision` indicates reviews required AND not yet approved (silent otherwise).
+    - **Default mode** (no `--merge`, not in resume): informational only. Print: `"Note: this PR needs review approval before it can be merged."` Continue to step 13.
+    - **`--merge` set** (including resume mode): blocking. Stop with: `"This PR requires review approval before it can be merged. Stopping here — after approval, re-run /ship --merge from this worktree, or merge directly with: gh pr merge <number> --squash --delete-branch (or via GitHub)."`
+13. **Wait for CI** to pass using `gh pr checks <number> --watch --fail-fast`. If no checks appear within 30 seconds (repo has no CI configured), skip the wait and proceed. If checks have not completed after 10 minutes, report the current status and stop. (Skip if `--draft`.) Resume mode always reaches here.
+14. **Merge** the PR with `gh pr merge <number> --squash --delete-branch`. (**Run only if `--merge`** — resume mode satisfies this trivially since `--merge` is the resume trigger.)
     - **Pre-merge advisor check**: Before calling `gh pr merge`, call `advisor()` (no parameters — the full transcript is auto-forwarded) for a second opinion on the merge. The advisor sees the branch, commits, PR title/body, CI state, and recent conversation. If the advisor concurs or has only minor notes, proceed silently with the merge. If the advisor raises a concrete concern (e.g., unexpected commit, PR body doesn't match the diff, missing test for a critical path, risky change in a hotspot file), surface via AskUserQuestion: `Advisor flagged a concern before merge: <one-line summary>. Options: [Merge anyway — I accept the risk] / [Edit PR first] / [Abort merge]`. On **Edit PR first**, stop here and report the advisor's concern; the user manually addresses and re-runs `/ship`. On **Abort merge**, stop without merging. Merge is irreversible once CI-squashed — this check has high ROI and runs only once per PR.
-15. **Return to base and clean up** — worktree-aware. (Skip if `--no-merge`.)
+15. **Return to base and clean up** — worktree-aware. (**Run after CI passes in step 13** — both with and without `--merge`. With `--merge`, runs after step 14's successful merge. Without `--merge`, runs as soon as step 13 confirms CI is green — the local feature branch and tackle worktree are removed, but the remote branch and PR remain open for team review. Skip if `--draft` (step 13 was skipped, so there's nothing to confirm) or if CI failed/timed out in step 13. To merge later, use `gh pr merge <number> --squash --delete-branch` or the GitHub UI; resume mode (`/ship --merge` from the same worktree) is only available if cleanup did not run — i.e. `--draft`, CI failure, or step 12's required-review block in `--merge` mode.)
 
    **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
 
@@ -228,11 +249,16 @@ After the above complete:
 
         Warn: `Worktree at <CURRENT_WORKTREE> is now detached. Remove with 'git worktree remove <path>' when done.`
 
-16. **Summary**: Print a one-line summary with the merged PR URL (e.g. `Shipped: https://github.com/org/repo/pull/42`).
+16. **Summary**:
+    - **Default mode** (no `--merge`, not resume): `Shipped PR (open for review): <url> | CI: <status>. Returned to <base>; local branch deleted. Merge after review with: gh pr merge <number> --squash --delete-branch (or via GitHub).` (Worktree handling depends on the step 15 path: tackle/scratch worktrees are removed; user-managed secondary worktrees are detached and step 15 emits its own "remove manually" warning — do NOT duplicate that detail here.)
+    - **`--merge` mode** (fresh ship or resume): `Shipped: https://github.com/org/repo/pull/42` (one-line, with the merged PR URL).
+    - **`--draft`**: `Created draft PR: <url>. Branch + worktree retained for further work.` (No CI wait, no cleanup ran.)
 
 #### Phase 3b: Multi-PR Flow
 
 This flow creates and ships multiple sub-PRs. It first processes all **independent** PRs (targeting the base branch), then processes **stacked** chains in dependency order.
+
+**Resume mode does NOT enter Phase 3b.** Phase 2 (split analysis) is skipped in resume mode, so there's no group/dependency information to drive ordered merging. Resume always uses the single-PR Phase 3a flow against `RESUME_PR_NUMBER`. If the user originally ran `/ship --split-only`, only the PR matching the current branch will be resumed — the other branches need to be merged manually (see step 13-multi summary footer).
 
 **6-multi. Prepare a staging commit on a temporary branch:**
 
@@ -283,32 +309,34 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
   - Follow the repo's PR template (cached from Phase 1) if one exists.
   - Do not append the `🤖 Generated with [Claude Code]` footer — override the Claude Code default.
 - If `--draft` was specified, add the `--draft` flag to all PRs.
-- If `--split-only` was specified, stop here after creating all PRs.
+- **After all sub-PR branches have been pushed and PRs created**, delete the local staging branch: `git branch -D ship/staging-<timestamp>`. Its sole purpose was to serve as a reference for `git checkout <staging> -- <files>` during the per-group commits in step 7-multi; it's no longer needed. This runs in default mode AND `--merge` mode — without it, the staging branch would leak across runs since cleanup (step 12-multi) is now gated on `--merge`.
 
-**11-multi. Merge sub-PRs in order** (skip if `--no-merge` or `--split-only`):
+**11a-multi. Wait for CI on each PR** (always runs, in dependency order):
 
-   Process independent PRs first (they can be merged in any order), then stacked chains from base to tip:
+   Process independent PRs first (they can be checked in any order), then stacked chains from base to tip. For each PR:
 
-   For each PR in merge order:
+   1. **Check merge requirements**: Use `gh pr view <number> --json reviewDecision,mergeStateStatus`. If reviews are required and not granted, print an informational note (`"Note: PR #<N> needs review approval before it can be merged."`) — do not stop. With `--merge` set: stop the chain instead and list the remaining unmerged PRs.
+   2. **Wait for CI** using `gh pr checks <number> --watch --fail-fast` (10-minute timeout). If CI fails on any PR, report the failure URL and stop the wait pass — do NOT proceed to 11b-multi.
 
-   1. **Check merge requirements**: If reviews are required and not granted, report which PRs need review and stop the chain. List the remaining unmerged PRs for the user.
-   2. **Wait for CI** using `gh pr checks <number> --watch --fail-fast` (10-minute timeout).
-   2a. **Pre-merge advisor check**: Before calling `gh pr merge` for this PR, call `advisor()` (no parameters). Apply the same red-flag handling as step 14 (single-PR): if advisor raises a concrete concern, surface via AskUserQuestion `[Merge anyway] / [Edit PR first] / [Abort chain]`. On **Abort chain**, stop the loop and report which PRs merged, which are still open, and why. The advisor runs once per PR in the chain — a bad merge early can cascade through the stack via retargeting in step 4.
-   3. **Merge** with `gh pr merge <number> --squash --delete-branch`.
-   4. **If this was a stacked base**: After merging, retarget the next PR in the stack to the base branch:
+**11b-multi. Merge sub-PRs in order** (**run only if `--merge`**):
+
+   Same dependency order as 11a-multi. For each PR:
+
+   1. **Pre-merge advisor check**: Before calling `gh pr merge` for this PR, call `advisor()` (no parameters). Apply the same red-flag handling as step 14 (single-PR): if advisor raises a concrete concern, surface via AskUserQuestion `[Merge anyway] / [Edit PR first] / [Abort chain]`. On **Abort chain**, stop the loop and report which PRs merged, which are still open, and why. The advisor runs once per PR in the chain — a bad merge early can cascade through the stack via retargeting in step 3.
+   2. **Merge** with `gh pr merge <number> --squash --delete-branch`.
+   3. **If this was a stacked base**: After merging, retarget the next PR in the stack to the base branch:
 
       ```
       gh pr edit <next-pr-number> --base <base-branch>
       ```
 
-      Then wait for CI to re-run on the retargeted PR before merging it.
+      Then wait for CI to re-run on the retargeted PR (re-enter 11a-multi step 2 for that PR) before merging it.
 
-**12-multi. Cleanup** — worktree-aware.
+**12-multi. Cleanup** — worktree-aware. (**Run after CI passes on every sub-PR in 11a-multi** — both with and without `--merge`. With `--merge`, runs after 11b-multi merges every sub-PR. Without `--merge`, runs as soon as 11a-multi confirms CI passed on every sub-PR — local sub-PR branches and tackle worktree are removed, but remote branches and PRs remain open for review. Skip if `--draft`, if any CI failed in 11a-multi, or if any merge failed in 11b-multi. The staging branch was already deleted in step 10-multi.)
 
    **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
 
 - Return to the base branch: `git checkout <base-branch> && git pull --ff-only`.
-- Delete the staging branch: `git branch -D ship/staging-<timestamp>`.
 - Delete all local sub-PR branches: `git branch -d <branch1> <branch2> ...`.
 - If `IS_SCRATCH=true`: also delete the orphaned scratch branch and remove the marker: `git branch -D <SCRATCH_ID> 2>/dev/null || true` and `rm "$(git rev-parse --git-dir)/info/scratch-session"`.
 
@@ -320,7 +348,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
      ```
      cd "$PRIMARY_WORKTREE"
      git worktree remove "$CURRENT_WORKTREE" --force
-     git branch -D ship/staging-<timestamp> <branch1> <branch2> ... 2>/dev/null || true
+     git branch -D <branch1> <branch2> ... 2>/dev/null || true
      git branch -D <SCRATCH_ID> 2>/dev/null || true
      ```
 
@@ -328,13 +356,27 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
 
      ```
      git checkout --detach
-     git branch -D ship/staging-<timestamp> <branch1> <branch2> ...
+     git branch -D <branch1> <branch2> ...
      ```
 
      Warn: `Worktree at <CURRENT_WORKTREE> detached — remove manually when done.`
 
 **13-multi. Summary:**
-   Print a table summarizing all sub-PRs:
+   Print a table summarizing all sub-PRs.
+
+   **Default mode** (no `--merge`):
+
+   ```
+   Shipped 3 PRs (open for review):
+     🟢 #41 feat/add-user-schema     → open (CI: passed)
+     🟢 #42 feat/add-user-api        → open (CI: passed, stacked on #41)
+     🟢 #43 chore/update-ci           → open (CI: passed)
+
+   Returned to <base>; local sub-PR branches deleted (worktree handling per step 12-multi path).
+   Merge after review with the GitHub UI or `gh pr merge <N> --squash --delete-branch` for each PR.
+   ```
+
+   **`--merge` mode**:
 
    ```
    Shipped 3 PRs:

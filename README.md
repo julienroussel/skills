@@ -8,7 +8,7 @@ Personal skills and companion CLIs for [Claude Code](https://claude.ai/code), ta
 |-------|---------|-------------|
 | **audit** | `/audit [path] [nofix\|full\|quick\|--converge[=N]] [--only=dims] [--exclude=glob]` | Full codebase audit using a swarm of specialized expert agents. Scales dynamically with preflight estimation, validation baselines, and audit history. Converge mode re-audits modified files until clean (default 2 iterations, max 5). |
 | **review** | `/review [nofix\|full\|quick\|--converge[=N]\|--auto-approve] [--only=dims] [--scope=path] [--pr=N\|--branch[=<base>]]` | Multi-agent PR review. Spawns specialized reviewers, deduplicates findings, gets approval, auto-fixes, and validates. Three diff scopes: bare = working-tree only; `--pr=N` = read-only review of a remote PR; `--branch` = full feature-branch (committed-on-branch + working tree) for in-flight PR work. Converge mode loops until clean. |
-| **ship** | `/ship [message] [--draft\|--no-split\|--no-merge\|--dry-run\|--validate]` | Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs, handles branching, CI wait, squash-merge, and cleanup. |
+| **ship** | `/ship [message] [--draft\|--no-split\|--merge\|--dry-run\|--validate]` | Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs, handles branching, and waits for CI. By default, once CI is green, returns to the base branch and cleans up the local feature branch + tackle worktree — the PR stays open for team review (safer than auto-merging). Pass `--merge` to squash-merge instead of leaving the PR open. `--merge` from a clean tree on a non-base branch with an open ready PR resumes that PR (skips create/push). |
 
 ## Companion CLIs
 
@@ -48,7 +48,7 @@ Both `/audit` and `/review` support `--converge[=N]`: a re-audit/re-review loop 
 
 The `advisor()` tool (stronger reviewer model that sees the full transcript) is consulted at irreversible / high-blast-radius junctures:
 
-- `/ship` before `gh pr merge` — single-PR and each multi-PR merge.
+- `/ship --merge` before `gh pr merge` — single-PR and each multi-PR merge (only fires when `--merge` is set; the new default stops after CI without merging).
 - `/ship` before committing to a split plan — pushing the wrong split is hard to undo.
 - `/review --converge` before iteration 3+ — wasteful passes compound quickly.
 - `/audit` Phase 4 pre-approval when finding count ≥ 20 OR a single dimension contributes ≥ 60% of all findings (skewed-reviewer signal — strongest empirical hallucination cue).
@@ -80,7 +80,7 @@ Rejection patterns feed back into future runs:
 
 - `bin/tackle` bootstraps a Claude Code session in an isolated worktree at `.claude/worktrees/<id>/` with PR/issue context pre-loaded into `CLAUDE.local.md` (auto-loaded, never committed, git-excluded).
 - `tackle --scratch` drops a marker at `<worktree>/.git/info/scratch-session`. `/ship` detects the marker and renames the placeholder branch in place from the derived conventional-commit name instead of creating a new branch.
-- `/ship` detects tackle worktrees via the `/.claude/worktrees/` path segment and auto-cleans them after merge (worktree remove + branch delete).
+- `/ship` detects tackle worktrees via the `/.claude/worktrees/` path segment and auto-cleans them once CI passes (worktree remove + branch delete). With `--merge`, cleanup runs after the merge succeeds; without `--merge` (the default), cleanup runs as soon as CI is green and the PR stays open for review. Cleanup is skipped only on `--draft`, CI failure, or `--merge` with required-but-not-yet-granted reviews — in those cases the worktree persists and you can come back manually, with `tackle --cleanup`, or with `/ship --merge` resume mode.
 - tackle uses raw `git worktree add` rather than `claude -w` to preserve deferred branch naming (`claude -w` forces a `worktree-<name>` prefix that would conflict with `/ship`'s conventional-commit branch derivation).
 
 ## Shared protocols (`shared/`)
@@ -113,7 +113,7 @@ Optional (enhance skills but not strictly needed):
 - `pr-review-toolkit@claude-plugins-official` — silent-failure-hunter, type-design-analyzer, code-simplifier
 - `security-scanning@claude-code-workflows` — STRIDE methodology (used by audit)
 - `codebase-memory-mcp` (MCP server) — when available and the repo is indexed, `/audit`, `/review`, and `/ship` use graph queries (`search_graph`, `trace_path`, `detect_changes`) for cross-file impact analysis, dead-code detection, and split-analysis dependency detection. Grep fallback preserved when unavailable or unindexed.
-- `advisor` tool — used at three irreversible junctures: `/ship` before `gh pr merge` and before committing to a split plan, `/review --converge` before iteration 3+. Advisory-only; user still gates the action.
+- `advisor` tool — used at three irreversible junctures: `/ship --merge` before `gh pr merge` and `/ship` before committing to a split plan, `/review --converge` before iteration 3+. Advisory-only; user still gates the action. Without `--merge`, `/ship` stops after CI is green and the merge advisor never fires (safer default for team review).
 
 ## Auto-memory integration
 
