@@ -16,6 +16,8 @@ doctor/SKILL.md                    — health-check the user's Claude Code setup
                                      (CLI tools, plugins, settings.json, installed skills, shared
                                      files, gitignore); --fix appends to repo .gitignore on
                                      per-change confirmation (never edits settings.json)
+codebase-memory/SKILL.md           — personal cheat-sheet for the optional codebase-memory-mcp
+                                     integration (decision matrix, edge types, Cypher examples)
 shared/reviewer-boundaries.md      — canonical dimension-ownership table, severity rubric, confidence levels
 shared/untrusted-input-defense.md  — canonical prompt-injection defense block for subagent prompts
 shared/gitignore-enforcement.md    — canonical write-safety protocol for .claude/* cache + audit-trail files
