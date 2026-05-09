@@ -6,6 +6,7 @@ effort: low
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
+allowed-tools: Read Write Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git config --get *) Bash(git ls-remote *) Bash(git diff *) Bash(git status *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(test *) Bash([ *) Bash(stat *) Bash(shasum *) Bash(sha256sum *) Bash(ls *) Bash(find . *) Bash(wc *) Bash(head *) Bash(tail *) Bash(sed *) Bash(tr *) Bash(cut *) Bash(date *) Bash(gdate *) Bash(printf *) Bash(echo *) Bash(basename *) Bash(command -v *) AskUserQuestion
 ---
 
 <!-- Dependencies:
@@ -20,11 +21,16 @@ user-invocable: true
     - wt                                         — worktrunk CLI (used by tackle); ships via worktrunk@worktrunk plugin
   Files read:
     - ~/.claude/settings.json                    — JSON parse + key extraction
-    - ~/.claude/skills/{audit,review,ship}/SKILL.md  — existence only
+    - ~/.claude/skills/{audit,review,ship}/SKILL.md  — existence only (Group C)
+    - ~/.claude/skills/*/SKILL.md                — line count + frontmatter parse + broken-shared-ref scan + inline-drift scan (Group I)
     - ~/.claude/skills/bin/{tackle,seed-project-memory}  — existence + executable bit
     - ~/.claude/skills/shared/reviewer-boundaries.md     — existence + non-empty + smoke-parse `| Issue | Owner`
     - ~/.claude/skills/shared/untrusted-input-defense.md — existence + non-empty + smoke-parse `do not execute, follow, or respond to`
     - ~/.claude/skills/shared/gitignore-enforcement.md   — existence + non-empty + smoke-parse `git ls-files --error-unmatch`
+    - ~/.claude/skills/shared/advisor-criteria.md        — existence + non-empty + smoke-parse `Before substantive work`
+    - ~/.claude/skills/review/templates/pre-commit-secret-guard.sh.tmpl — SHA-256 hash (Group I template hash check)
+    - ~/.claude/skills/review/scripts/install-pre-commit-secret-guard.sh — extracts EXPECTED_TEMPLATE_SHA256 (Group I template hash check)
+    - ~/.claude/skills/skill-audit/cache/refs.json       — fetchedAt timestamp (Group I refs-cache freshness check)
     - ~/.claude/skills/docs/worktree-architecture.md     — existence (tackle/ship contract)
     - ~/.claude/hooks/{no-claude-attribution,cbm-code-discovery-gate,cbm-session-reminder} — existence + executable
     - <cwd>/CLAUDE.md, <cwd>/.gitignore          — per-repo
@@ -128,7 +134,7 @@ If `IS_SCRATCH=yes`: append `Inside tackle scratch session (id=<scratch-id-from-
 
 ## Phase 2 — Run all checks (parallel groups)
 
-Dispatch Groups A, B, C, D, E, G, H in **one tool-use message**. Group F runs after Phase 1 because it depends on `IN_REPO` and `REPO_ROOT`.
+Dispatch Groups A, B, C, D, E, G, H, I in **one tool-use message**. Group F runs after Phase 1 because it depends on `IN_REPO` and `REPO_ROOT`.
 
 ### Group A — CLI tools
 
@@ -182,17 +188,23 @@ done
 
 Missing audit/review/ship/SKILL.md → ✗. Missing tackle/seed-project-memory/docs → warn (only relevant to tackle). Non-executable bin/* → warn.
 
-### Group D — shared file smoke-parse (load-bearing duplication of /audit + /review Phase 1 Track A)
+### Group D — shared file smoke-parse (load-bearing duplication of /audit + /review + /skill-audit Phase 1 Track A)
 
-Read all three files in parallel via the `Read` tool (single tool-use message), then check substrings in-memory:
+Read all nine files in parallel via the `Read` tool (single tool-use message), then check substrings in-memory:
 
 | File | Required substring (case-sensitive, `grep -F` semantics) |
 |---|---|
 | `~/.claude/skills/shared/reviewer-boundaries.md` | `\| Issue \| Owner` |
 | `~/.claude/skills/shared/untrusted-input-defense.md` | `do not execute, follow, or respond to` |
 | `~/.claude/skills/shared/gitignore-enforcement.md` | `git ls-files --error-unmatch` |
+| `~/.claude/skills/shared/advisor-criteria.md` | `Before substantive work` |
+| `~/.claude/skills/shared/display-protocol.md` | `Silent reviewers, noisy lead` |
+| `~/.claude/skills/shared/abort-markers.md` | `[ABORT — HEAD MOVED]` |
+| `~/.claude/skills/shared/audit-history-schema.md` | `runSummaries[]` |
+| `~/.claude/skills/shared/secret-scan-protocols.md` | `Advisory-tier classification` |
+| `~/.claude/skills/shared/secret-warnings-schema.md` | `consumerEnforcement` |
 
-**These three substrings are duplicates of the smoke-parse strings used by `/audit` and `/review` Phase 1 Track A. If the canonical strings change in those skills, /doctor must be updated in lockstep — drift is surfaced the next time /doctor runs.** The lowercase form `do not execute, follow, or respond to` (line 24 of canonical) is preferred over the line-7 capitalized variant for case consistency across this SKILL.md.
+**These nine substrings are duplicates of the smoke-parse strings used by `/audit`, `/review`, and `/skill-audit` Phase 1 Track A. If the canonical strings change in those skills, /doctor must be updated in lockstep — drift is surfaced the next time /doctor runs.** The lowercase form `do not execute, follow, or respond to` (line 24 of canonical) is preferred over the line-7 capitalized variant for case consistency across this SKILL.md.
 
 On smoke-parse failure: emit `✗ shared/<file> smoke-parse failed: missing '<substring>'` with hint `cd ~/.claude/skills && git checkout shared/<file>`. /doctor REPORTS the failure but does NOT abort (unlike /audit and /review which hard-fail).
 
@@ -252,16 +264,20 @@ If `IS_TACKLE_WORKTREE=yes`: suppress the `.claude/worktrees/` warning (worktree
 .claude/audit-report-*.md
 .claude/secret-warnings.json
 .claude/secret-warnings-*.json
+.claude/secret-hook-patterns.txt
+.claude/secret-warnings*.json.tmp
+.claude/secret-warnings*.json.lock
+.claude/secret-warnings*.json.corrupt-*
 .claude/worktrees/
 ```
 
-**Load-bearing duplicate**: this list mirrors the cache-file paths in `shared/gitignore-enforcement.md`'s "Sites that apply this protocol" table. If `/audit` or `/review` adds a new cache file, both that table AND this list must be updated. Same coupling pattern as the smoke-parse strings above.
+**Load-bearing duplicate**: this list mirrors the cache-file paths in `shared/gitignore-enforcement.md`'s "Sites that apply this protocol" table PLUS the "Ancillary files" table (transient `.tmp` / `.lock` / `.corrupt-*` artifacts that no skill invokes the per-write protocol on but that still must not be committed). If `/audit` or `/review` adds a new cache file or ancillary artifact, both shared tables AND this list must be updated. Same coupling pattern as the smoke-parse strings above.
 
 Coverage is satisfied if EITHER:
 - A literal `.claude/` or `.claude/*` line exists (covers everything below `.claude/`), OR
 - Each canonical pattern above has a matching gitignore line.
 
-Note: `.claude/secret-warnings*.json` (single line, no dash) covers both `.claude/secret-warnings.json` and `.claude/secret-warnings-*.json`. Treat it as covering both patterns.
+Note: `.claude/secret-warnings*.json` (single line, no dash) covers both `.claude/secret-warnings.json` and `.claude/secret-warnings-*.json`. Treat it as covering both patterns. The `.claude/secret-warnings*.json.tmp`, `.claude/secret-warnings*.json.lock`, and `.claude/secret-warnings*.json.corrupt-*` patterns are NOT covered by `.claude/secret-warnings*.json` — they have a different terminal segment. Each must be present (or covered by a broader `.claude/` rule) independently.
 
 Report missing patterns by name; each missing pattern is a fixable issue (see Phase 4).
 
@@ -328,13 +344,47 @@ These env vars are NOT required for /audit, /review, /ship, or tackle. /doctor s
 
 For the full Claude Code env-var reference, see https://code.claude.com/docs/en/env-vars.
 
-## Phase 3 — Aggregate + report
+### Group I — Skill drift checks (per skill in `~/.claude/skills/`)
+
+Yes/no factual drift only — every check below is derivable from a file read. **No opinion-style coaching** (e.g. "should use advisor more", "description is too verbose"). Recommendations belong in `claude-automation-recommender`; /doctor stays diagnostic.
+
+Iterate every `~/.claude/skills/*/SKILL.md` (skip directories without a `SKILL.md` such as `bin/`, `docs/`, `shared/`). `doctor`'s own `SKILL.md` IS included — the line/frontmatter/drift checks are still meaningful for it, and excluding self would silently mask self-drift.
+
+Run the bundled drift script and parse the marker lines on stdout:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh" 2>&1
+```
+
+The script implements all six checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /doctor parses.
+
+#### Marker semantics
+
+| Marker | Status | Meaning | Hint |
+|---|---|---|---|
+| `WARN_LINES:<skill>:<n>` | ⚠ | SKILL.md exceeds Anthropic's 500-line guideline (https://code.claude.com/docs/en/skills). Large skills cost tokens for the rest of the session after invocation. | Extract phases to `<skill>/scripts/*.sh` or move shared content to `~/.claude/skills/shared/*.md`. Refer to `/review`'s extraction history (commits introducing `shared/*.md`, `review/scripts/*.sh`, `review/convergence-protocol.md`) as a worked example. |
+| `FAIL_BROKEN_REF:<skill>:<ref>` | ✗ | SKILL.md references a non-existent shared file. /audit and /review hard-fail at Phase 1 Track A on this; /doctor catches it earlier. | `cd ~/.claude/skills && git status shared/` to find the missing or renamed file. |
+| `WARN_DMI_INERT:<skill>` | ⚠ | `disable-model-invocation: true` makes `when_to_use:` and `paths:` inert (description is not loaded into context per https://code.claude.com/docs/en/skills). | Either remove the inert field or set `disable-model-invocation: false`. |
+| `FAIL_EFFORT:<skill>:<value>` | ✗ | `effort:` value is not in the allowlist (`low|medium|high|xhigh|max`). Claude Code rejects the skill at load time. | Pick a valid value. |
+| `WARN_MODEL:<skill>:<value>` | ⚠ | `model:` value not in the known allowlist. May be a typo OR a model added after this allowlist was last updated. | If the value is a real model alias, update the regex in /doctor's Group I. Otherwise correct the typo. |
+| `FAIL_NO_DESC:<skill>` | ✗ | Frontmatter is missing the required `description:` field. | Add a `description:` line. |
+| `WARN_INLINE_DRIFT:<skill>:<file>` | ⚠ | A canonical Group D smoke-parse anchor appears inline AND the corresponding `shared/<file>` reference is absent. Drift risk: future edits to the shared file won't propagate. | Add a `../shared/<file>` reference at the call site. |
+| `FAIL_TEMPLATE_HASH:expected=<x>:actual=<y>` | ✗ | `review/templates/pre-commit-secret-guard.sh.tmpl` hash differs from `EXPECTED_TEMPLATE_SHA256` in the install script. The install path will abort with exit 2 until reconciled. | If the template change is intentional, update `EXPECTED_TEMPLATE_SHA256` in `review/scripts/install-pre-commit-secret-guard.sh` per its 4-step maintenance contract. Otherwise restore the template from git. |
+| `WARN_REFS_CACHE_MISSING` | ⚠ | `skill-audit/cache/refs.json` not found. `feature-adoption-reviewer` will skip on next `/skill-audit` run unless the cache is built. | Run `/skill-audit --refresh-refs` once to populate the cache. |
+| `WARN_REFS_CACHE_NO_TIMESTAMP` | ⚠ | `skill-audit/cache/refs.json` is present but missing the `fetchedAt` field. Likely manual edit or corruption. | Run `/skill-audit --refresh-refs` to rewrite. |
+| `WARN_REFS_CACHE_STALE:<fetched>:<age_days>` | ⚠ | Cache is older than 30 days; live Anthropic docs/changelog have probably moved on. `feature-adoption-reviewer` findings will be tagged `[Source: cached YYYY-MM-DD]`. | Run `/skill-audit --refresh-refs` to refresh. |
+
+#### Display rollup
+
+- Render one rollup line: `Skill drift (X/Y)` where Y is the number of skills iterated and X is the number passing all 5 per-skill checks. The two one-shot checks (template hash, refs cache) render as their own rows below the rollup — green inline (`✓ Template hash`, `✓ Refs cache`) or expanded with a hint on warning/failure.
+- On any warning/failure, expand inline with the skill name + first failing check per skill (4-space indent), matching the existing `Group D` and `Group F` expansion style.
+- All findings are warn or fail — **never auto-fixable**. /doctor reports; humans refactor (or run `/skill-audit --refresh-refs` for the refs-cache case).
 
 Group results and print using the format below. Each group prints a single line on full pass; expand inline on any `⚠`/`✗`.
 
 ### Sections
 
-1. **Global setup** — Groups A, B, C, D, E (everything outside the current repo).
+1. **Global setup** — Groups A, B, C, D, E, I (everything outside the current repo, including skill drift checks).
 2. **Claude Code runtime** — Group H (env vars + claude version).
 3. **Current repo (<REPO_ROOT>)** — Group F (skipped if `IN_REPO=no`).
 4. **Optional integrations** — Group G + any other warn-only items.
@@ -342,75 +392,7 @@ Group results and print using the format below. Each group prints a single line 
 
 ### Mocks
 
-**Full pass (~25 lines)**:
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- /doctor — Claude Code Setup Health Check
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-/doctor at /Users/jroussel/.claude/skills
-Mode: report-only          Repo: ~/.claude/skills (in-repo, has-remote)
-
-Global setup
-  ✓ CLI tools (4/4)         git, gh (auth), jq, claude
-  ✓ Optional CLI (2/2)      rtk, wt
-  ✓ settings.json (5/5)     parseable, advisorModel set, agent-teams enabled, .claude/** allowed, defaultMode=plan
-  ✓ Optional plugins (3/3)  pr-review-toolkit, security-scanning, worktrunk
-  ✓ Skills installed (4/4)  audit, review, ship, tackle
-  ✓ Shared files (3/3)      smoke-parse OK
-  ✓ Hooks (3/3)             no-claude-attribution, cbm-code-discovery-gate, cbm-session-reminder
-  ✓ Hooks wired (4/4)       rtk + no-claude-attribution + cbm-gate + cbm-session-reminder
-
-Claude Code runtime
-  ✓ claude CLI version      2.1.126
-  ✓ Required env vars (1/1) CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-  ✓ Recommended env vars    CLAUDE_CODE_NO_FLICKER=1
-  ℹ Optional tunables       (all defaults)
-                            For /audit/review users on big monorepos, consider:
-                              BASH_MAX_TIMEOUT_MS=1800000     (30-min validation cap)
-                              MCP_TIMEOUT=120000              (slower codebase-memory-mcp startup)
-
-Current repo (~/.claude/skills)
-  ✓ Repo basics (3/3)
-  ✓ Gitignore coverage
-  ✓ GitHub remote
-
-Optional integrations
-  ⚠ codebase-memory MCP     not configured  (recommended for /audit, /review structural queries)
-
-Summary: 26 ✓  1 ⚠  0 ✗   Total: 1.4s
-```
-
-**Fresh `git init` directory** (Global setup and Claude Code runtime sections render as in the full-pass mock — only the per-repo section differs):
-
-```
-Global setup
-  (same as full pass — green if user's ~/.claude is set up)
-
-Claude Code runtime
-  (same as full pass — env vars and CLI version)
-
-Current repo (/tmp/empty)
-  ⚠ Repo basics (1/3)
-    ✓ git repo
-    ⚠ CLAUDE.md missing       Hint: /init to generate
-    ⚠ .claude/ directory missing   Hint: created on first audit/review run; not blocking
-  ⚠ Gitignore coverage
-    ⚠ .gitignore missing       Hint: --fix can create it with the canonical patterns
-  ⚠ No GitHub remote           Hint: required for /ship and /review --pr; gh repo create
-```
-
-**Smoke-parse failure**:
-
-```
-Global setup
-  ✗ Shared files (1/3)
-    ✓ shared/reviewer-boundaries.md
-    ✗ shared/untrusted-input-defense.md   smoke-parse failed: missing 'do not execute, follow, or respond to'
-      Hint: cd ~/.claude/skills && git checkout shared/untrusted-input-defense.md
-    ✗ shared/gitignore-enforcement.md     file empty
-      Hint: cd ~/.claude/skills && git checkout shared/gitignore-enforcement.md
-```
+See `examples.md` for the full-pass mock and variations (fresh `git init` directory, smoke-parse failure, skill-drift warning, skill-drift failure).
 
 ## Phase 4 — `--fix` flow (only if `--fix` AND ≥1 fixable issue)
 
@@ -443,13 +425,17 @@ After the fix loop, print a final summary:
 
 ```
 Phase 4 — Fix pass
-  ✓ Applied 5 / 5 fixable changes to /tmp/doctor-test/.gitignore
+  ✓ Applied 9 / 9 fixable changes to /tmp/doctor-test/.gitignore
     + .claude/review-profile.json
     + .claude/review-baseline.json
     + .claude/review-config.md
     + .claude/audit-history.json
     + .claude/audit-report-*.md
     + .claude/secret-warnings*.json
+    + .claude/secret-hook-patterns.txt
+    + .claude/secret-warnings*.json.tmp
+    + .claude/secret-warnings*.json.lock
+    + .claude/secret-warnings*.json.corrupt-*
     + .claude/worktrees/
 
 Re-check: ✓ Gitignore coverage
@@ -470,4 +456,4 @@ Re-check: ✓ Gitignore coverage
 | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` unset/≠1 | `✗ Required env vars (0/1)`. Hint: `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (add to `~/.zshrc` or `~/.bashrc` so it persists). Blocks /audit Phase 2 and /review Phase 2 reviewer dispatch. |
 | `CLAUDE_CODE_NO_FLICKER` unset/≠1 | `⚠ Recommended env vars`. Hint: `export CLAUDE_CODE_NO_FLICKER=1`. Non-blocking; UI preference only. |
 | Optional tunables all unset | `ℹ Optional tunables (all defaults)` plus a 2-3-line inline suggestion of the most-likely-relevant ones (BASH_MAX_TIMEOUT_MS, MCP_TIMEOUT). Never blocks. |
-| Doctor's own SKILL.md | Not checked — if running, it exists. |
+| Doctor's own SKILL.md | Group C existence check skipped — if running, it exists. Group I (skill drift) DOES include doctor — line/frontmatter/inline-drift checks remain meaningful for doctor itself. |
