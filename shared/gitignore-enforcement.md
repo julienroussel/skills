@@ -23,6 +23,17 @@ Before writing `<PATH>` (a `.claude/*.json` or `.claude/*.md` file produced by `
 | `/audit` | `.claude/audit-history.json` | Audit history. A committed history with manipulated false-positive rates could bias reviewer calibration. |
 | `/audit` | `.claude/audit-report-YYYY-MM-DD.md` (glob: `.claude/audit-report-*.md`) | Audit reports contain finding descriptions, code excerpts, and potentially redacted secret locations. |
 | `/review` | `.claude/secret-warnings.json` (+ per-session variants `.claude/secret-warnings-*.json`) | Secret audit trail. Records file paths, line numbers, and pattern types where secret patterns were detected — committing exposes the locations of current or historical secrets. |
+| `/review` | `.claude/secret-hook-patterns.txt` | Pre-commit hook regex patterns. /review writes this file (one regex per line) before invoking the pre-commit hook installer; the hook then reads it at runtime. A committed patterns file could be tampered to weaken or disable specific secret-detection rules across all future commits — the additive baseline patterns hardcoded in the hook template still fire, but extension patterns (the broader set) would silently regress. |
+
+## Ancillary files (in `.gitignore` but no per-write protocol)
+
+These files are produced as transient or error-path artifacts of the protocol-checked writes above. They should be in `.gitignore` so a `git add .` does not pick them up, but they do NOT warrant the per-write `git ls-files --error-unmatch` check — the check would fire on every atomic rename or `flock` invocation, adding overhead to a hot path with no extra safety value (the underlying persistent file already passed the check). Consumers (`/doctor`'s gitignore-coverage check) MUST include these patterns in the canonical pattern set even though no skill invokes the per-write protocol on them:
+
+| Pattern | Producer | Why it must not be committed |
+|---------|----------|------------------------------|
+| `.claude/secret-warnings*.json.tmp` | Atomic-rename intermediate (Phase 5.6 + Phase 7 step 3 prune; secret-warnings-schema "Atomic write") | Mid-write file that should be `mv`d away within milliseconds — but a crash mid-write leaves it persisting with the same content as the real audit trail. |
+| `.claude/secret-warnings*.json.lock` | `flock(1)` lock file (secret-warnings-schema "Atomic write") | Empty by design; never contains secret content but accumulates as orphaned lock files if a crash skips cleanup. |
+| `.claude/secret-warnings*.json.corrupt-*` | Schema-failure backup (secret-warnings-schema "Schema-failure backup") | Contains the same content as the audit trail at the moment validation failed — equivalent persistence-of-secret-locations risk. Persistent (timestamped, never auto-deleted). |
 
 ## Anti-patterns
 
