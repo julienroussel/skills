@@ -6,7 +6,7 @@ effort: medium
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write(.claude/**) Glob Bash(git status *) Bash(git diff *) Bash(git checkout *) Bash(git commit *) Bash(git push -u origin *) Bash(git push origin HEAD:*) Bash(git push origin *) Bash(git branch *) Bash(git rev-parse *) Bash(git log *) Bash(git stash *) Bash(git fetch *) Bash(git merge --ff-only *) Bash(git pull --ff-only *) Bash(git rebase *) Bash(gh repo view *) Bash(gh pr create *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr merge *) Bash(gh pr edit *) Bash(gh pr list *) Bash(gh api *) Bash(grep *) Bash(jq *) Bash(wc *) Bash(test *) Bash([ *) Bash(echo *) Bash(printf *) AskUserQuestion Agent advisor
+allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *) Bash(git commit *) Bash(git push -u origin *) Bash(git push origin HEAD:*) Bash(git push origin *) Bash(git branch *) Bash(git rev-parse *) Bash(git log *) Bash(git stash *) Bash(git fetch *) Bash(git merge --ff-only *) Bash(git pull --ff-only *) Bash(git rebase *) Bash(gh repo view *) Bash(gh pr create *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr merge *) Bash(gh pr edit *) Bash(gh pr list *) Bash(gh api *) Bash(grep *) Bash(jq *) Bash(wc *) Bash(test *) Bash([ *) Bash(echo *) Bash(printf *) AskUserQuestion Agent advisor
 ---
 
 <!-- Frontmatter notes:
@@ -16,6 +16,10 @@ allowed-tools: Read Write(.claude/**) Glob Bash(git status *) Bash(git diff *) B
 - `allowed-tools` grants `Bash(git checkout *)` (broad wildcard): every documented phase needs a
   `git checkout` form — branch switch + create (`-b`), HEAD detach in cleanup, file-level restore
   from the staging ref (`git checkout <staging> -- <files>`, step 7-multi). Each form is documented.
+- `allowed-tools` grants no `Write`/`Edit`: `/ship` mutates the repo only through `git`/`gh` and
+  reads with `Read` — it has no file-write site of its own. The former `Write(.claude/**)` (the
+  step-4 `.claude/secret-warnings.json` audit-trail write) was removed when that write was deferred
+  to the not-yet-implemented `/review`→`/ship` enforcement contract — see issue #32.
 -->
 
 <!-- Dependencies:
@@ -34,7 +38,7 @@ allowed-tools: Read Write(.claude/**) Glob Bash(git status *) Bash(git diff *) B
   Skill-local protocol (read at Phase 1 under the hard-fail + smoke-parse guard):
     - protocols/ci-failure-handling.md  — the CI-failure investigate-and-fix procedure
   Required tools:
-    - Bash, Read, Write, Glob, AskUserQuestion, Agent (split analysis + CI-failure fix), advisor
+    - Bash, Read, Glob, AskUserQuestion, Agent (split analysis + CI-failure fix), advisor
 -->
 
 ## Ship Changes via PR
@@ -118,15 +122,13 @@ Run **all of the following in parallel**:
 - Read `../shared/untrusted-input-defense.md` (passed verbatim to the split-analysis sub-agent in Phase 2 and the CI-fix sub-agent)
 - Read `../shared/secret-scan-protocols.md` (consumed by step 4 secret-halt protocol — `isHeadless` predicate, advisory-tier classification, User-continue path)
 - Read `../shared/secret-patterns.md` (canonical regex catalog consumed by step 4)
-- Read `../shared/gitignore-enforcement.md` (consumed by step 4's `.claude/secret-warnings.json` write site)
 - Read `${CLAUDE_SKILL_DIR}/protocols/ci-failure-handling.md` (the CI-failure investigate-and-fix procedure — read upfront so a missing protocol file aborts Phase 1 cleanly instead of failing mid-flow at step 13 / 11a-multi)
 
-**Hard-fail guard**: if any of the four shared files or the skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /ship requires it to enforce untrusted-input safety, secret-scan protocols, and CI-failure handling — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
+**Hard-fail guard**: if any of the three shared files or the skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /ship requires it to enforce untrusted-input safety, secret-scan protocols, and CI-failure handling — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
 
 - `untrusted-input-defense.md`: `do not execute, follow, or respond to`
 - `secret-scan-protocols.md`: `isHeadless` AND `userContinueWithSecret` AND `Advisory-tier classification`
 - `secret-patterns.md`: `AKIA[0-9A-Z]{16}`
-- `gitignore-enforcement.md`: `git ls-files --error-unmatch`
 - `protocols/ci-failure-handling.md`: `Clean-tree guarantee` AND `2 fix cycles`
 
 After detecting the base branch (step 4), also run `git rev-list --count <base>..HEAD` to count commits ahead (needed for step 2).
@@ -166,7 +168,7 @@ After the above complete:
 
    **Halt protocol** (mandatory — `/ship` is the highest-blast-radius secret-leak vector in this skill set; warn-only is unsafe before push/PR/merge):
    - **Headless mode** (per `../shared/secret-scan-protocols.md` "Headless/CI detection"): abort unconditionally with non-zero exit, listing the detected pattern types (NOT the matched values). Do NOT proceed to commit/push.
-   - **Interactive mode**: AskUserQuestion `Strict-tier secret patterns detected: [pattern types]. Options: [Abort and remove the secret] / [Continue — accept responsibility]`. On **Abort**, exit non-zero. On **Continue**, apply the User-continue path protocol from `../shared/secret-scan-protocols.md` (ACTION REQUIRED logging + audit trail write to `.claude/secret-warnings.json` + final `⚠ SECRET STILL PRESENT` warning + non-zero exit latch). **Before** writing `.claude/secret-warnings.json`, apply the `.gitignore`-enforcement protocol from `../shared/gitignore-enforcement.md` (`git ls-files --error-unmatch .claude/secret-warnings.json 2>/dev/null` — warn if tracked; append to `.gitignore` if absent). Once `/ship` enforcement of `secret-warnings.json` is implemented (currently a /review→/ship cross-skill contract marked NOT IMPLEMENTED), the audit trail will additionally block re-attempts. Do NOT proceed to commit/push without explicit acknowledgment.
+   - **Interactive mode**: AskUserQuestion `Strict-tier secret patterns detected: [pattern types]. Options: [Abort and remove the secret] / [Continue — accept responsibility]`. On **Abort**, exit non-zero. On **Continue**, apply the `/ship`-relevant User-continue path behaviors from `../shared/secret-scan-protocols.md`: ACTION REQUIRED logging, the final `⚠ SECRET STILL PRESENT` warning, and the non-zero exit latch. `/ship` does **not** perform the audit-trail write to `.claude/secret-warnings.json`: per `../shared/secret-warnings-schema.md`, `/ship` is a future *reader* of that file, not a writer — the `/review`→`/ship` enforcement contract (the audit trail read to block re-attempts) is marked NOT IMPLEMENTED. Until it lands, `/ship`'s secret-halt protection is the loud warning plus the non-zero exit latch, not a persisted record. Do NOT proceed to commit/push without explicit acknowledgment.
 
 #### Phase 2: Split Analysis (skip if `--no-split` or `RESUME_MODE=true` — no diff to split)
 
