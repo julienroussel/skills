@@ -6,7 +6,7 @@ effort: low
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git config --get *) Bash(git ls-remote *) Bash(git diff *) Bash(git status *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(test *) Bash([ *) Bash(stat *) Bash(shasum *) Bash(sha256sum *) Bash(ls *) Bash(find . *) Bash(wc *) Bash(head *) Bash(tail *) Bash(sed *) Bash(tr *) Bash(cut *) Bash(date *) Bash(gdate *) Bash(printf *) Bash(echo *) Bash(basename *) Bash(command -v *) AskUserQuestion
+allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git config --get *) Bash(git ls-remote *) Bash(git diff *) Bash(git status *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(test *) Bash([ *) Bash(stat *) Bash(shasum *) Bash(sha256sum *) Bash(ls *) Bash(find . *) Bash(wc *) Bash(head *) Bash(tail *) Bash(sed *) Bash(tr *) Bash(cut *) Bash(date *) Bash(gdate *) Bash(printf *) Bash(echo *) Bash(basename *) Bash(command -v *) AskUserQuestion
 ---
 
 <!-- Dependencies:
@@ -50,7 +50,7 @@ allowed-tools: Read Write Glob Grep Bash(git rev-parse *) Bash(git ls-files *) B
   Required tools:
     - Bash, Read, AskUserQuestion
   Tools NOT used:
-    - TaskCreate, TeamCreate, Agent, advisor
+    - Write (the only file mutation is the .gitignore append/create in Phase 4, done via Bash `printf >>`), TaskCreate, TeamCreate, Agent, advisor
 -->
 
 Diagnose whether the current codebase + Claude Code setup is ready to use `/audit`, `/review`, `/ship`, and `bin/tackle`. Report per-check status with remediation hints. Default is read-only; `--fix` appends missing patterns to the current repo's `.gitignore` on per-change confirmation.
@@ -271,7 +271,7 @@ If `IS_TACKLE_WORKTREE=yes`: suppress the `.claude/worktrees/` warning (worktree
 .claude/worktrees/
 ```
 
-**Load-bearing duplicate**: this list mirrors the cache-file paths in `shared/gitignore-enforcement.md`'s "Sites that apply this protocol" table PLUS the "Ancillary files" table (transient `.tmp` / `.lock` / `.corrupt-*` artifacts that no skill invokes the per-write protocol on but that still must not be committed). If `/audit` or `/review` adds a new cache file or ancillary artifact, both shared tables AND this list must be updated. Same coupling pattern as the smoke-parse strings above.
+**Intentional duplication** (not drift): this list is deliberately a verbatim copy of the canonical pattern set — the cache-file paths in `shared/gitignore-enforcement.md`'s "Sites that apply this protocol" table PLUS the "Ancillary files" table (transient `.tmp` / `.lock` / `.corrupt-*` artifacts that no skill invokes the per-write protocol on but that still must not be committed). The alternative — having /doctor parse the pattern set out of the shared file's markdown tables at runtime — was considered and **rejected as fragile**: it couples the coverage check to the shared file's exact table layout (cell formatting, the `(glob: ...)` annotation, row order), trading a one-line maintenance note for a brittle parser. Keep the copy; if `/audit` or `/review` adds a new cache file or ancillary artifact, update both shared tables AND this list. Same deliberate-coupling pattern as the Group D smoke-parse strings above.
 
 Coverage is satisfied if EITHER:
 - A literal `.claude/` or `.claude/*` line exists (covers everything below `.claude/`), OR
@@ -327,22 +327,7 @@ done
 
 #### Optional tunables (informational only — never graded)
 
-These env vars are NOT required for /audit, /review, /ship, or tackle. /doctor surfaces them so the user can see what they have already tuned and learn about knobs that may improve the experience. Each appears on the report **only if explicitly set** (otherwise the report stays terse). All defaults are reasonable; raise/lower deliberately.
-
-| Env var | Default | When raising helps |
-|---|---|---|
-| `BASH_DEFAULT_TIMEOUT_MS` | `120000` (2 min) | Long `git`/`gh`/`jq` ops in /audit Phase 1 Track C or /review Phase 1 Pre-checks. |
-| `BASH_MAX_TIMEOUT_MS` | `600000` (10 min) | /audit Phase 6 validation runs lint+typecheck+test on big monorepos; raising to e.g. `1800000` (30 min) avoids spurious validation failures. |
-| `MCP_TIMEOUT` | `30000` (30 sec) | First-time `codebase-memory-mcp` index can be slow; raise to e.g. `120000` if `mcp list` hangs. |
-| `MCP_TOOL_TIMEOUT` | per-tool default | Long `query_graph` / `trace_path` calls on large indexed repos. |
-| `MAX_THINKING_TOKENS` | model-dependent | More headroom for extended reasoning on complex /audit findings — `0` disables thinking entirely. |
-| `MAX_MCP_OUTPUT_TOKENS` | model-dependent | Verbose MCP outputs (graph dumps, large trace results) get truncated; raise if the codebase-memory-mcp output is being clipped. |
-| `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | `10` | More parallelism in /audit Phase 1 Track B prefetch and /review Phase 2 reviewer dispatch. |
-| `DISABLE_TELEMETRY` | unset | Privacy preference. `1` opts out. |
-| `DISABLE_AUTOUPDATER` | unset | Pin the installed CLI version; `1` disables the background update check. |
-| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | unset | Shorthand: disables autoupdater + telemetry + error reporting + feedback. |
-
-For the full Claude Code env-var reference, see https://code.claude.com/docs/en/env-vars.
+The Group H probe Bash + rendering rule above surface these env vars on the report only when explicitly set. The full reference table — every tunable, its default, and when raising it helps — lives in `examples.md` ("Optional tunables reference"). It is pure informational reference (no probe or rendering logic depends on it), moved out of `SKILL.md` to keep always-loaded context lean. For the full Claude Code env-var reference, see https://code.claude.com/docs/en/env-vars.
 
 ### Group I — Skill drift checks (per skill in `~/.claude/skills/`)
 

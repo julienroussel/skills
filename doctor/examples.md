@@ -107,3 +107,20 @@ Global setup
       Hint: if the template change is intentional, update EXPECTED_TEMPLATE_SHA256 in
             review/scripts/install-pre-commit-secret-guard.sh per its 4-step maintenance contract.
 ```
+
+## Optional tunables reference
+
+Moved out of `SKILL.md` (Group H's "Optional tunables" subsection points here). These env vars are NOT required for /audit, /review, /ship, or tackle. /doctor surfaces them on the report **only if explicitly set** — otherwise the report stays terse. All defaults are reasonable; raise/lower deliberately.
+
+| Env var | Default | When raising helps |
+|---|---|---|
+| `BASH_DEFAULT_TIMEOUT_MS` | `120000` (2 min) | Long `git`/`gh`/`jq` ops in /audit Phase 1 Track C or /review Phase 1 Pre-checks. |
+| `BASH_MAX_TIMEOUT_MS` | `600000` (10 min) | /audit Phase 6 validation runs lint+typecheck+test on big monorepos; raising to e.g. `1800000` (30 min) avoids spurious validation failures. |
+| `MCP_TIMEOUT` | `30000` (30 sec) | First-time `codebase-memory-mcp` index can be slow; raise to e.g. `120000` if `mcp list` hangs. |
+| `MCP_TOOL_TIMEOUT` | per-tool default | Long `query_graph` / `trace_path` calls on large indexed repos. |
+| `MAX_THINKING_TOKENS` | model-dependent | More headroom for extended reasoning on complex /audit findings — `0` disables thinking entirely. |
+| `MAX_MCP_OUTPUT_TOKENS` | model-dependent | Verbose MCP outputs (graph dumps, large trace results) get truncated; raise if the codebase-memory-mcp output is being clipped. |
+| `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | `10` | More parallelism in /audit Phase 1 Track B prefetch and /review Phase 2 reviewer dispatch. |
+| `DISABLE_TELEMETRY` | unset | Privacy preference. `1` opts out. |
+| `DISABLE_AUTOUPDATER` | unset | Pin the installed CLI version; `1` disables the background update check. |
+| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | unset | Shorthand: disables autoupdater + telemetry + error reporting + feedback. |
