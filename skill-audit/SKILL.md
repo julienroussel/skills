@@ -1,6 +1,6 @@
 ---
 name: skill-audit
-description: Audit Claude Code skill files (SKILL.md) for 2026-feature alignment, advisor coverage, frontmatter validity, token efficiency, shared-file drift, and safety-protocol consistency. Reviewers cite live Anthropic docs + changelog (fetched at runtime, cached) so findings are grounded, not hallucinated. Reports a prioritized improvements list with file:line citations. Findings-only — never modifies skill files.
+description: Audit Claude Code skill files (SKILL.md) for 2026-feature alignment, advisor coverage, frontmatter validity, token efficiency, shared-file drift, safety-protocol consistency, and model-tier routing. Reviewers cite live Anthropic docs + changelog (fetched at runtime, cached) so findings are grounded, not hallucinated. Reports a prioritized improvements list with file:line citations. Findings-only — never modifies skill files.
 argument-hint: "[skill-name] [--scope=<glob>] [--only=<dims>] [--auto-approve] [--refresh-refs]"
 effort: high
 model: opus
@@ -32,7 +32,7 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
     - shared/reviewer-boundaries.md             — severity rubric (`critical|high|medium|low`) + confidence
                                                   levels (`certain|likely|speculative`); the dimension-ownership
                                                   table is `/audit`/`/review`-specific and replaced inline below
-                                                  for skill-audit's six dimensions
+                                                  for skill-audit's seven dimensions
     - shared/untrusted-input-defense.md         — passed verbatim into every reviewer prompt
     - shared/display-protocol.md                — phase headers, timeline, silent-reviewers, compact tables
     - shared/abort-markers.md                   — Phase 7 abortReason → marker mapping
@@ -56,7 +56,7 @@ Audit Claude Code skill files (`SKILL.md`) for quality, 2026-feature alignment, 
 Parse arguments as space-separated tokens. Recognized flags:
 - `[skill-name]` — Bare positional. Limits the audit to a single skill (e.g., `/skill-audit review`). Resolved by exact match against `~/.claude/skills/<name>/SKILL.md`.
 - `--scope=<glob>` — Limits audit to skills whose directory name matches the glob (e.g., `--scope=*-reviewer`, `--scope=audit*`). Mutually exclusive with the bare positional.
-- `--only=<dims>` — Run only the specified reviewer dimensions (comma-separated). Valid values: `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`. Example: `--only=frontmatter,token-efficiency`.
+- `--only=<dims>` — Run only the specified reviewer dimensions (comma-separated). Valid values: `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Example: `--only=frontmatter,token-efficiency`.
 - `--auto-approve` — Skip the Phase 4 approval gate. Lists all findings in Phase 7 without filtering. Useful for CI / scripted reports. Skips the [Clarify] flow too — `clarify`-flagged findings render in their original tier with a `[CLARIFICATION SKIPPED — auto-approve]` qualifier.
 - `--refresh-refs` — Force a fresh Phase 1 Track C fetch even if `cache/refs.json` is within its 7-day TTL. Use after Anthropic publishes a release that adds substitution variables, frontmatter fields, or skill features.
 
@@ -71,7 +71,7 @@ Parse arguments as space-separated tokens. Recognized flags:
 
 - `[skill-name]`: Validate against allowlist regex `^[a-z][a-z0-9-]*$` (skill directory names per Claude Code convention). Reject control characters, slashes, dots. Reject if `~/.claude/skills/<name>/SKILL.md` does not exist (with a one-line "Available skills: ..." hint enumerating the visible directories).
 - `--scope=<glob>`: Reject control characters. Allowlist regex `^[a-zA-Z0-9_*?][a-zA-Z0-9_*?-]*$` (no slashes — scope is matched against bare directory name, not a path). Reject paths containing `..`.
-- `--only=<dims>`: Trim whitespace per value. Validate each is one of `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`. Reject unknown values.
+- `--only=<dims>`: Trim whitespace per value. Validate each is one of `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Reject unknown values.
 
 ### Model requirements
 
@@ -180,17 +180,19 @@ Each reviewer receives ONLY the references it needs (mirrors the principle "skil
 | `shared-drift-reviewer` | The full canonical `shared/*.md` set (already in lead context from Track A). NO Track C refs. |
 | `feature-adoption-reviewer` | `skills-doc` (Frontmatter reference + Substitutions tables) + `claude-code-changelog` (head ~30 versions). |
 | `safety-protocols-reviewer` | `shared/untrusted-input-defense.md` + `shared/gitignore-enforcement.md` (both already in lead context from Phase 1 Track A reads, plus the latter loaded specifically for this dimension). NO Track C refs. |
+| `model-routing-reviewer` | NO Track C refs — reasons over the audited skill's own phase descriptions + frontmatter `model`/`effort` fields (already in the full `SKILL.md` content every reviewer receives per Phase 2). |
 
 ### Dimension table
 
 | Dimension | Owns | Stays out of |
 |-----------|------|--------------|
-| `frontmatter-reviewer` | Required fields (`description` per [skills doc](https://code.claude.com/docs/en/skills)); allowed values for `effort` and `model` (verified against the live doc); contradictions (`disable-model-invocation: true` → `description` is NOT in context, making `when_to_use` and `paths` inert per the doc's invocation-control table); `description + when_to_use` exceeding the 1,536-character cap; missing `name` falling through to directory-name fallback when explicit naming would aid clarity. | Body content (token-efficiency dimension). |
+| `frontmatter-reviewer` | Required fields (`description` per [skills doc](https://code.claude.com/docs/en/skills)); allowed values for `effort` and `model` (verified against the live doc); contradictions (`disable-model-invocation: true` → `description` is NOT in context, making `when_to_use` and `paths` inert per the doc's invocation-control table); `description + when_to_use` exceeding the 1,536-character cap; missing `name` falling through to directory-name fallback when explicit naming would aid clarity. | Body content (token-efficiency dimension); model-tier appropriateness (model-routing dimension). |
 | `advisor-coverage-reviewer` | `advisor()` call sites against `../shared/advisor-criteria.md`: substantive-edit boundaries, declare-done points, stuck-loop signals; gating quality (single-fire guards, conditional triggers based on finding count or skewed dimensions); placement (before substantive work, not after). Each finding MUST cite the violated rule by `shared/advisor-criteria.md:<line>`. | Other call sites' specific phrasing (token-efficiency dimension). |
-| `token-efficiency-reviewer` | Line count vs. live skills-doc 500-line tip; large inline blocks that should be `${CLAUDE_SKILL_DIR}/scripts/*` or `shared/*.md` extractions; per-phase prose density; redundant prose between phases; tables/code blocks that could collapse. **Skill content lifecycle** (the doc's section name): every line is a recurring token cost across the whole session — flag aggressively. | Frontmatter character cap (frontmatter dimension). |
+| `token-efficiency-reviewer` | Line count vs. live skills-doc 500-line tip; large inline blocks that should be `${CLAUDE_SKILL_DIR}/scripts/*` or `shared/*.md` extractions; per-phase prose density; redundant prose between phases; tables/code blocks that could collapse. **Skill content lifecycle** (the doc's section name): every line is a recurring token cost across the whole session — flag aggressively. | Frontmatter character cap (frontmatter dimension); model-tier cost (model-routing dimension). |
 | `shared-drift-reviewer` | Inline duplicates of `shared/*.md` content (every duplicate proves the shared/ pattern isn't doing its job); missing references where shared files apply (e.g., subagent prompt without `untrusted-input-defense.md` reference); smoke-parse substring presence at every Read site of a shared file. | Whether the shared file itself is the right design (architecture concern, out of scope here). |
 | `feature-adoption-reviewer` | 2026 substitutions used vs. **what the live skills-doc lists** (`${CLAUDE_EFFORT}`, `${CLAUDE_SESSION_ID}`, `${CLAUDE_SKILL_DIR}`, `$ARGUMENTS`, `$N`, `$name`); `allowed-tools` minimization (over-permissive grants like blanket `Bash(*)` without rationale); features adopted by Anthropic post-skill-creation that the skill could leverage (cross-reference the changelog). Every finding MUST cite the doc URL (`https://code.claude.com/docs/en/skills:<heading>`) or a changelog version (`changelog:<version>`). | Whether to add a feature at all if not present (advisor-coverage / token-efficiency may flag instead). |
 | `safety-protocols-reviewer` | Untrusted-input defense applied at **every** subagent prompt site (reviewer, implementer, simplifier, convergence, fresh-eyes); gitignore-enforcement applied at every `.claude/*` cache/audit-trail write site; secret-scan tier classification correctly referenced when applicable; explicit-consent gates on destructive operations (e.g., `git push --force`, `rm -rf`); abort markers used on irrecoverable failures. | Specific finding text in shared files (shared-drift dimension). |
+| `model-routing-reviewer` | Model-tier appropriateness: frontmatter `model:` / `effort:` vs. the skill's actual workload — flag premium `opus` on a skill whose phases are predominantly mechanical (discovery / dedup / reporting / validation), or an under-powered tier on a heavy-reasoning skill; body-level subagent-spawn `model:` choices vs. the work each spawned agent does. Evidence is the skill's own phase descriptions; `source` cites `<skill>/SKILL.md:<line>` as a self-contradiction within the same skill. Set `clarify: true` when premium tier is a defensible headroom choice. Canonical good shape: skill-audit/SKILL.md:79. | Whether `model:` is a *legal enum value* (frontmatter dimension owns that); line-level prose cost (token-efficiency dimension). |
 
 ### Reviewer instructions (passed to every dimension)
 
@@ -237,7 +239,7 @@ Per-finding requirements:
 Every reviewer finding must include:
 - `file` (absolute path)
 - `line` (positive integer)
-- `dimension` (one of the 6 above)
+- `dimension` (one of the 7 above)
 - `severity` + `confidence`
 - `title` (≤ 80 chars)
 - `description` (1-3 sentences)
@@ -411,3 +413,4 @@ Track C failures do NOT trigger abort — they degrade gracefully (stale cache �
 | Plugin skills (`~/.claude/plugins/...`) | Not iterated in v1 (tracked in issue #18). Plugin skills are managed by the plugin author; auditing third-party content out of scope until a clear use case lands. |
 | Bare `/skill-audit` invoked from a tackle worktree | Same as outside a worktree — only `~/.claude/skills/` is iterated. |
 | `gh` CLI not installed or unauthenticated | Track C `claude-code-changelog` fetch fails. `feature-adoption-reviewer` falls back to skills-doc only (changelog evidence missing). Phase 7 warns. |
+| Skill legitimately needs `opus` despite mechanical-looking phases | `model-routing-reviewer` sets `clarify: true` with a `clarificationQuestion` rather than asserting a finding — premium tier is often a deliberate headroom choice, and a hard finding would re-fire on every re-run. |
