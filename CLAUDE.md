@@ -20,16 +20,24 @@ review/scripts/                    — Phase 5 base-commit anchor + symlink-esca
 review/templates/                  — canonical pre-commit hook body (pre-commit-secret-guard.sh.tmpl);
                                      read-only; install script verifies its hash.
 review/protocols/                  — skill-local procedures read at Phase 1 Track A under hard-fail +
-                                     smoke-parse guard (mirrors shared/* discipline). Six files:
-                                     finding-sanity-check.md (Phase 3 step 0 hallucination rejection),
-                                     secret-warnings-lifecycle.md (Phase 7 step 3 prune),
-                                     base-anchor.md (Phase 5 base-commit anchor + Combined revert sequence),
-                                     pre-commit-hook-offer.md (Phase 5.6 install + 0/2/4/* error matrix),
-                                     phase7-cleanup-report.md (Phase 7 body — flags, exit codes, 16-item
-                                     report enumeration), phase8-followups.md (Phase 8 body — dedup +
-                                     cross-repo visibility checks). Extraction targets in /review reduction
-                                     to push closer to Anthropic's 500-line guideline (issue #20).
-ship/SKILL.md                      — ship working-tree changes via PR (split analysis, branching, CI, merge)
+                                     smoke-parse guard (mirrors shared/* discipline). Seven files:
+                                     phase2-reviewers.md (Phase 2 body — effort-adaptive breadth,
+                                     reviewer selection + swarm scaling, reviewer instructions,
+                                     finding format), finding-sanity-check.md (Phase 3 step 0
+                                     hallucination rejection), secret-warnings-lifecycle.md (Phase 7
+                                     step 3 prune), base-anchor.md (Phase 5 base-commit anchor +
+                                     Combined revert sequence), pre-commit-hook-offer.md (Phase 5.6
+                                     install + 0/2/4/* error matrix), phase7-cleanup-report.md
+                                     (Phase 7 body — flags, exit codes, 16-item report enumeration),
+                                     phase8-followups.md (Phase 8 body — dedup + cross-repo
+                                     visibility checks). These extractions pull /review toward
+                                     Anthropic's 500-line guideline (issue #20).
+ship/SKILL.md                      — ship working-tree changes via PR (split analysis, branching, CI
+                                     wait + opus CI-failure fix loop, merge)
+ship/protocols/                    — skill-local procedure read at Phase 1 under hard-fail + smoke-parse
+                                     guard: ci-failure-handling.md (the opus CI-fix investigate →
+                                     confirm-gate → re-watch loop, 2-cycle cap + single-fire stuck-loop
+                                     advisor)
 doctor/SKILL.md                    — health-check the user's Claude Code setup + current repo
                                      (CLI tools, plugins, settings.json, installed skills, shared
                                      files, gitignore); --fix appends to repo .gitignore on
@@ -70,7 +78,8 @@ shared/secret-patterns.md          — canonical regex catalog for secret detect
 shared/cache-schema-validation.md  — canonical schema validation for .claude/review-profile.json (rules
                                      a-f) and .claude/review-baseline.json (rules a-c). Includes binary
                                      availability probe and same-session shortcut. Read by /audit and
-                                     /review at Track C and Track D cache-load sites.
+                                     /review at Phase 1 Track A (hard-fail + smoke-parse guard); applied
+                                     at Track C and Track D cache-load sites.
 skill-audit/cache/refs.json        — /skill-audit Phase 1 Track C live-references cache (Anthropic skills doc,
                                      env-vars doc, claude-code CHANGELOG); 7-day TTL, stale-cache fallback,
                                      `--refresh-refs` to force refresh; /doctor Group I warns if > 30 days old
@@ -121,7 +130,7 @@ Each `SKILL.md` has:
 - **Parallel-first**: Tracks within a phase run simultaneously via multiple tool calls in a single message. Independent Bash/Read/Grep calls are always batched.
 - **Silent agents, noisy lead**: Reviewer/implementer subagents report via TaskCreate and SendMessage only — no console output. Only the lead agent prints progress.
 - **Shared cache files** in `.claude/`: `review-profile.json` (stack/package-manager detection), `review-baseline.json` (validation command baselines), `review-config.md` (suppressions and auto-learned rules), `audit-history.json` (append-only audit log).
-- **Model routing**: Reviewer and implementer agents spawn with `model: "opus"`. Mechanical phases (context gathering, dedup, validation, cleanup) use the default model.
+- **Model routing**: Reviewer and implementer agents spawn with `model: "opus"`. Mechanical phases (context gathering, dedup, validation, cleanup) use the default model. `/ship` keeps its lead on `sonnet` and spawns `model: "opus"` sub-agents for its two judgment-heavy tasks — split analysis (Phase 2) and CI-failure diagnosis/fix (CI-failure handling).
 - **Severity rubric** (canonical: `shared/reviewer-boundaries.md`): critical → high → medium → low, with confidence levels certain → likely → speculative. Low-severity findings are dropped unless trivially fixable.
 - **Reviewer dimension boundaries** (canonical: `shared/reviewer-boundaries.md`): Strict ownership of finding categories to prevent duplicates (e.g., silent failures → error-handling-reviewer, not security or typescript).
 - **Finding format**: Every reviewer finding must include `file`, `line`, AND a `codeExcerpt` (3 consecutive lines from the cited file, verbatim). Phase 3 step 0 sanity-check reads the cited range and rejects any finding whose excerpt doesn't match — catches line-number AND content hallucinations. Per-reviewer 25% rejection rate escalates to Phase 7 `ACTION REQUIRED`.
@@ -146,11 +155,11 @@ Optional: `pr-review-toolkit@claude-plugins-official` (silent-failure-hunter, ty
 
 ## Key design decisions
 
-- `/skill-audit` is the *opinionated* meta-audit counterpart to `/doctor`'s narrow factual checks (Group I). `/doctor` answers "is this skill objectively broken?" via yes/no file reads; `/skill-audit` answers "what could be better?" via 7 reviewer dimensions (frontmatter, advisor-coverage, token-efficiency, shared-drift, feature-adoption, safety-protocols, model-routing). Reviewers cite **live Anthropic documentation** — the skills doc and the claude-code CHANGELOG are fetched at Phase 1 Track C and cached at `skill-audit/cache/refs.json` (7-day TTL, `--refresh-refs` to force, stale-cache fallback when offline). Phase 3 sanity-check validates every finding's `source` citation against the cache so reviewers can't hallucinate features. Phase 4 has a [Clarify] sub-flow for `clarify: true` findings — judgment-call recommendations are surfaced via `AskUserQuestion` so the user resolves workflow-dependent calls in-line rather than at the end. Findings-only in v1 — no auto-fix, no Phase 5/6. Skill files are markdown specifications without a test harness. Scope: `~/.claude/skills/*/SKILL.md` (user skills); plugin skills out of scope in v1.
+- `/skill-audit` is the *opinionated* meta-audit counterpart to `/doctor`'s narrow factual checks (Group I). `/doctor` answers "is this skill objectively broken?" via yes/no file reads; `/skill-audit` answers "what could be better?" via 7 reviewer dimensions (frontmatter, advisor-coverage, token-efficiency, shared-drift, feature-adoption, safety-protocols, model-routing). Reviewers cite **live Anthropic documentation** — the skills doc and the claude-code CHANGELOG are fetched at Phase 1 Track C and cached at `skill-audit/cache/refs.json` (7-day TTL, `--refresh-refs` to force, stale-cache fallback when offline). Phase 3 sanity-check validates every finding's `source` citation against the cache so reviewers can't hallucinate features. Phase 4 has a [Clarify] sub-flow for `clarify: true` findings — judgment-call recommendations are surfaced via `AskUserQuestion` so the user resolves workflow-dependent calls in-line rather than at the end. Findings-only in v1 — no auto-fix, no Phase 5/6. Skill files are markdown specifications without a test harness. Scope: `~/.claude/skills/*/SKILL.md` (user skills, excluding gitignored / externally-maintained skills like `find-skills/` — Phase 1 Track B drops them); plugin skills out of scope in v1.
 - `/audit` and `/review` share the same cache files and stack detection logic (Track C). Changes to one skill's caching format must be mirrored in the other.
 - Both `/audit` and `/review` support `--converge[=N]`: a re-review loop that wraps Phases 2–6 in a repeatable cycle with auto-approval. `/review` defaults to 3 iterations (max 10) and runs a fresh-eyes security pass after convergence. `/audit` defaults to 2 iterations (max 5) — lower because the per-iteration blast radius is higher.
 - `/review` supports `--branch[=<base>]` for reviewing the full feature-branch diff (committed-on-branch + working tree) as one scope — closes the gap between bare `/review` (working tree only, misses committed work) and `--pr=N` (remote read-only, misses unpushed/uncommitted work). Default `<base>` resolves via `gh pr list --head` (linked PR) or falls back to `origin/<default-branch>` via `gh repo view`. Aborts if local HEAD is behind upstream — local files must reflect HEAD for codeExcerpt verification to be safe. Mutually exclusive with `--pr`. Implementer + validation run normally (fixes apply locally); Phase 8 creates standalone issues, NOT a PR comment.
-- `/ship` handles both single-PR and multi-PR (stacked/independent) flows. Split analysis uses semantic grouping heuristics with dependency detection between groups.
+- `/ship` handles both single-PR and multi-PR (stacked/independent) flows. Split analysis uses semantic grouping heuristics with dependency detection between groups. On CI failure (single-PR step 13, multi-PR 11a-multi) it invokes the **CI-failure handling** procedure — an `opus` sub-agent diagnoses the failure from its own log fetch and proposes a fix, the user confirms before it is committed + re-pushed, then CI is re-watched (max 2 fix cycles). This runs in all modes; `--merge` differs only in that it proceeds to merge once CI is green.
 - Auto-learned suppressions (Phase 4.5 in audit/review) require 2+ rejections of the same pattern before adding a rule — single rejections are treated as situational. Cross-run promotion to user-global memory needs 2+ rejections in 2+ separate runs (lowered from the original 3+ which empirically never fired).
 - Shared protocol files (`shared/*.md`) are validated at Phase 1 with a hard-fail guard PLUS a structural smoke-parse (each file must contain a known load-bearing substring) — catches truncation that the non-empty check misses.
 - `/audit` Phase 1 Track B uses lazy-load by default (reviewers fetch files on demand). Use `--prefetch` to restore the original pre-read behavior for ≤ 50-file scopes.

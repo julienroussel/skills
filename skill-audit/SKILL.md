@@ -6,7 +6,7 @@ effort: high
 model: opus
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList TeamCreate TeamDelete SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
+allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList TeamCreate TeamDelete SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(git -C * check-ignore *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
 ---
 
 <!-- Dependencies:
@@ -17,7 +17,7 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
                                                   for changelog content (gh handles GitHub auth + redirects;
                                                   preferred over WebFetch per WebFetch's own guidance for github.com URLs)
   Files read:
-    - ~/.claude/skills/*/SKILL.md               — every user-installed skill
+    - ~/.claude/skills/*/SKILL.md               — every repo-owned skill (gitignored / externally-maintained skills excluded — see Phase 1 Track B)
     - ~/.claude/skills/<name>/scripts/*.sh      — referenced helper scripts (existence + executable bit)
     - ~/.claude/skills/<name>/templates/*       — referenced templates (existence)
     - ${CLAUDE_SKILL_DIR}/cache/refs.json       — cached Anthropic docs + changelog (Phase 1 Track C);
@@ -116,6 +116,8 @@ Enumerate skill directories matching the argument set (user-scoped only in v1):
 2. **`--scope=<glob>`**: enumerate `~/.claude/skills/*/SKILL.md`, filter directory basenames against the glob.
 3. **No filter**: enumerate every `~/.claude/skills/*/SKILL.md`. Skip directories without a `SKILL.md` (e.g., `bin/`, `docs/`, `shared/`).
 
+**Gitignore exclusion (mandatory)**: After enumeration, drop any skill whose directory is gitignored — those skills are externally maintained (e.g., installed via `npx skills`), not owned by this repo, so findings on them are not actionable here and a local fix would be clobbered on the next update. Run one batched `git -C ~/.claude/skills check-ignore <skill1>/SKILL.md <skill2>/SKILL.md ...`: every path it prints is ignored — remove it from the target set, and do NOT read its `SKILL.md` or supplementary files into context. If the command exits 128 (`~/.claude/skills` is not a git repo), skip this step — there is no gitignore to apply. **Bare positional**: if the single named skill is gitignored, abort with `<name> is gitignored (externally maintained) — /skill-audit audits repo-owned skills only.` **`--scope` / no-filter**: exclude silently, but list the excluded skill names in the Phase 1 discovery summary so the scope reduction is visible.
+
 For each target, read the `SKILL.md` plus enumerate `<skill>/scripts/*.sh` and `<skill>/templates/*` as supplementary inputs (existence + executable bit only — content reads only when a reviewer cites them). Project-scoped and plugin skills are out of scope in v1 (tracked in issues #17 and #18 respectively).
 
 **Empty-discovery guard**: if zero skills resolve (e.g., `--scope=foo*` matches nothing), abort with `[ABORT — UNMATCHED SCOPE]` per the canonical mapping.
@@ -157,7 +159,7 @@ Reviewers cite live documentation so findings stay current as Claude Code ships 
 
 Print a one-line summary:
 ```
-Discovered N skill(s): <names>   |   M reviewer dimensions selected   |   Refs: <fresh|cached YYYY-MM-DD|stale|missing>
+Discovered N skill(s): <names>   |   Excluded (gitignored): <names | "none">   |   M reviewer dimensions selected   |   Refs: <fresh|cached YYYY-MM-DD|stale|missing>
 ```
 
 If a skill exceeds **2,000 lines**, warn before dispatch: huge skills cost reviewer-token budget and convergence-quality drops. Recommend the user narrow with `--only=<dims>` to focus on a single dimension first.
