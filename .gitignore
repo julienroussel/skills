@@ -6,6 +6,9 @@ ralph-tui*
 .claude/review-baseline.json
 .claude/review-config.md
 .claude/secret-warnings*.json
+.claude/secret-warnings*.json.tmp
+.claude/secret-warnings*.json.lock
+.claude/secret-warnings*.json.corrupt-*
 .claude/secret-hook-patterns.txt
 .claude/audit-history.json
 .claude/audit-report-*.md
