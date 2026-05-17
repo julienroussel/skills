@@ -14,13 +14,42 @@
 # Output (stderr, on any non-zero exit):
 #   one or more reason lines suitable for the Phase 7 report skip-log
 #
+# Stderr wording convention:
+#   "Pre-commit hook installation aborted — …"  → tamper-class (exit 2, 4, or 5); the operator
+#     must NOT install and should audit the source.
+#   "Pre-commit hook installation skipped — …"  → user-fixable prerequisite or
+#     environmental issue (exit 1 or 3); the operator resolves and re-runs.
+#   "Pre-commit hook block already installed — no-op."  → idempotent re-install success
+#     (exit 0); no action required.
+# Operators with log-grep alerting should match on the leading phrase to bucket by class.
+#
 # Exit codes:
 #   0 — installed (or block already present and idempotent re-install was a no-op)
-#   1 — prerequisite missing (jq absent, .git missing, etc.)
-#   2 — template SHA-256 mismatch (tampering or corrupted install) — DO NOT install
+#   1 — prerequisite missing (jq absent, .git missing, no shasum/sha256sum on PATH,
+#       flock contention) — user-fixable; the operator installs the missing
+#       binary (or moves to a real git working tree) and re-runs
+#   2 — template SHA-256 mismatch OR template file missing entirely (tampering or
+#       corrupted install) — DO NOT install
 #   3 — incompatible existing hook (non-bash shebang) — caller logs skip and moves on
 #   4 — stale hook block on disk (installed body differs from canonical template) —
 #       caller surfaces as ACTION REQUIRED; user must manually disarm + re-run
+#   5 — multiple claude-secret-guard blocks present (TAMPERING SUSPECTED) — caller
+#       surfaces as ACTION REQUIRED; user must manually remove ALL blocks + re-run
+#
+# Distinction between exit 1 and exit 2: BOTH the no-hash-tool branch (the "else"
+# arm of the "command -v shasum"/"command -v sha256sum" ladder) and the missing-template
+# branch (the [ ! -f "$templatePath" ] guard immediately preceding it) bypass the
+# SHA-256 verification. They diverge on cause and remediation:
+#   - No hash tool: environmental (BusyBox / hardened minimal container with neither
+#     shasum nor sha256sum). Recoverable by installing coreutils. → exit 1.
+#   - Missing template: skill files are incomplete; either an interrupted install or
+#     a tamper signal. NOT recoverable by the operator without re-fetching the canonical
+#     skill source — manually recreating the template would bypass the SHA check
+#     against an unknown body. → exit 2.
+#
+# Caller dispatch contract: see review/protocols/pre-commit-hook-offer.md
+# "Install procedure" — its `case $ec in ... esac` block MUST cover every exit code
+# above. When adding a new exit code here, update the caller in the same commit.
 #
 # ─────────────────────────────────────────────────────────────────
 # SHA-256 verification
@@ -45,8 +74,10 @@ scriptDir=$(cd "$(dirname "$0")" && pwd -P)
 templatePath="$scriptDir/../templates/pre-commit-secret-guard.sh.tmpl"
 
 if [ ! -f "$templatePath" ]; then
-  echo "Pre-commit hook installation skipped — template not found: $templatePath" >&2
-  exit 1
+  echo "Pre-commit hook installation aborted — template file is missing entirely; SHA-256 verification cannot run." >&2
+  echo "  expected path: $templatePath" >&2
+  echo "  Reinstall the skill from the canonical source. This is a tamper-class signal — do NOT manually recreate the template." >&2
+  exit 2
 fi
 
 # ── SHA-256 verification (mandatory) ──
@@ -89,7 +120,9 @@ hookPath="$hooksDir/pre-commit"
 # (e.g. parallel /review invocations across worktrees that share .git/hooks).
 # Without this, two invocations could both pass the idempotent check on a
 # fresh hook and both append, producing duplicate blocks. flock is best-effort:
-# if unavailable on the platform, proceed without it.
+# if unavailable on the platform, proceed without it. Uses a 30-second
+# timed wait (-w 30) so genuine contention surfaces as exit 1 instead of
+# hanging Phase 5.6 indefinitely.
 #
 # Side effect: `exec 9<>"$hookPath"` creates the file if missing. Downstream
 # checks that previously used `[ -f ]` to detect a missing hook now use
@@ -99,8 +132,8 @@ hookPath="$hooksDir/pre-commit"
 if command -v flock >/dev/null 2>&1; then
   touch "$hookPath"
   exec 9<>"$hookPath"
-  if ! flock -x 9; then
-    echo "Pre-commit hook installation skipped — could not acquire lock on $hookPath" >&2
+  if ! flock -x -w 30 9; then
+    echo "Pre-commit hook installation skipped — could not acquire lock on $hookPath within 30s" >&2
     exit 1
   fi
 fi
@@ -113,11 +146,11 @@ if [ -f "$hookPath" ] && grep -qE '^# BEGIN claude-secret-guard$' "$hookPath"; t
   beginCount=$(grep -cF "# BEGIN claude-secret-guard" "$hookPath")
   endCount=$(grep -cF "# END claude-secret-guard" "$hookPath")
   if [ "$beginCount" -gt 1 ] || [ "$endCount" -gt 1 ]; then
-    echo "Pre-commit hook contains multiple claude-secret-guard blocks ($beginCount BEGIN, $endCount END markers) — TAMPERING SUSPECTED." >&2
+    echo "Pre-commit hook installation aborted — multiple claude-secret-guard blocks present ($beginCount BEGIN, $endCount END markers); TAMPERING SUSPECTED." >&2
     echo "  Marker lines:" >&2
     grep -nE '^# (BEGIN|END) claude-secret-guard$' "$hookPath" >&2
     echo "  Manual action: open $hookPath, remove ALL claude-secret-guard blocks, then re-run /review." >&2
-    exit 4
+    exit 5
   fi
   # The on-disk block was appended verbatim from $templatePath. Compare its
   # hash to the canonical template hash ($actualHash, computed above). If they
@@ -125,6 +158,7 @@ if [ -f "$hookPath" ] && grep -qE '^# BEGIN claude-secret-guard$' "$hookPath"; t
   # and require manual disarm + reinstall, otherwise SHA-256 verification only
   # protects the install path and never catches post-install drift.
   existingBlockFile=$(mktemp)
+  trap 'rm -f "$existingBlockFile"' EXIT
   awk '/^# BEGIN claude-secret-guard$/,/^# END claude-secret-guard$/' "$hookPath" > "$existingBlockFile"
   if command -v shasum >/dev/null 2>&1; then
     existingHash=$(shasum -a 256 "$existingBlockFile" | awk '{print $1}')
@@ -133,7 +167,7 @@ if [ -f "$hookPath" ] && grep -qE '^# BEGIN claude-secret-guard$' "$hookPath"; t
   fi
   rm -f "$existingBlockFile"
   if [ "$existingHash" != "$actualHash" ]; then
-    echo "Pre-commit hook block is STALE — installed body differs from canonical template." >&2
+    echo "Pre-commit hook installation aborted — installed block is STALE; on-disk body differs from canonical template." >&2
     echo "  expected (template): $actualHash" >&2
     echo "  on-disk (block):     $existingHash" >&2
     echo "  Manual action: delete the block between '# BEGIN claude-secret-guard' and" >&2

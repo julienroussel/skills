@@ -30,19 +30,33 @@ case $ec in
   0) : ;;  # installed (or idempotent no-op)
   2)
     cat "$installErr" >&2
-    # Phase 7 report appends: "ACTION REQUIRED: pre-commit hook NOT installed — template SHA-256 mismatch. Reinstall /review from canonical source."
+    # Phase 7 report appends: "ACTION REQUIRED: pre-commit hook NOT installed — template SHA-256 mismatch OR template file missing entirely. Reinstall /review from canonical source."
     ;;
   4)
     cat "$installErr" >&2
     # Phase 7 report appends: "ACTION REQUIRED: pre-commit hook block on disk is stale; manually delete the BEGIN/END block and re-run /review to reinstall the canonical template."
     ;;
+  5)
+    cat "$installErr" >&2
+    # Phase 7 report appends: "ACTION REQUIRED: pre-commit hook NOT installed — multiple claude-secret-guard blocks detected (TAMPERING SUSPECTED). Manually remove ALL blocks between '# BEGIN claude-secret-guard' and '# END claude-secret-guard' in .git/hooks/pre-commit, then re-run /review."
+    ;;
+  1|3)
+    cat "$installErr" >&2
+    # Skip-class: exit 1 (jq absent, no shasum/sha256sum, missing .git, flock contention within
+    # 30s wait) is user-fixable; exit 3 means the user has their own pre-commit hook that
+    # /review will not touch. Both are logged as one-line skip reasons in the Phase 7 report
+    # under "Skipped".
+    ;;
   *)
     cat "$installErr" >&2
-    # Other prerequisite failures (missing jq, non-bash existing hook, missing .git, etc.) — log the one-line skip reason in the Phase 7 report under "Skipped".
+    echo "WARNING: install script returned unexpected exit code $ec — caller dispatch out of sync with scripts/install-pre-commit-secret-guard.sh" >&2
+    # Phase 7 report appends: "ACTION REQUIRED: pre-commit install script returned unrecognized exit code $ec — caller/script dispatch drift; update review/protocols/pre-commit-hook-offer.md case-block to handle exit $ec."
     ;;
 esac
 rm -f "$installErr"
 ```
+
+The case-block above MUST cover every exit code defined by the install script's exit-codes block (`scripts/install-pre-commit-secret-guard.sh`). When adding a new exit code on either side, update both files in the same commit.
 
 The install script gates the canonical template (`templates/pre-commit-secret-guard.sh.tmpl`) on: SHA-256 verification (defends against tampering), `jq` availability, `.git` directory presence, idempotent-reinstall short-circuit, shebang compatibility check (existing hooks must be bash-compatible). On failure, it writes a one-line skip reason to stderr and exits non-zero. Do NOT let an implementer construct an ad-hoc variant of the hook at runtime — the canonical template is the only sanctioned form.
 
