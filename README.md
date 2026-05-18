@@ -21,6 +21,7 @@ Shell utilities that partner with the skills. Not invoked by Claude — you run 
 |---------|------|-------------|
 | `tackle` | `bin/tackle` | Bootstrap a Claude Code session for a GitHub PR/issue or a scratch worktree. Creates an isolated worktree at `.claude/worktrees/<id>/`, pre-loads context into `CLAUDE.local.md` (auto-loaded by Claude, not committed), launches Claude with `--dangerously-skip-permissions` for non-review sessions (or `--permission-mode plan` with `--review`), and pre-types a starter prompt into the input box (not submitted; macOS only — needs Accessibility permission, see Setup). `tackle --scratch` drops a marker that `/ship` detects to rename the scratch branch in place from the diff. |
 | `seed-project-memory` | `bin/seed-project-memory` | One-shot helper to bootstrap a project's auto-memory entry. Drafts a `project_<name>.md` with placeholder sections for goals and conventions — the facts NOT derivable from the live repo (stack, git log, and `CLAUDE.md` are read fresh every run, so duplicating them would just decay). Opens the draft in `$EDITOR`, then writes to `~/.claude/projects/<encoded-cwd>/memory/` and updates the `MEMORY.md` index. Refuses to overwrite existing entries. Run once per new project. |
+| `tackle-top` | `bin/tackle-top` | Triage helper that pairs with `tackle`. Asks `claude -p` (haiku, `--json-schema` constrained) to rank a repo's open issues by tackle-priority — body excerpts + labels + reaction/comment counts as input — prints the ranked list, then (unless `--yes`/`-y`) prompts for how many to actually start. Spawns one WezTerm tab per chosen issue via `wezterm cli spawn`, each tab running `tackle <N>` in the target repo. Operates on `$PWD` or a path positional. `--dry-run` for rank-only; `--label <name>` to filter the input; `-n <count>` to set the ranking size (default 5). Falls back to `--new-window` when run from outside WezTerm. |
 
 ## How the skills work
 
@@ -121,6 +122,7 @@ Two narrative docs explain the framework when you need it (loaded on-demand via 
 ```bash
 git clone git@github.com:julienroussel/skills.git ~/.claude/skills
 ln -sf ~/.claude/skills/bin/tackle ~/.local/bin/tackle
+ln -sf ~/.claude/skills/bin/tackle-top ~/.local/bin/tackle-top
 ```
 
 After installing, run `/doctor` from any repo to verify the setup is wired up — it checks CLI tools, plugins, `settings.json` keys, installed skills, shared protocol files, hooks, and (per-repo) `.gitignore` coverage. `/doctor --fix` appends missing patterns to the current repo's `.gitignore` (per-change confirmation; never edits `settings.json` or installs anything).
