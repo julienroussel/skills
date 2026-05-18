@@ -33,11 +33,14 @@ review/protocols/                  — skill-local procedures read at Phase 1 Tr
                                      visibility checks). These extractions pull /review toward
                                      Anthropic's 500-line guideline (issue #20).
 ship/SKILL.md                      — ship working-tree changes via PR (split analysis, branching, CI
-                                     wait + opus CI-failure fix loop, merge)
-ship/protocols/                    — skill-local procedure read at Phase 1 under hard-fail + smoke-parse
+                                     wait + opus CI-failure fix loop, merge + file-overlap warning
+                                     after PR creation)
+ship/protocols/                    — skill-local procedures read at Phase 1 under hard-fail + smoke-parse
                                      guard: ci-failure-handling.md (the opus CI-fix investigate →
                                      confirm-gate → re-watch loop, 2-cycle cap + single-fire stuck-loop
-                                     advisor)
+                                     advisor); overlap-check.md (post-create PR file-overlap warning
+                                     vs currently-open PRs via gh pr list --json files; informational
+                                     only, opt-out via --no-overlap-check)
 doctor/SKILL.md                    — health-check the user's Claude Code setup + current repo
                                      (CLI tools, plugins, settings.json, installed skills, shared
                                      files, gitignore); --fix appends to repo .gitignore on
@@ -165,7 +168,7 @@ Optional: `pr-review-toolkit@claude-plugins-official` (silent-failure-hunter, ty
 - `/audit` and `/review` share the same cache files and stack detection logic (Track C). Changes to one skill's caching format must be mirrored in the other.
 - Both `/audit` and `/review` support `--converge[=N]`: a re-review loop that wraps Phases 2–6 in a repeatable cycle with auto-approval. `/review` defaults to 3 iterations (max 10) and runs a fresh-eyes security pass after convergence. `/audit` defaults to 2 iterations (max 5) — lower because the per-iteration blast radius is higher.
 - `/review` supports `--branch[=<base>]` for reviewing the full feature-branch diff (committed-on-branch + working tree) as one scope — closes the gap between bare `/review` (working tree only, misses committed work) and `--pr=N` (remote read-only, misses unpushed/uncommitted work). Default `<base>` resolves via `gh pr list --head` (linked PR) or falls back to `origin/<default-branch>` via `gh repo view`. Aborts if local HEAD is behind upstream — local files must reflect HEAD for codeExcerpt verification to be safe. Mutually exclusive with `--pr`. Implementer + validation run normally (fixes apply locally); Phase 8 creates standalone issues, NOT a PR comment.
-- `/ship` handles both single-PR and multi-PR (stacked/independent) flows. Split analysis uses semantic grouping heuristics with dependency detection between groups. On CI failure (single-PR step 13, multi-PR 11a-multi) it invokes the **CI-failure handling** procedure — an `opus` sub-agent diagnoses the failure from its own log fetch and proposes a fix, the user confirms before it is committed + re-pushed, then CI is re-watched (max 2 fix cycles). This runs in all modes; `--merge` differs only in that it proceeds to merge once CI is green.
+- `/ship` handles both single-PR and multi-PR (stacked/independent) flows. Split analysis uses semantic grouping heuristics with dependency detection between groups. On CI failure (single-PR step 13, multi-PR 11a-multi) it invokes the **CI-failure handling** procedure — an `opus` sub-agent diagnoses the failure from its own log fetch and proposes a fix, the user confirms before it is committed + re-pushed, then CI is re-watched (max 2 fix cycles). This runs in all modes; `--merge` differs only in that it proceeds to merge once CI is green. After PR creation (single-PR step 11a, multi-PR step 10a-multi), `/ship` runs the **file-overlap check** (canonical procedure: `ship/protocols/overlap-check.md`) — one `gh pr list --json files` call enumerates currently-open PRs and intersects their file sets with this PR's (or batch's). The check is informational only — it never blocks, never asks, and any failure is logged with `Overlap check skipped: <reason>` and falls through. Opt out per-run with `--no-overlap-check`. Runs on every PR-creating invocation including `--draft` and `--merge` resume mode (a resume can happen days after the original ship, and new overlaps may have appeared in the interim).
 - Auto-learned suppressions (Phase 4.5 in audit/review) require 2+ rejections of the same pattern before adding a rule — single rejections are treated as situational. Cross-run promotion to user-global memory needs 2+ rejections in 2+ separate runs (lowered from the original 3+ which empirically never fired).
 - Shared protocol files (`shared/*.md`) are validated at Phase 1 with a hard-fail guard PLUS a structural smoke-parse (each file must contain a known load-bearing substring) — catches truncation that the non-empty check misses.
 - `/audit` Phase 1 Track B uses lazy-load by default (reviewers fetch files on demand). Use `--prefetch` to restore the original pre-read behavior for ≤ 50-file scopes.
