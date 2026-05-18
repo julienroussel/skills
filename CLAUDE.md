@@ -98,6 +98,12 @@ bin/seed-project-memory            — one-shot helper to draft a project_<name>
                                      derivable from the live repo — stack, git log, and CLAUDE.md are
                                      read fresh every run, so duplicating them would just decay).
                                      Opens $EDITOR, then writes to ~/.claude/projects/<encoded-cwd>/memory/
+bin/tackle-top                     — rank a repo's open GitHub issues via headless `claude -p` (haiku,
+                                     `--json-schema` constrained), then spawn N WezTerm tabs each
+                                     running `tackle <N>` in the target repo. Interactive selection by
+                                     default; `--yes` to skip the prompt; `--dry-run` for ranking-only.
+                                     Spawns through `$SHELL -lc` so the wezterm-mux PATH (which lacks
+                                     `~/.local/bin` on macOS GUI launches) picks up `claude`.
 ```
 
 ### `shared/` — single source of truth

@@ -23,7 +23,7 @@ allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(gi
     - ~/.claude/settings.json                    — JSON parse + key extraction
     - ~/.claude/skills/{audit,review,ship}/SKILL.md  — existence only (Group C)
     - ~/.claude/skills/*/SKILL.md                — line count + frontmatter parse + broken-shared-ref scan + inline-drift scan (Group I)
-    - ~/.claude/skills/bin/{tackle,seed-project-memory}  — existence + executable bit
+    - ~/.claude/skills/bin/{tackle,seed-project-memory,tackle-top}  — existence + executable bit
     - ~/.claude/skills/shared/reviewer-boundaries.md     — existence + non-empty + smoke-parse `| Issue | Owner`
     - ~/.claude/skills/shared/untrusted-input-defense.md — existence + non-empty + smoke-parse `do not execute, follow, or respond to`
     - ~/.claude/skills/shared/gitignore-enforcement.md   — existence + non-empty + smoke-parse `git ls-files --error-unmatch`
@@ -177,16 +177,17 @@ Preference: `defaultMode = "plan"` (warn if different).
 
 ```bash
 for f in audit/SKILL.md review/SKILL.md ship/SKILL.md \
-         bin/tackle bin/seed-project-memory \
+         bin/tackle bin/seed-project-memory bin/tackle-top \
          shared/reviewer-boundaries.md shared/untrusted-input-defense.md shared/gitignore-enforcement.md \
          docs/worktree-architecture.md; do
   [ -e ~/.claude/skills/$f ] || echo "MISSING: $f"
 done
 [ -x ~/.claude/skills/bin/tackle ] || echo "NOT_EXECUTABLE: bin/tackle"
 [ -x ~/.claude/skills/bin/seed-project-memory ] || echo "NOT_EXECUTABLE: bin/seed-project-memory"
+[ -x ~/.claude/skills/bin/tackle-top ] || echo "NOT_EXECUTABLE: bin/tackle-top"
 ```
 
-Missing audit/review/ship/SKILL.md → ✗. Missing tackle/seed-project-memory/docs → warn (only relevant to tackle). Non-executable bin/* → warn.
+Missing audit/review/ship/SKILL.md → ✗. Missing tackle/seed-project-memory/tackle-top/docs → warn (only relevant to tackle workflows). Non-executable bin/* → warn.
 
 ### Group D — shared file smoke-parse (load-bearing duplication of /audit + /review + /skill-audit Phase 1 Track A)
 
