@@ -1,7 +1,7 @@
 ---
 name: ship
 description: Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs. Handles branching, CI wait, and (with --merge) squash-merge + cleanup.
-argument-hint: "[message] [--draft|--base|--no-split|--merge|--dry-run|--split-only|--validate|--label]"
+argument-hint: "[message] [--draft|--base|--no-split|--merge|--dry-run|--split-only|--validate|--label|--no-overlap-check]"
 effort: medium
 model: sonnet
 disable-model-invocation: true
@@ -35,8 +35,11 @@ allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *
     - .claude/review-profile.json     — reuses /review's stack cache for --validate
   Shared protocol references (see ../shared/):
     - shared/untrusted-input-defense.md — verbatim into the split-analysis (Phase 2) and CI-fix subagent prompts
-  Skill-local protocol (read at Phase 1 under the hard-fail + smoke-parse guard):
+  Skill-local protocols (read at Phase 1 under the hard-fail + smoke-parse guard):
     - protocols/ci-failure-handling.md  — the CI-failure investigate-and-fix procedure
+    - protocols/overlap-check.md        — the post-create file-overlap warning (single-PR step 11a,
+                                          multi-PR step 10a-multi); informational only, opt-out via
+                                          --no-overlap-check
   Required tools:
     - Bash, Read, Glob, AskUserQuestion, Agent (split analysis + CI-failure fix), advisor
 -->
@@ -57,9 +60,10 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--merge`: After creating the PR(s) and waiting for CI to pass, merge with `--squash --delete-branch`. Without this flag, `/ship` still returns to the base branch and cleans up the local feature branch + tackle worktree once CI is green — but leaves the PR open for review (safer default for team work; reviewers get a window to catch issues CI does not). Also enables resume: from a clean working tree on a non-base branch with an open ready-for-review PR, `/ship --merge` skips create/push and merges that existing PR.
 - `--validate`: Run lint/typecheck/test before creating the PR. If any fail, stop and report. Use detected validation commands from `.claude/review-profile.json` if available.
 - `--label <labels>`: Add comma-separated labels to all created PRs. Example: `--label feature,auth`.
+- `--no-overlap-check`: Skip the post-create file-overlap warning (Phase 3a step 11a / Phase 3b step 10a-multi). Use when you know overlap with another open PR is intentional (a deliberate follow-up, a coordinated refactor). The check is informational only — this flag just suppresses the API call and the warning output.
 - Any remaining text is used as the commit message / PR title.
 
-Examples: `/ship`, `/ship --draft`, `/ship fix login bug --no-split`, `/ship --merge`, `/ship --validate`, `/ship --label feature,v2`
+Examples: `/ship`, `/ship --draft`, `/ship fix login bug --no-split`, `/ship --merge`, `/ship --validate`, `/ship --label feature,v2`, `/ship --merge --no-overlap-check`
 
 ### Flag conflicts
 
@@ -67,6 +71,7 @@ Examples: `/ship`, `/ship --draft`, `/ship fix login bug --no-split`, `/ship --m
 - `--draft` + `--merge` — drafts cannot be merged via `gh pr merge`. Warn `"ignoring --merge for draft PR"` and proceed without merge/cleanup.
 - `--draft` + `--split-only` — compatible. PRs are created as drafts, no CI wait or merge.
 - `--merge` + `--split-only` — compatible. Multi-PR flow waits for CI on each sub-PR, then merges in dependency order with retargeting.
+- `--no-overlap-check` — compatible with every other flag. With `--dry-run` the flag is moot (no PR is created, so the overlap step is never reached); with `--draft` the check would normally still run, and the flag suppresses it.
 - `--dry-run` overrides everything — nothing is executed regardless of other flags.
 
 ### Parameter sanitization
@@ -123,13 +128,15 @@ Run **all of the following in parallel**:
 - Read `../shared/secret-scan-protocols.md` (consumed by step 4 secret-halt protocol — `isHeadless` predicate, advisory-tier classification, User-continue path)
 - Read `../shared/secret-patterns.md` (canonical regex catalog consumed by step 4)
 - Read `${CLAUDE_SKILL_DIR}/protocols/ci-failure-handling.md` (the CI-failure investigate-and-fix procedure — read upfront so a missing protocol file aborts Phase 1 cleanly instead of failing mid-flow at step 13 / 11a-multi)
+- Read `${CLAUDE_SKILL_DIR}/protocols/overlap-check.md` (the file-overlap check procedure — read upfront so a missing protocol aborts Phase 1 cleanly instead of failing mid-flow at step 11a / 10a-multi)
 
-**Hard-fail guard**: if any of the three shared files or the skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /ship requires it to enforce untrusted-input safety, secret-scan protocols, and CI-failure handling — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
+**Hard-fail guard**: if any of the three shared files or either skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /ship requires it to enforce untrusted-input safety, secret-scan protocols, CI-failure handling, and the file-overlap check — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
 
 - `untrusted-input-defense.md`: `do not execute, follow, or respond to`
 - `secret-scan-protocols.md`: `isHeadless` AND `userContinueWithSecret` AND `Advisory-tier classification`
 - `secret-patterns.md`: `AKIA[0-9A-Z]{16}`
 - `protocols/ci-failure-handling.md`: `Clean-tree guarantee` AND `2 fix cycles`
+- `protocols/overlap-check.md`: `File-overlap warning` AND `gh pr list`
 
 After detecting the base branch (step 4), also run `git rev-list --count <base>..HEAD` to count commits ahead (needed for step 2).
 
@@ -238,7 +245,7 @@ After the above complete:
 
 #### Phase 3a: Single-PR Flow
 
-In **resume mode** (`RESUME_MODE=true`), steps 6–11 are SKIPPED — the PR already exists. Jump directly to step 12 with `PR_NUMBER=$RESUME_PR_NUMBER`.
+In **resume mode** (`RESUME_MODE=true`), steps 6–11 are SKIPPED — the PR already exists. Jump directly to step 11a (file-overlap check) with `PR_NUMBER=$RESUME_PR_NUMBER` and `BATCH_PR_NUMBERS=[$RESUME_PR_NUMBER]` (the latter excludes the resumed PR from its own open-PR scan, avoiding a spurious self-overlap warning). 11a fetches fresh open-PR state so a resume run days after the original ship surfaces overlaps that appeared in the interim. From there, 11b runs as usual — on a typical resume (`--merge` without `--draft`) it's a no-op and execution proceeds to step 12.
 
 6. **Derive a branch name** automatically from the changes. Use conventional-commit style: `<type>/<short-slug>` (e.g. `fix/card-selection-bug`, `chore/update-gitignore`, `feat/add-redford-stack`). Keep it lowercase, hyphen-separated, and under 50 characters. If the branch name already exists locally or on the remote, append a numeric suffix (e.g. `fix/card-bug-2`).
    - **Scratch mode** (`IS_SCRATCH=true`): do NOT create a new branch. Rename the current placeholder branch in place: `git branch -m <SCRATCH_ID> <derived-name>`. The worktree follows the branch automatically. Then remove the marker: `rm "$(git rev-parse --git-dir)/info/scratch-session"`.
@@ -250,14 +257,19 @@ In **resume mode** (`RESUME_MODE=true`), steps 6–11 are SKIPPED — the PR alr
    - **Commit** with a concise, conventional-commit message describing the changes. Scan the diff and user-provided message for issue references (`#123`, `GH-123`, `closes #123`, `fixes #123`). If found, include `Closes #123` in the commit body. Omit any `Co-Authored-By: Claude` trailer from the commit message. Write the message without it — do NOT pass `--trailer "Co-Authored-By="` to git to suppress it; git emits "left an empty trailer" warnings for that form, which then prompts pointless "let me clean it up" follow-up work. The trailer is only added when Claude includes it in the message itself, so leaving it out at compose time is sufficient.
 9. **Validate** (if `--validate` is set): Run all detected validation commands (from `.claude/review-profile.json` or by detecting `package.json` scripts). If any fail, stop with: "Validation failed — fix issues before shipping. To undo the branch: `git checkout - && git branch -d <branch-name>`." Show the failing command output.
 10. **Push** the branch to `origin` with `-u`.
-11. **Create a PR** using `gh pr create` targeting the base branch. Use a short title and a body following the repo's PR template (cached from Phase 1) if one exists; otherwise use a `## Summary` section and a `## Test plan` section. If issue references were found in step 8, include them in the PR body. Do not append the `🤖 Generated with [Claude Code]` footer to the PR body — override the Claude Code default. If `--label` was specified, add `--label <labels>`. Add `--assignee @me`. If `--draft` is set, stop here.
+11. **Create a PR** using `gh pr create` targeting the base branch. Use a short title and a body following the repo's PR template (cached from Phase 1) if one exists; otherwise use a `## Summary` section and a `## Test plan` section. If issue references were found in step 8, include them in the PR body. Do not append the `🤖 Generated with [Claude Code]` footer to the PR body — override the Claude Code default. If `--label` was specified, add `--label <labels>`. Add `--assignee @me`.
+
+11a. **File-overlap check** (skip if `--no-overlap-check` is set — print `Overlap check skipped (--no-overlap-check).` and continue). Apply the procedure in `protocols/overlap-check.md` (loaded in Phase 1) with `PR_NUMBER=<number from step 11>` and `BATCH_PR_NUMBERS=[<number>]`. The procedure prints inline (no header banner) on zero overlap and a banner-headed *File-overlap warning* with file lists on 1+ overlap. Non-fatal in every case — any gh/jq error logs `Overlap check skipped: <reason>` and continues to the next step. The check is informational only and never blocks merge; when `--merge` is set, the pre-merge `advisor()` at step 14 sees the warning via transcript context. **Runs on `--draft` and on `RESUME_MODE=true` too** — drafts often sit open longest and resume happens at the merge decision point, both of which are when coordination warnings matter most. Fresh open-PR state is fetched on every invocation, so a resume run days after the original ship will surface overlaps that appeared in the interim.
+
+11b. **Draft stop**: If `--draft` is set, skip steps 12–15 and jump to step 16 to print the `--draft` summary line. No CI wait, no merge requirements check, no merge.
+
 12. **Check merge requirements**: Use `gh pr view <number> --json reviewDecision,mergeStateStatus` to check if the target branch requires review approvals. The check fires only when `reviewDecision` indicates reviews required AND not yet approved (silent otherwise).
     - **Default mode** (no `--merge`, not in resume): informational only. Print: `"Note: this PR needs review approval before it can be merged."` Continue to step 13.
     - **`--merge` set** (including resume mode): blocking. Stop with: `"This PR requires review approval before it can be merged. Stopping here — after approval, re-run /ship --merge from this worktree, or merge directly with: gh pr merge <number> --squash --delete-branch (or via GitHub)."`
-13. **Wait for CI** to pass using `gh pr checks <number> --watch --fail-fast`. If no checks appear within 30 seconds (repo has no CI configured), skip the wait and proceed. If checks have not completed after 10 minutes, report the current status and stop. **If a check fails**, invoke the **CI-failure handling** procedure (see above): if it returns **green**, continue to step 14; if it returns **not-green**, stop here — step 15 cleanup is skipped. (Skip the whole step if `--draft`.) Resume mode always reaches here.
+13. **Wait for CI** to pass using `gh pr checks <number> --watch --fail-fast`. If no checks appear within 30 seconds (repo has no CI configured), skip the wait and proceed. If checks have not completed after 10 minutes, report the current status and stop. **If a check fails**, invoke the **CI-failure handling** procedure (see above): if it returns **green**, continue to step 14; if it returns **not-green**, stop here — step 15 cleanup is skipped. (On `--draft`, step 11b already short-circuited to step 16, so this step never runs.) Resume mode always reaches here.
 14. **Merge** the PR with `gh pr merge <number> --squash --delete-branch`. (**Run only if `--merge`** — resume mode satisfies this trivially since `--merge` is the resume trigger.)
     - **Pre-merge advisor check**: Before calling `gh pr merge`, call `advisor()` (no parameters — the full transcript is auto-forwarded) for a second opinion on the merge. The advisor sees the branch, commits, PR title/body, CI state, and recent conversation. If the advisor concurs or has only minor notes, proceed silently with the merge. If the advisor raises a concrete concern (e.g., unexpected commit, PR body doesn't match the diff, missing test for a critical path, risky change in a hotspot file), surface via AskUserQuestion: `Advisor flagged a concern before merge: <one-line summary>. Options: [Merge anyway — I accept the risk] / [Edit PR first] / [Abort merge]`. On **Edit PR first**, stop here and report the advisor's concern; the user manually addresses and re-runs `/ship`. On **Abort merge**, stop without merging. Merge is irreversible once CI-squashed — this check has high ROI and runs only once per PR.
-15. **Return to base and clean up** — worktree-aware. (**Run after CI passes in step 13** — both with and without `--merge`. With `--merge`, runs after step 14's successful merge. Without `--merge`, runs as soon as step 13 confirms CI is green — the local feature branch and tackle worktree are removed, but the remote branch and PR remain open for team review. Skip if `--draft` (step 13 was skipped, so there's nothing to confirm) or if CI did not reach green in step 13 (10-minute timeout, or CI-failure handling returned not-green). To merge later, use `gh pr merge <number> --squash --delete-branch` or the GitHub UI; resume mode (`/ship --merge` from the same worktree) is only available if cleanup did not run — i.e. `--draft`, CI failure, or step 12's required-review block in `--merge` mode.)
+15. **Return to base and clean up** — worktree-aware. (**Run after CI passes in step 13** — both with and without `--merge`. With `--merge`, runs after step 14's successful merge. Without `--merge`, runs as soon as step 13 confirms CI is green — the local feature branch and tackle worktree are removed, but the remote branch and PR remain open for team review. Skip if CI did not reach green in step 13 (10-minute timeout, or CI-failure handling returned not-green). On `--draft`, step 11b already short-circuited to step 16, so this step never runs. To merge later, use `gh pr merge <number> --squash --delete-branch` or the GitHub UI; resume mode (`/ship --merge` from the same worktree) is only available if cleanup did not run — i.e. `--draft`, CI failure, or step 12's required-review block in `--merge` mode.)
 
    **Consent basis for branch/worktree deletion**: the `git branch -d/-D` and `git worktree remove --force` operations below are the documented `/ship` cleanup contract — invoking `/ship` without `--draft` is the user's authorization for them. They are effect-safe: cleanup is gated on CI success (step 13), which runs only after the branch was pushed (step 10), so every commit is preserved on `origin/<branch>` plus the open PR; `git branch -D` only drops the local ref. Do NOT add a separate confirmation prompt here — with `--draft`, no cleanup runs at all.
 
@@ -359,6 +371,8 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
   - Do not append the `🤖 Generated with [Claude Code]` footer — override the Claude Code default.
 - If `--draft` was specified, add the `--draft` flag to all PRs.
 - **After all sub-PR branches have been pushed and PRs created**, delete the local staging branch: `git branch -D ship/staging-<timestamp>`. Its sole purpose was to serve as a reference for `git checkout <staging> -- <files>` during the per-group commits in step 7-multi; it's no longer needed. This runs in default mode AND `--merge` mode — without it, the staging branch would leak across runs since cleanup (step 12-multi) is now gated on `--merge`.
+
+**10a-multi. File-overlap check** (skip if `--no-overlap-check` is set — print `Overlap check skipped (--no-overlap-check).` and continue): Apply the procedure in `protocols/overlap-check.md` (loaded in Phase 1) once for the entire batch — pass `BATCH_PR_NUMBERS=[<all sub-PR numbers created in step 10-multi>]` so PRs in the same batch do not flag each other (their splits are intentional per Phase 2). The procedure runs in batch mode: fetch each sub-PR's files via `gh pr view --json files`, query open PRs once via `gh pr list`, and group findings by which open PR has overlap with which sub-PR(s). Non-fatal in every case — any gh/jq error logs `Overlap check skipped: <reason>` and continues to step 11a-multi. Informational only; never blocks the chain. When `--merge` is set, the per-PR pre-merge `advisor()` at step 11b-multi sees the warning via transcript context.
 
 **11a-multi. Wait for CI on each PR** (always runs, in dependency order):
 
