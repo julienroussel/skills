@@ -83,6 +83,12 @@ shared/cache-schema-validation.md  — canonical schema validation for .claude/r
                                      availability probe and same-session shortcut. Read by /audit and
                                      /review at Phase 1 Track A (hard-fail + smoke-parse guard); applied
                                      at Track C and Track D cache-load sites.
+shared/phase1-track-a-protocol.md  — canonical Phase 1 Track A hard-fail guard: algorithm + Canonical
+                                     Anchor Table (one row per shared/*.md with load-bearing smoke-parse
+                                     substrings). Consumed by /audit, /review, /skill-audit at Phase 1
+                                     Track A (hard-fail abort); /doctor Group D reads at runtime for
+                                     drift reporting (warn-only). Documents self-reference escape hatch
+                                     and rules for adding new shared files.
 skill-audit/cache/refs.json        — /skill-audit Phase 1 Track C live-references cache (Anthropic skills doc,
                                      env-vars doc, claude-code CHANGELOG); 7-day TTL, stale-cache fallback,
                                      `--refresh-refs` to force refresh; /doctor Group I warns if > 30 days old
@@ -111,7 +117,7 @@ bin/tackle-top                     — rank a repo's open GitHub issues via head
 
 ### `shared/` — single source of truth
 
-Files in `shared/` are referenced by `/audit`, `/review`, and `/skill-audit` at Phase 1 Track A. Each SKILL.md reads them in parallel with the other config files and enforces a **hard-fail guard**: if any shared file is missing, empty, or fails to Read, Phase 1 aborts immediately. Rationale: the inline duplicates at former call-sites were removed to eliminate drift; a missing shared file means the skill's guarantees (reviewer boundaries, untrusted-input safety, cache-write .gitignore checks) cannot be enforced, and silently degrading coverage is worse than aborting.
+Files in `shared/` are referenced by `/audit`, `/review`, and `/skill-audit` at Phase 1 Track A. Each SKILL.md reads its declared subset in parallel with the other config files and enforces a **hard-fail guard**: if any shared file is missing, empty, fails to Read, or fails the structural smoke-parse defined in `phase1-track-a-protocol.md`, Phase 1 aborts immediately. Rationale: the inline duplicates at former call-sites were removed to eliminate drift; a missing shared file means the skill's guarantees (reviewer boundaries, untrusted-input safety, cache-write .gitignore checks) cannot be enforced, and silently degrading coverage is worse than aborting.
 
 Usage pattern per file:
 - `reviewer-boundaries.md` — passed verbatim into every reviewer subagent prompt.
@@ -123,6 +129,7 @@ Usage pattern per file:
 - `abort-markers.md` — referenced at Phase 7 step 16 to render the correct marker per `abortReason`. Single source of truth for the `abortReason` enum.
 - `secret-warnings-schema.md` — referenced at every `.claude/secret-warnings.json` append. `/review` writes at Phase 5.6, Phase 6 regression re-scan, Convergence Phase 5.6, and Fresh-eyes; `/audit` writes at Phase 5.6 and Phase 6 regression re-scan. Both skills MUST preserve the top-level `consumerEnforcement` value and the rich-wrapper shape across writes — the file is co-written and the previous `/audit` flat-array form is no longer accepted.
 - `advisor-criteria.md` — passed verbatim to `/skill-audit`'s `advisor-coverage-reviewer` (the only consumer today). Extracted from Anthropic's published advisor tool guidance so the criteria are portable across users — explicitly NOT sourced from any individual user's `~/.claude/CLAUDE.md`. If Anthropic's advisor guidance changes, update this file (and bump the `Last verified` timestamp at the bottom).
+- `phase1-track-a-protocol.md` — read at Phase 1 Track A by `/audit`, `/review`, `/skill-audit` (as a shared file) AND parsed by them for the Canonical Anchor Table that drives the structural smoke-parse. `/doctor` Group D consumes the same canonical at runtime to smoke-parse every shared file (warn-only). Each consumer hardcodes one self-reference anchor (`Canonical Anchor Table`) to break the circularity. Abort message wording is **not canonical** — consumers own it; the file documents that intentional divergence (`/audit` and `/review` use inline prose; `/skill-audit` uses the `[ABORT — SHARED FILE MISSING]` marker).
 
 ## Skill file anatomy
 

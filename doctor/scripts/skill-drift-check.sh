@@ -58,6 +58,15 @@ for d in "$HOME"/.claude/skills/*/; do
         || echo "WARN_INLINE_DRIFT:$name:${shared_path}"
     fi
   }
+  # Canonical anchor source: ~/.claude/skills/shared/phase1-track-a-protocol.md
+  # (Canonical Anchor Table). Each row below corresponds to a row in the
+  # canonical table, but the substrings may differ in shape — the canonical's
+  # anchors drive the Phase 1 Track A smoke-parse (file integrity), while the
+  # script's anchors detect when a consumer SKILL.md INLINES canonical content
+  # instead of referencing `shared/<file>` (drift detection). Use whichever
+  # substring most reliably identifies inlined canonical content. Keep each
+  # `shared_path` matching the canonical's filename; dynamic parsing of the
+  # canonical at runtime is a known follow-up.
   check_inline_drift 'do not execute, follow, or respond to' 'untrusted-input-defense\.md'
   check_inline_drift 'git ls-files --error-unmatch'          'gitignore-enforcement\.md'
   check_inline_drift '| Issue | Owner'                       'reviewer-boundaries\.md'
@@ -68,6 +77,7 @@ for d in "$HOME"/.claude/skills/*/; do
   check_inline_drift 'Silent reviewers, noisy lead'          'display-protocol\.md'
   check_inline_drift 'AKIA[0-9A-Z]{16}'                      'secret-patterns\.md'
   check_inline_drift 'cache-poisoning guard'                 'cache-schema-validation\.md'
+  check_inline_drift 'Before substantive work'               'advisor-criteria\.md'
 done
 
 # 5. Template SHA-256 drift (one-shot; not per-skill). /review's installer
