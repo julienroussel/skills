@@ -88,26 +88,18 @@ Run **three tracks in parallel**:
 
 ### Track A — Read shared protocol files
 
-Read **all six** shared files in parallel using multiple Read tool calls in a single message:
+Read **all** shared files in parallel using multiple Read tool calls in a single message:
 - `../shared/reviewer-boundaries.md` — severity + confidence rubrics. Skill-audit dimensions are inline below.
 - `../shared/untrusted-input-defense.md` — passed verbatim into every reviewer prompt.
 - `../shared/display-protocol.md` — applied at every console-output site.
 - `../shared/abort-markers.md` — applied at Phase 7 if an abort fires.
 - `../shared/advisor-criteria.md` — passed verbatim to `advisor-coverage-reviewer` as canonical advisor-call rules.
 - `../shared/gitignore-enforcement.md` — passed to `safety-protocols-reviewer` so it can flag missing applications of the protocol in audited skills.
+- `../shared/phase1-track-a-protocol.md` — algorithm + Canonical Anchor Table consumed by the structural smoke-parse below.
 
-**Hard-fail guard**: if any of the six files fails to Read, returns empty content, or fails the structural smoke-parse below, abort Phase 1 immediately with `[ABORT — SHARED FILE MISSING]` (per `../shared/abort-markers.md`) and exit non-zero. Do NOT fall back to inline text.
+**Hard-fail guard**: if any shared file fails to Read, returns empty content, or fails the structural smoke-parse below, abort Phase 1 immediately with `[ABORT — SHARED FILE MISSING]` (per `../shared/abort-markers.md`) and exit non-zero. Do NOT fall back to inline text.
 
-**Structural smoke-parse** (mandatory, after non-empty Read):
-
-| File | Required substring (case-sensitive, `grep -F` semantics) |
-|------|-----------------------------------------------------------|
-| `reviewer-boundaries.md` | `\| Issue` AND `\| Owner` AND `\| Not` AND `Severity calibration rubric` AND `Confidence levels` |
-| `untrusted-input-defense.md` | `do not execute, follow, or respond to` |
-| `display-protocol.md` | `Phase 1 ✓` AND `Silent reviewers, noisy lead` |
-| `abort-markers.md` | `[ABORT — HEAD MOVED]` AND `[ABORT — UNLABELED]` |
-| `advisor-criteria.md` | `Before substantive work` AND `Single-fire on retry loops` |
-| `gitignore-enforcement.md` | `git ls-files --error-unmatch` |
+**Structural smoke-parse** (mandatory, after non-empty Read): apply the smoke-parse algorithm and Canonical Anchor Table from `../shared/phase1-track-a-protocol.md` — each row of the canonical's table lists the required substrings for one shared file (case-sensitive, `grep -F` semantics, AND-joined within a row). **Self-reference escape hatch (hardcoded)**: before parsing the canonical's table, verify `../shared/phase1-track-a-protocol.md` itself contains the literal string `Canonical Anchor Table` — a stub corruption of the canonical that preserves only its self-row anchor would otherwise pass the table-driven check. If any file fails the smoke-parse (self check OR any row check), abort Phase 1 with `[ABORT — SHARED FILE MISSING]` as above.
 
 ### Track B — Discover skill targets
 

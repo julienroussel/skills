@@ -73,15 +73,21 @@ Pick a substring that is:
 
 ### Where the anchor lives
 
-The anchor string lives in *the consumer's* Phase 1 Track A read list, not in the shared file itself. Example from `/review`:
+There are two patterns, by file type:
+
+**`shared/*.md`** — anchors live in **`shared/phase1-track-a-protocol.md`**'s Canonical Anchor Table. Each row maps a shared file to its required substrings; every consumer applies the same algorithm against this table at runtime. Consumers do not declare per-file anchors. Example row from the canonical:
 
 ```
-| `reviewer-boundaries.md` | `| Issue` AND `| Owner` AND `| Not` |
+| `reviewer-boundaries.md` | `\| Issue` AND `\| Owner` AND `\| Not` AND `Severity calibration rubric` AND `Confidence levels` |
 ```
 
-The shared file doesn't declare "my anchor is X" — that would just push the drift problem into the shared file. The anchor is an *agreement* between consumer and shared file, asserted by the consumer.
+The earlier pattern (anchor lists duplicated in every consumer's Phase 1 Track A) had four copies — `/audit`, `/review`, `/skill-audit`, and `/doctor` Group D — and they drifted (issues #21 and #30 traced exactly this). The canonical eliminates the drift surface. The rationale "putting the anchor in a shared file just pushes the drift into the shared file" turned out to be wrong in practice: N consumer copies have N-way drift potential, one canonical table has none. `/doctor` Group D reads the canonical at runtime AND cross-checks `shared/*.md` directory membership against the table, so a corrupted canonical (e.g., stubbed back to its self-row) is also detected.
 
-When multiple consumers reference the same shared file, **they should use the same anchor set**. Drift in anchor lists between `/audit` and `/review` is a `/skill-audit` finding (`shared-drift-reviewer` flags it).
+**`<skill>/protocols/*.md`** — anchors still live in *the consumer's* Phase 1 Track A read list. These files are skill-local (only one consumer), so there is no drift concern. Example from `/review`:
+
+```
+- `${CLAUDE_SKILL_DIR}/protocols/finding-sanity-check.md` — `content-excerpt match`
+```
 
 ### Anchor escaping
 
@@ -106,10 +112,19 @@ In each case, the silent degradation is worse than the abort. **Fail-closed is t
 ### The guard skeleton
 
 ```
-- Read shared/<file>.md (record byte size + first-line hash for later re-verification)
-- Smoke-parse: grep -F '<anchor>' shared/<file>.md
+- Read the file (shared/<name>.md or <skill>/protocols/<name>.md)
+  + record byte size + first-line hash for later re-verification
+- Determine the anchor:
+  + shared/*       → look up the row in shared/phase1-track-a-protocol.md's
+                     Canonical Anchor Table (apply the canonical's algorithm)
+  + protocols/*    → anchor is declared inline in the consumer's read list
+- Smoke-parse: grep -F '<anchor>' <file>
 - If Read fails OR content is zero bytes / whitespace-only OR grep -F exits non-zero:
   abort Phase 1 with [ABORT — SHARED FILE MISSING] per shared/abort-markers.md
+- For shared/*: also verify shared/phase1-track-a-protocol.md itself contains
+  the literal "Canonical Anchor Table" BEFORE parsing it (self-reference escape
+  hatch — without this, a stub corruption that preserves only the canonical's
+  self-row anchor would pass the table-driven check falsely)
 - Do NOT fall back to inline text — the inline duplicates were intentionally removed
   to eliminate drift; a missing shared file means the skill's guarantees cannot
   be enforced.
@@ -186,11 +201,13 @@ Skills that grant `allowed-tools` pre-authorize the listed tools without per-cal
 
 When *modifying* a `shared/*.md` or `<skill>/protocols/*.md` file:
 
-1. **Preserve the smoke-parse anchor.** If the consumer's anchor is `git ls-files --error-unmatch`, that exact string must remain in the file. Re-wording the canonical command breaks every consumer's Phase 1 Track A.
-2. **Update all consumers in the same change.** If you add a new anchor to a shared file, update every consumer's smoke-parse list to match. Don't leave one consumer with the old anchor — that's a drift surface.
+1. **Preserve the smoke-parse anchor.** If the canonical row says `git ls-files --error-unmatch` is required, that exact string must remain in the file. Re-wording the canonical command breaks every consumer's Phase 1 Track A.
+2. **Update the right anchor location.**
+   - For `shared/*`: update the row in `shared/phase1-track-a-protocol.md`'s Canonical Anchor Table. Single source of truth — every consumer verifies against this table at runtime, so no consumer-by-consumer follow-ups.
+   - For `<skill>/protocols/*`: update the consumer's Phase 1 Track A read list directly. Only one consumer; no canonical exists.
 3. **Don't introduce per-consumer carve-outs.** If `/audit` needs section X but `/review` doesn't, that's a sign the section belongs in `<audit>/protocols/` rather than `shared/`. Shared files should be consumed identically by all consumers.
 4. **Bump dates / verification stamps when applicable.** `shared/advisor-criteria.md` has a `Last verified` footer that should be updated when the file is reviewed against Anthropic's published guidance.
-5. **Consider whether the change should ripple into `/doctor`'s Group I drift checks.** New shared file → new entry in `doctor/scripts/skill-drift-check.sh` so `/doctor` catches inline duplication.
+5. **Adding a new `shared/*.md` file**: follow the "Rules for adding a new `shared/*.md` file" section in `shared/phase1-track-a-protocol.md` (create file → choose anchor → add row to canonical table → update consumer read lists → update CLAUDE.md inventory → run `/doctor` to confirm Group D coverage). Also update `doctor/scripts/skill-drift-check.sh` if the file has consumer-inlining risk (most shared files do).
 
 ---
 

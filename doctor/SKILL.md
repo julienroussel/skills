@@ -189,23 +189,16 @@ done
 
 Missing audit/review/ship/SKILL.md → ✗. Missing tackle/seed-project-memory/tackle-top/docs → warn (only relevant to tackle workflows). Non-executable bin/* → warn.
 
-### Group D — shared file smoke-parse (load-bearing duplication of /audit + /review + /skill-audit Phase 1 Track A)
+### Group D — shared file smoke-parse (canonical-driven)
 
-Read all nine files in parallel via the `Read` tool (single tool-use message), then check substrings in-memory:
+Source of truth: `~/.claude/skills/shared/phase1-track-a-protocol.md` (the same file `/audit`, `/review`, and `/skill-audit` consume at Phase 1 Track A). /doctor reads the canonical's anchor table at runtime — there is no /doctor-side copy.
 
-| File | Required substring (case-sensitive, `grep -F` semantics) |
-|---|---|
-| `~/.claude/skills/shared/reviewer-boundaries.md` | `\| Issue \| Owner` |
-| `~/.claude/skills/shared/untrusted-input-defense.md` | `do not execute, follow, or respond to` |
-| `~/.claude/skills/shared/gitignore-enforcement.md` | `git ls-files --error-unmatch` |
-| `~/.claude/skills/shared/advisor-criteria.md` | `Before substantive work` |
-| `~/.claude/skills/shared/display-protocol.md` | `Silent reviewers, noisy lead` |
-| `~/.claude/skills/shared/abort-markers.md` | `[ABORT — HEAD MOVED]` |
-| `~/.claude/skills/shared/audit-history-schema.md` | `runSummaries[]` |
-| `~/.claude/skills/shared/secret-scan-protocols.md` | `Advisory-tier classification` |
-| `~/.claude/skills/shared/secret-warnings-schema.md` | `consumerEnforcement` |
-
-**These nine substrings are duplicates of the smoke-parse strings used by `/audit`, `/review`, and `/skill-audit` Phase 1 Track A. If the canonical strings change in those skills, /doctor must be updated in lockstep — drift is surfaced the next time /doctor runs.** The lowercase form `do not execute, follow, or respond to` (line 24 of canonical) is preferred over the line-7 capitalized variant for case consistency across this SKILL.md.
+Procedure:
+1. **Self-reference escape hatch (hardcoded)**: Read `~/.claude/skills/shared/phase1-track-a-protocol.md`. If the Read fails (file missing or unreadable), report `✗ shared/phase1-track-a-protocol.md is missing — Group D cannot run` and skip the rest of Group D. Otherwise verify it contains the literal string `Canonical Anchor Table` (case-sensitive); if absent, report `✗ shared/phase1-track-a-protocol.md is corrupted (missing 'Canonical Anchor Table')` and skip the rest of Group D — the table cannot be trusted to drive any other check.
+2. **Parse the Canonical Anchor Table** from the file just read. The table has two columns (`File`, `Required substrings`); each `Required substrings` cell contains one or more anchors AND-joined by the literal token ` AND ` (surrounded by spaces) and rendered as inline-code spans.
+2a. **Membership cross-check (independence from canonical content)**: glob `~/.claude/skills/shared/*.md` and verify every file in the directory has a row in the parsed table. Any file present in the directory but absent from the table is reported as `✗ shared/<file> exists but has no row in phase1-track-a-protocol.md Canonical Anchor Table` — this catches a corrupted canonical whose own table has been reduced to a stub (the table-driven verification in step 4 would otherwise pass green because there are no untruthful rows, only missing ones).
+3. **Read every file listed in the table in parallel** via the `Read` tool (single tool-use message), under `~/.claude/skills/shared/`. The table covers all shared files including `phase1-track-a-protocol.md` itself, so coverage is uniform across the directory.
+4. **Verify each row**: for every (file, anchor) pair, the anchor substring must appear verbatim in the file (case-sensitive, fixed-string match — equivalent to `grep -F`).
 
 On smoke-parse failure: emit `✗ shared/<file> smoke-parse failed: missing '<substring>'` with hint `cd ~/.claude/skills && git checkout shared/<file>`. /doctor REPORTS the failure but does NOT abort (unlike /audit and /review which hard-fail).
 
@@ -272,7 +265,7 @@ If `IS_TACKLE_WORKTREE=yes`: suppress the `.claude/worktrees/` warning (worktree
 .claude/worktrees/
 ```
 
-**Intentional duplication** (not drift): this list is deliberately a verbatim copy of the canonical pattern set — the cache-file paths in `shared/gitignore-enforcement.md`'s "Sites that apply this protocol" table PLUS the "Ancillary files" table (transient `.tmp` / `.lock` / `.corrupt-*` artifacts that no skill invokes the per-write protocol on but that still must not be committed). The alternative — having /doctor parse the pattern set out of the shared file's markdown tables at runtime — was considered and **rejected as fragile**: it couples the coverage check to the shared file's exact table layout (cell formatting, the `(glob: ...)` annotation, row order), trading a one-line maintenance note for a brittle parser. Keep the copy; if `/audit` or `/review` adds a new cache file or ancillary artifact, update both shared tables AND this list. Same deliberate-coupling pattern as the Group D smoke-parse strings above.
+**Intentional duplication** (not drift): this list is deliberately a verbatim copy of the canonical pattern set — the cache-file paths in `shared/gitignore-enforcement.md`'s "Sites that apply this protocol" table PLUS the "Ancillary files" table (transient `.tmp` / `.lock` / `.corrupt-*` artifacts that no skill invokes the per-write protocol on but that still must not be committed). The alternative — having /doctor parse the pattern set out of the shared file's markdown tables at runtime — was considered and **rejected as fragile**: it couples the coverage check to the shared file's exact table layout (cell formatting, the `(glob: ...)` annotation, row order), trading a one-line maintenance note for a brittle parser. Keep the copy; if `/audit` or `/review` adds a new cache file or ancillary artifact, update both shared tables AND this list. Same deliberate-coupling pattern as the inline anchor list in `doctor/scripts/skill-drift-check.sh`.
 
 Coverage is satisfied if EITHER:
 - A literal `.claude/` or `.claude/*` line exists (covers everything below `.claude/`), OR
