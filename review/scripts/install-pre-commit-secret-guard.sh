@@ -68,7 +68,7 @@
 
 set -euo pipefail
 
-EXPECTED_TEMPLATE_SHA256="33cef21e2deb906ab20588d41a6b009c91d0f2cbca3d603ee635dc3e58a63616"
+EXPECTED_TEMPLATE_SHA256="8ba769b1c994aaf5c513dd0baccba3caff1631320092fdd1de862a1264040127"
 
 scriptDir=$(cd "$(dirname "$0")" && pwd -P)
 templatePath="$scriptDir/../templates/pre-commit-secret-guard.sh.tmpl"
