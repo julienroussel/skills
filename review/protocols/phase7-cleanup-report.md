@@ -25,7 +25,7 @@ Flag semantics:
 - `freshEyesMandatory=false` — set to `true` when `--auto-approve` is combined with `--converge` (either explicitly or auto-added by headless logic).
 - `abortReason=""` — set alongside `abortMode=true` at any abort site. Used by step 16 of the report to render the corresponding marker. Allowed values are defined in `../../shared/abort-markers.md` (single source of truth for the enum). Reset to `""` only at program start; subsequent abort sites overwrite as needed (typically only one fires per run).
 
-These unconditional defaults are critical because multiple paths reach Phase 7 without Phase 6 or the convergence loop ever running: (i) Phase 3 zero-findings skip, (ii) `nofix` flag, (iii) Phase 4.5 → Phase 7 in nofix flows, (iv) `--converge` not set, (v) Phase 1 halts before any user-continue or abort decision. On those paths, the flags must already be `false` at program start so step 3's gate and the exit-code rules can decide correctly without checking for unset-variable semantics. The `abortMode` flag gates step 3 only; steps 1, 2, and 4 run in all modes.
+These unconditional defaults are critical because multiple paths reach Phase 7 without Phase 6 or the convergence loop ever running: (i) Phase 3 zero-findings skip, (ii) `nofix` flag, (iii) Phase 4.5 → Phase 7 in nofix flows, (iv) `--converge` not set, (v) Phase 1 halts before any user-continue or abort decision. On those paths, the flags must already be `false` at program start so step 3's gate and the exit-code rules can decide correctly without checking for unset-variable semantics. The `abortMode` flag gates step 3 (and step 5's audit-history write, called out separately at that step); steps 1, 2, 4, and 6 run in all modes.
 
 ## Phase 7 exit-code rules
 
@@ -43,7 +43,7 @@ If `FLOCK_AVAILABLE=false`, append to the Phase 7 report a banner: `To avoid per
 
    **Skip this step entirely when `abortMode` is true** — in abort mode the audit trail must persist unmodified. A partial or reverted run is not evidence that secrets have been resolved.
 
-   **Abort-mode execution**: Triggered when `abortMode` is true. Allowed `abortReason` values are listed in `../../shared/abort-markers.md`. When `abortMode=true`, skip step 3 entirely — the audit trail must persist; a reverted or partially-executed run has not resolved any secrets and pruning would be unsafe. The abort-mode skip applies ONLY to step 3; steps 1, 2, and 4 (report redaction) run in all modes.
+   **Abort-mode execution**: Triggered when `abortMode` is true. Allowed `abortReason` values are listed in `../../shared/abort-markers.md`. When `abortMode=true`, skip step 3 entirely — the audit trail must persist; a reverted or partially-executed run has not resolved any secrets and pruning would be unsafe. The abort-mode skip applies ONLY to step 3 (and step 5's audit-history write, called out separately at that step); steps 1, 2, 4, and 6 run in all modes.
 
 4. **Report redaction**: Apply the canonical line-by-line console-output redaction rule from `../../shared/display-protocol.md` ("Console output redaction" section) using the canonical pattern catalog in `../../shared/secret-patterns.md`. Both files are already loaded at Phase 1 Track A. File paths (including the `.claude/secret-warnings.json.corrupt-<ts>` backup-path strings) are NOT redacted — only matched secret values are redacted. This is critical in CI/headless mode where console output is persisted in build logs that may be publicly accessible.
 
@@ -58,6 +58,16 @@ If `FLOCK_AVAILABLE=false`, append to the Phase 7 report a banner: `To avoid per
    **Skip this write entirely when `abortMode=true`** — same rationale as step 3: a reverted run has no honest accuracy signal. Note in the Phase 7 report under `[AUDIT-HISTORY SKIPPED — abort mode]`.
 
    **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/audit-history.json`. Core command: `git ls-files --error-unmatch .claude/audit-history.json 2>/dev/null` — warn if tracked; if absent from `.gitignore`, append it and inform the user. Per-site reason if tracked: "audit-history holds per-run rejection counts and timestamps used to drive global memory promotion — committing it would conflate one user's preference signals with other contributors' and could silently silence findings for all users."
+
+6. **Cleanup base-commit-anchor temp files**:
+
+   ```bash
+   if [ -n "${untrackedBaseline:-}" ]; then
+     rm -f -- "$untrackedBaseline" "$untrackedBaselineAll" "$symlinkBaseline"
+   fi
+   ```
+
+   These are the three mktemp paths returned by `${CLAUDE_SKILL_DIR}/scripts/establish-base-anchor.sh` on success (see `base-anchor.md` "Anchor capture"). Run **unconditionally regardless of `abortMode`** — they are transient state, not an audit trail. The `[ -n "${untrackedBaseline:-}" ]` guard makes this a safe no-op when Phase 5 never ran (variable unset); checking just `untrackedBaseline` is sufficient because the three are set together at anchor-capture time. All in-flight revert sequences have already completed by Phase 7, so the temps are no longer needed by any downstream step.
 
 ## Display
 

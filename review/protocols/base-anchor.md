@@ -30,8 +30,8 @@ case $ec in
     cat "$anchorErr" >&2   # surface the human [REVERT BLOCKED — *] marker
     rm -f "$anchorErr"
     # Caller calls TeamDelete (no wait) if a team was created in Phase 2,
-    # then transfers control to Phase 7 in abort mode. Phase 7 runs steps 1, 2,
-    # and 4 only; step 3 is skipped so secret-warnings.json audit trail persists.
+    # then transfers control to Phase 7 in abort mode. Phase 7 runs steps 1, 2, 4,
+    # and 6 only; step 3 is skipped so secret-warnings.json audit trail persists.
     ;;
   *)
     abortMode=true; abortReason="anchor-error"

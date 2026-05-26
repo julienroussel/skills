@@ -14,6 +14,14 @@
 #     the caller can consume the paths)
 #   - exit code 3 + stderr marker on validation failure
 #
+# Caller responsibility (success path only): the caller MUST `rm -f` the three
+# returned temp paths (untrackedBaseline, untrackedBaselineAll, symlinkBaseline)
+# at the end of the run — typically /review Phase 7 cleanup (canonical step in
+# review/protocols/phase7-cleanup-report.md). The EXIT trap above is disarmed
+# on success (via `_keep=1`) so the caller can consume the paths; without an
+# explicit caller-side rm, the files outlive the script invocation by design
+# and accumulate in $TMPDIR.
+#
 # ─────────────────────────────────────────────────────────────────
 # Usage:
 #   ./establish-base-anchor.sh <baseCommit>
