@@ -78,6 +78,10 @@ shared/secret-patterns.md          — canonical regex catalog for secret detect
                                      constraints, grep -Ei invocation rule). Read by /audit, /review,
                                      /ship secret-scan sites; co-cited with secret-scan-protocols.md
                                      (which owns the halt/continue procedures, not the patterns themselves).
+shared/code-edit-discipline.md     — canonical surgical-changes discipline for code-modifying subagents:
+                                     Do/Don't list, worked ❌/✅ diff, "defend every changed line" test.
+                                     Passed verbatim into every code-modifying subagent prompt in
+                                     /audit, /review, and /ship.
 shared/cache-schema-validation.md  — canonical schema validation for .claude/review-profile.json (rules
                                      a-f) and .claude/review-baseline.json (rules a-c). Includes binary
                                      availability probe and same-session shortcut. Read by /audit and
@@ -117,7 +121,7 @@ bin/tackle-top                     — rank a repo's open GitHub issues via head
 
 ### `shared/` — single source of truth
 
-Files in `shared/` are referenced by `/audit`, `/review`, and `/skill-audit` at Phase 1 Track A. Each SKILL.md reads its declared subset in parallel with the other config files and enforces a **hard-fail guard**: if any shared file is missing, empty, fails to Read, or fails the structural smoke-parse defined in `phase1-track-a-protocol.md`, Phase 1 aborts immediately. Rationale: the inline duplicates at former call-sites were removed to eliminate drift; a missing shared file means the skill's guarantees (reviewer boundaries, untrusted-input safety, cache-write .gitignore checks) cannot be enforced, and silently degrading coverage is worse than aborting.
+Files in `shared/` are referenced by `/audit`, `/review`, `/skill-audit`, and `/ship` at Phase 1 (Track A in the multi-track skills; `/ship` reads its subset inline in Phase 1). Each SKILL.md reads its declared subset in parallel with the other config files and enforces a **hard-fail guard**: if any shared file is missing, empty, fails to Read, or fails the structural smoke-parse defined in `phase1-track-a-protocol.md`, Phase 1 aborts immediately. Rationale: the inline duplicates at former call-sites were removed to eliminate drift; a missing shared file means the skill's guarantees (reviewer boundaries, untrusted-input safety, cache-write .gitignore checks) cannot be enforced, and silently degrading coverage is worse than aborting.
 
 Usage pattern per file:
 - `reviewer-boundaries.md` — passed verbatim into every reviewer subagent prompt.
@@ -128,6 +132,7 @@ Usage pattern per file:
 - `audit-history-schema.md` — referenced at Phase 1 Track A reads (rejection-rate calibration, suppression checks) and Phase 7 step 5 appends. Both `/audit` and `/review` MUST read and write the same schema.
 - `abort-markers.md` — referenced at Phase 7 step 16 to render the correct marker per `abortReason`. Single source of truth for the `abortReason` enum.
 - `secret-warnings-schema.md` — referenced at every `.claude/secret-warnings.json` append. `/review` writes at Phase 5.6, Phase 6 regression re-scan, Convergence Phase 5.6, and Fresh-eyes; `/audit` writes at Phase 5.6 and Phase 6 regression re-scan. Both skills MUST preserve the top-level `consumerEnforcement` value and the rich-wrapper shape across writes — the file is co-written and the previous `/audit` flat-array form is no longer accepted.
+- `code-edit-discipline.md` — passed verbatim into every code-modifying subagent prompt across `/audit`, `/review`, and `/ship` (with a Phase-5.5-specific lead-in prepended to the canonical body for `/review`'s simplification agent, and a CI-fix-specific lead-in + opening-paragraph elision for `/ship`'s CI-fix agent — the canonical's "you have been assigned specific findings" opening assumes a findings-list workflow that doesn't fit CI-failure repair). Codifies surgical-changes discipline (no drive-by refactors, no style drift, no opportunistic type/comment creep, no fixing unrelated bugs). Prevention-side counterpart to Phase 5.55 fix-verification's reactive `moved` classification.
 - `advisor-criteria.md` — passed verbatim to `/skill-audit`'s `advisor-coverage-reviewer` (the only consumer today). Extracted from Anthropic's published advisor tool guidance so the criteria are portable across users — explicitly NOT sourced from any individual user's `~/.claude/CLAUDE.md`. If Anthropic's advisor guidance changes, update this file (and bump the `Last verified` timestamp at the bottom).
 - `phase1-track-a-protocol.md` — read at Phase 1 Track A by `/audit`, `/review`, `/skill-audit` (as a shared file) AND parsed by them for the Canonical Anchor Table that drives the structural smoke-parse. `/doctor` Group D consumes the same canonical at runtime to smoke-parse every shared file (warn-only). Each consumer hardcodes one self-reference anchor (`Canonical Anchor Table`) to break the circularity. Abort message wording is **not canonical** — consumers own it; the file documents that intentional divergence (`/audit` and `/review` use inline prose; `/skill-audit` uses the `[ABORT — SHARED FILE MISSING]` marker).
 

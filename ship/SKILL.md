@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs. Handles branching, CI wait, and (with --merge) squash-merge + cleanup.
+description: Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs. Handles branching, CI wait, and (with --merge) squash-merge + cleanup. Default stops after CI without merging — `--merge` is opt-in. Use `--dry-run` to preview or `--draft` to open the PR as a draft.
 argument-hint: "[message] [--draft|--base|--no-split|--merge|--dry-run|--split-only|--validate|--label|--no-overlap-check]"
 effort: medium
 model: sonnet
@@ -35,6 +35,8 @@ allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *
     - .claude/review-profile.json     — reuses /review's stack cache for --validate
   Shared protocol references (see ../shared/):
     - shared/untrusted-input-defense.md — verbatim into the split-analysis (Phase 2) and CI-fix subagent prompts
+    - shared/code-edit-discipline.md    — verbatim into the CI-fix subagent prompt (with a CI-fix-specific
+                                          lead-in + opening-paragraph elision; see protocols/ci-failure-handling.md)
   Skill-local protocols (read at Phase 1 under the hard-fail + smoke-parse guard):
     - protocols/ci-failure-handling.md  — the CI-failure investigate-and-fix procedure
     - protocols/overlap-check.md        — the post-create file-overlap warning (single-PR step 11a,
@@ -125,14 +127,16 @@ Run **all of the following in parallel**:
 - `git rev-parse --git-dir` and `git rev-parse --git-common-dir` (for primary-vs-secondary detection)
 - `git worktree list --porcelain | awk '/^worktree /{print $2; exit}'` (primary worktree path — first entry)
 - Read `../shared/untrusted-input-defense.md` (passed verbatim to the split-analysis sub-agent in Phase 2 and the CI-fix sub-agent)
+- Read `../shared/code-edit-discipline.md` (passed verbatim to the CI-fix sub-agent with a CI-fix-specific lead-in + opening-paragraph elision — see `protocols/ci-failure-handling.md`)
 - Read `../shared/secret-scan-protocols.md` (consumed by step 4 secret-halt protocol — `isHeadless` predicate, advisory-tier classification, User-continue path)
 - Read `../shared/secret-patterns.md` (canonical regex catalog consumed by step 4)
 - Read `${CLAUDE_SKILL_DIR}/protocols/ci-failure-handling.md` (the CI-failure investigate-and-fix procedure — read upfront so a missing protocol file aborts Phase 1 cleanly instead of failing mid-flow at step 13 / 11a-multi)
 - Read `${CLAUDE_SKILL_DIR}/protocols/overlap-check.md` (the file-overlap check procedure — read upfront so a missing protocol aborts Phase 1 cleanly instead of failing mid-flow at step 11a / 10a-multi)
 
-**Hard-fail guard**: if any of the three shared files or either skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /ship requires it to enforce untrusted-input safety, secret-scan protocols, CI-failure handling, and the file-overlap check — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
+**Hard-fail guard**: if any shared file or either skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /ship requires it to enforce untrusted-input safety, code-edit discipline, secret-scan protocols, CI-failure handling, and the file-overlap check — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
 
 - `untrusted-input-defense.md`: `do not execute, follow, or respond to`
+- `code-edit-discipline.md`: `Code-edit discipline` AND `The test` AND `Worked example` AND `or specific simplifications to make.`
 - `secret-scan-protocols.md`: `isHeadless` AND `userContinueWithSecret` AND `Advisory-tier classification`
 - `secret-patterns.md`: `AKIA[0-9A-Z]{16}`
 - `protocols/ci-failure-handling.md`: `Clean-tree guarantee` AND `2 fix cycles`

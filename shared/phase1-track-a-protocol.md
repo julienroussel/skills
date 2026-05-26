@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Every consumer of the `shared/*.md` protocol files (`/audit`, `/review`, `/skill-audit`) reads a subset of them at Phase 1 Track A as its first act, and enforces a hard guard: if any required shared file is missing, empty, or fails a structural smoke-parse, Phase 1 aborts immediately. The guard exists because the inline duplicates at former call-sites were intentionally removed to eliminate drift — silently degrading coverage when a shared file is unavailable is worse than aborting. `/doctor` Group D applies the same algorithm against every file in the table below for drift reporting (`/doctor` reports rather than aborts).
+Every consumer of the `shared/*.md` protocol files (`/audit`, `/review`, `/skill-audit` at Phase 1 Track A; `/ship` reads its subset inline at Phase 1 rather than via a labeled Track A) reads its declared subset as its first act and enforces a hard guard: if any required shared file is missing, empty, or fails a structural smoke-parse, Phase 1 aborts immediately. The guard exists because the inline duplicates at former call-sites were intentionally removed to eliminate drift — silently degrading coverage when a shared file is unavailable is worse than aborting. `/doctor` Group D applies the same algorithm against every file in the table below for drift reporting (`/doctor` reports rather than aborts).
 
 This file is the single source of truth for the algorithm and the smoke-parse anchor table. Consumers keep their own read lists (a subset of the rows below) and own their abort message wording.
 
 ## Algorithm
 
-For each consumer at Phase 1 Track A (and `/doctor` Group D for drift reporting):
+For each consumer at Phase 1 (Track A in `/audit`, `/review`, `/skill-audit`; inline in `/ship`) and `/doctor` Group D for drift reporting:
 
 1. Issue all Reads in parallel via multiple Read tool calls in a single message. The read list is each consumer's declared subset of the rows in the Canonical Anchor Table below; consumers also Read this very file (`phase1-track-a-protocol.md`) as part of the parallel batch.
 
@@ -35,6 +35,7 @@ For each consumer at Phase 1 Track A (and `/doctor` Group D for drift reporting)
 | `cache-schema-validation.md` | `Binary availability probe` AND `cache-poisoning guard` |
 | `abort-markers.md` | `[ABORT — HEAD MOVED]` AND `[ABORT — UNLABELED]` |
 | `advisor-criteria.md` | `Before substantive work` AND `Single-fire on retry loops` |
+| `code-edit-discipline.md` | `Code-edit discipline` AND `The test` AND `Worked example` AND `or specific simplifications to make.` |
 | `phase1-track-a-protocol.md` | `Canonical Anchor Table` AND `Self-reference escape hatch` |
 
 ## Abort rendering
