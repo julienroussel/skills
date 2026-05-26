@@ -64,6 +64,9 @@ tackle/SKILL.md                    — wrap an ad-hoc in-session task with rigor
                                      equivalent of bin/tackle's "in plan mode, ultrathink to tackle ..."
                                      prefill (single source of truth — bin/tackle:19-21 now prefills
                                      "/tackle <verb> <url>" instead of the literal rigor prose).
+                                     Scope: file edits only — `/ship` owns all git mutations
+                                     (commit/push/PR/merge); /tackle stops at the working-tree-modified
+                                     state and lets the user invoke /ship explicitly.
                                      Intentionally minimal: no shared/*.md deps, no Phase 1 Track A
                                      guard, no protocols/ or scripts/ — does not participate in the
                                      "Shared conventions" block below.
