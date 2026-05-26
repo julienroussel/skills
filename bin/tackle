@@ -16,9 +16,17 @@ MAX_BODY_LENGTH=3000
 MAX_COMMENTS_LENGTH=5000
 
 # --- Prefill (single-line; '{url}' is substituted at runtime) ---
-PROMPT_WORK_ISSUE_TEMPLATE='in plan mode, ultrathink to tackle issue {url}'
-PROMPT_WORK_PR_TEMPLATE='in plan mode, ultrathink to tackle PR {url}'
-PROMPT_REVIEW_TEMPLATE='in plan mode, ultrathink to review PR {url}'
+PROMPT_WORK_ISSUE_TEMPLATE='/tackle issue {url}'
+PROMPT_WORK_PR_TEMPLATE='/tackle PR {url}'
+PROMPT_REVIEW_TEMPLATE='/tackle review PR {url}'
+# Legacy literal-prose fallbacks — used by build_prefill_text() when
+# ~/.claude/skills/tackle/SKILL.md is missing (uninstalled, deleted, or
+# fresh-clone before the skill exists). Keep these in lockstep with the
+# /tackle skill body's rigor protocol when it evolves; they exist so the
+# prefilled text remains a valid, useful prompt even without the skill.
+PROMPT_WORK_ISSUE_TEMPLATE_LEGACY='in plan mode, ultrathink to tackle issue {url}'
+PROMPT_WORK_PR_TEMPLATE_LEGACY='in plan mode, ultrathink to tackle PR {url}'
+PROMPT_REVIEW_TEMPLATE_LEGACY='in plan mode, ultrathink to review PR {url}'
 PREFILL_DELAY_SECONDS='0.8'
 
 # Worktree-scoped type cache (mirrors the scratch-session marker pattern):
@@ -442,11 +450,24 @@ build_github_url() {
 build_prefill_text() {
     local mode="$1" number="$2" repo_dir="${3:-$(pwd)}"
     [[ -z "$number" ]] && return 0
+    # Skill-presence fallback: if /tackle skill is missing (uninstalled, deleted,
+    # or fresh clone before tackle/ exists), use legacy literal-prose templates
+    # so the prefilled prompt remains valid. The /tackle slash-command form
+    # would otherwise produce "unknown command" when the user presses Enter.
+    local issue_tmpl="$PROMPT_WORK_ISSUE_TEMPLATE"
+    local pr_tmpl="$PROMPT_WORK_PR_TEMPLATE"
+    local review_tmpl="$PROMPT_REVIEW_TEMPLATE"
+    if [[ ! -f "${HOME}/.claude/skills/tackle/SKILL.md" ]]; then
+        log_warn "/tackle skill not found at ~/.claude/skills/tackle/SKILL.md — using legacy literal-prose prefill"
+        issue_tmpl="$PROMPT_WORK_ISSUE_TEMPLATE_LEGACY"
+        pr_tmpl="$PROMPT_WORK_PR_TEMPLATE_LEGACY"
+        review_tmpl="$PROMPT_REVIEW_TEMPLATE_LEGACY"
+    fi
     local template url_kind url
     case "$mode" in
-        review) template="$PROMPT_REVIEW_TEMPLATE";    url_kind="pr"    ;;
-        pr)     template="$PROMPT_WORK_PR_TEMPLATE";   url_kind="pr"    ;;
-        issue)  template="$PROMPT_WORK_ISSUE_TEMPLATE"; url_kind="issue" ;;
+        review) template="$review_tmpl";    url_kind="pr"    ;;
+        pr)     template="$pr_tmpl";        url_kind="pr"    ;;
+        issue)  template="$issue_tmpl";     url_kind="issue" ;;
         scratch|"") return 0 ;;   # scratch / older-worktree (no tackle-type marker) → no prefill, no warning
         *)      log_warn "build_prefill_text: unknown mode '$mode' — skipping prefill"; return 0 ;;
     esac
@@ -1164,11 +1185,18 @@ HOW IT WORKS
   4. Pre-loads context (description, comments, diff) into CLAUDE.local.md
   5. Launches Claude Code with the session named for easy resume
   6. After launch, a default prompt is pre-typed into Claude's input box
-     (NOT submitted): "tackle issue <url>" / "tackle PR <url>" / "review PR
-     <url>" depending on what was invoked. Edit the PROMPT_*_TEMPLATE
-     constants at the top of this script to customize. macOS only — grant
-     Accessibility permission to your terminal once: System Settings →
-     Privacy & Security → Accessibility.
+     (NOT submitted): "/tackle issue <url>" / "/tackle PR <url>" / "/tackle
+     review PR <url>" depending on what was invoked. This invokes the
+     in-session /tackle rigor-wrapper skill (ultrathink + verify against
+     current sources or advisor + ask clarifying questions early). The
+     leading "/" may trigger Claude Code's slash-command picker mid-
+     keystroke — if the prefill looks distorted, edit before pressing
+     Enter. If ~/.claude/skills/tackle/SKILL.md is missing, the script
+     falls back to legacy literal-prose templates ("in plan mode,
+     ultrathink to …"). Edit the PROMPT_*_TEMPLATE constants at the top
+     of this script to customize. macOS only — grant Accessibility
+     permission to your terminal once: System Settings → Privacy &
+     Security → Accessibility.
 
   Re-running `tackle <number>` when a worktree exists resumes the session.
 

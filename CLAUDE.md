@@ -57,6 +57,16 @@ codebase-memory/SKILL.md           — personal cheat-sheet for the optional cod
 find-skills/SKILL.md               — discover and install agent skills from the open ecosystem when
                                      the user asks "how do I do X" / "is there a skill for X" / wants
                                      to extend Claude Code capabilities
+tackle/SKILL.md                    — wrap an ad-hoc in-session task with rigor instructions
+                                     (ultrathink, verify findings against current sources or advisor(),
+                                     ask clarifying questions early, smallest viable change, cite
+                                     file:line for code claims, advisor before done). In-session
+                                     equivalent of bin/tackle's "in plan mode, ultrathink to tackle ..."
+                                     prefill (single source of truth — bin/tackle:19-21 now prefills
+                                     "/tackle <verb> <url>" instead of the literal rigor prose).
+                                     Intentionally minimal: no shared/*.md deps, no Phase 1 Track A
+                                     guard, no protocols/ or scripts/ — does not participate in the
+                                     "Shared conventions" block below.
 shared/reviewer-boundaries.md      — canonical dimension-ownership table, severity rubric, confidence levels
 shared/untrusted-input-defense.md  — canonical prompt-injection defense block for subagent prompts
 shared/gitignore-enforcement.md    — canonical write-safety protocol for .claude/* cache + audit-trail files
@@ -105,7 +115,16 @@ docs/skill-anatomy.md              — framework meta-doc explaining the five-ti
                                      checklist. Loaded on-demand via `@docs/skill-anatomy.md` when
                                      adding a skill, extracting from SKILL.md, or onboarding
 bin/tackle                         — bootstrap a Claude Code session for a PR/issue/scratch worktree
-                                     (drops a marker that /ship reads to rename the scratch branch in place)
+                                     (drops a marker that /ship reads to rename the scratch branch in
+                                     place; prefills "/tackle <verb> <url>" into Claude's input box to
+                                     invoke the in-session rigor wrapper — tackle/SKILL.md is the
+                                     single source of truth for the rigor prose, so the script's
+                                     PROMPT_*_TEMPLATE constants at lines 19-21 stay trivial. UX
+                                     caveat: the leading "/" may trigger Claude Code's slash-command
+                                     picker mid-keystroke; the prefill is editable before Enter so
+                                     the user can correct any distortion. If tackle/SKILL.md is
+                                     absent, build_prefill_text silently falls back to legacy
+                                     literal-prose templates — PROMPT_*_TEMPLATE_LEGACY constants)
 bin/seed-project-memory            — one-shot helper to draft a project_<name>.md auto-memory entry
                                      with placeholder sections for goals + conventions (the facts NOT
                                      derivable from the live repo — stack, git log, and CLAUDE.md are
