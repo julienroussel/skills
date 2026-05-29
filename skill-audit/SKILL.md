@@ -1,12 +1,12 @@
 ---
 name: skill-audit
 description: Audit Claude Code skill files (SKILL.md) for 2026-feature alignment, advisor coverage, frontmatter validity, token efficiency, shared-file drift, safety-protocol consistency, and model-tier routing. Reviewers cite live Anthropic docs + changelog (fetched at runtime, cached) so findings are grounded, not hallucinated. Reports a prioritized improvements list with file:line citations. Findings-only — never modifies skill files.
-argument-hint: "[skill-name] [--scope=<glob>] [--scope-only=<level>] [--only=<dims>] [--auto-approve] [--refresh-refs]"
+argument-hint: "[skill-name] [--scope=<glob>] [--scope-only=<level>] [--plugin=<name>] [--only=<dims>] [--auto-approve] [--refresh-refs]"
 effort: high
 model: opus
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList TeamCreate TeamDelete SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
+allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList TeamCreate TeamDelete SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
 ---
 
 <!-- Dependencies:
@@ -22,12 +22,14 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
                                                   audited alongside personal; narrow with --scope-only=personal|project
     - ~/.claude/skills/<name>/scripts/*.sh      — referenced helper scripts (existence + executable bit)
     - ~/.claude/skills/<name>/templates/*       — referenced templates (existence)
+    - ~/.claude/plugins/marketplaces/<mp>/<source>/skills/*/SKILL.md
+                                                — git-tracked plugin skills, opt-in via --plugin=<name> (resolved from
+                                                  known_marketplaces.json + each marketplace's .claude-plugin/marketplace.json)
     - ${CLAUDE_SKILL_DIR}/cache/refs.json       — cached Anthropic docs + changelog (Phase 1 Track C);
                                                   refreshed on stale (>7 days) or --refresh-refs
   Out of scope in v1 (tracked in GitHub issues):
     - Auto-fix mode (Phase 5/6 implementer + validation)        — issue #15
     - Phase 8 file follow-up GitHub issues                       — issue #16
-    - Plugin skills (~/.claude/plugins/...)                      — issue #18
     - Archival report file (.claude/skill-audit-report-*.md)     — issue #19
   Shared protocol references (read at Phase 1 Track A; see ../shared/):
     - shared/reviewer-boundaries.md             — severity rubric (`critical|high|medium|low`) + confidence
@@ -58,11 +60,12 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `[skill-name]` — Bare positional. Limits the audit to a single skill (e.g., `/skill-audit review`). Resolved against personal (`~/.claude/skills/<name>/SKILL.md`) AND project scope roots (`<walked-dir>/.claude/skills/<name>/SKILL.md` for each dir from CWD up to the repo root). If `<name>` matches in both scopes, both are audited (no "primary" — the shadow-detection finding flags the collision).
 - `--scope=<glob>` — Limits audit to skills whose directory name matches the glob (e.g., `--scope=*-reviewer`, `--scope=audit*`). Glob applies within whichever scope(s) `--scope-only` keeps. Mutually exclusive with the bare positional.
 - `--scope-only=<level>` — Restrict to a single scope. Values: `personal` (only `~/.claude/skills/`) or `project` (only `<CWD>/.claude/skills/` and parents up to repo root). Default: both scopes. Useful when bare positional `<name>` collides across scopes.
+- `--plugin=<name>` — Audit a third-party plugin's skills instead of your own. Resolves `<name>` to its **git-backed marketplace clone** under `~/.claude/plugins/marketplaces/` (the version-controlled upstream source — not the non-git `cache/` install) and audits the git-tracked skills there. Read-only and advisory: plugin skills are owned by the plugin author, so every finding is tagged `[third-party]`. Opt-in — bare `/skill-audit` never touches plugins. Mutually exclusive with `--scope-only`; composes with a bare skill name OR `--scope=<glob>` to narrow which of the plugin's skills are audited.
 - `--only=<dims>` — Run only the specified reviewer dimensions (comma-separated). Valid values: `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Example: `--only=frontmatter,token-efficiency`. **Note**: `scope-resolution` (the lead-emitted shadow-detection finding) is NOT in this enum — it always fires when name collisions exist, since it runs before reviewer dispatch. Users dismiss intentional shadows via the Phase 4 [Clarify] flow.
 - `--auto-approve` — Skip the Phase 4 approval gate. Lists all findings in Phase 7 without filtering. Useful for CI / scripted reports. Skips the [Clarify] flow too — `clarify`-flagged findings render in their original tier with a `[CLARIFICATION SKIPPED — auto-approve]` qualifier.
 - `--refresh-refs` — Force a fresh Phase 1 Track C fetch even if `cache/refs.json` is within its 7-day TTL. Use after Anthropic publishes a release that adds substitution variables, frontmatter fields, or skill features.
 
-**Examples**: `/skill-audit`, `/skill-audit review`, `/skill-audit --scope=*-reviewer`, `/skill-audit --scope-only=project`, `/skill-audit --only=frontmatter,advisor-coverage`, `/skill-audit --auto-approve`, `/skill-audit --refresh-refs review`
+**Examples**: `/skill-audit`, `/skill-audit review`, `/skill-audit --scope=*-reviewer`, `/skill-audit --scope-only=project`, `/skill-audit --plugin=agent-teams`, `/skill-audit --only=frontmatter,advisor-coverage`, `/skill-audit --auto-approve`, `/skill-audit --refresh-refs review`
 
 ### Flag conflicts
 
@@ -70,13 +73,18 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--scope-only=personal` + bare positional `<name>` resolving only in project — Conflict. Abort with: `Skill <name> not found in personal scope (exists in project: drop --scope-only or use --scope-only=project).` Symmetric for `--scope-only=project` when `<name>` is only personal.
 - `--scope-only` + `--scope=<glob>` — Allowed. The glob narrows within the kept scope(s).
 - `--scope-only` + `--auto-approve` — Allowed.
+- `--plugin=<name>` + `--scope-only` — Conflict. `--plugin` selects its own (plugin) scope; `--scope-only` selects among personal/project. Abort with: `Cannot combine --plugin with --scope-only.`
+- `--plugin=<name>` + bare positional `<skill>` OR `--scope=<glob>` — Allowed (subject to the existing bare-vs-`--scope` exclusivity above); narrows which of the plugin's skills are audited.
+- `--plugin=<name>` + `--auto-approve` — Allowed.
 - `--auto-approve` + (interactive session) — Allowed. Phase 4 approval menu is skipped silently; all findings render in Phase 7. The [Clarify] flow is also skipped.
 
 ### Parameter sanitization
 
-- `[skill-name]`: Validate against allowlist regex `^[a-z][a-z0-9-]*$` (skill directory names per Claude Code convention). Reject control characters, slashes, dots. Reject if `<name>` does not resolve in EITHER the personal root OR any project scope root in the walk (with a one-line "Available skills: personal=<list> project=<list>" hint).
+- `[skill-name]`: Validate against allowlist regex `^[a-z][a-z0-9-]*$` (skill directory names per Claude Code convention). Reject control characters, slashes, dots. Reject if `<name>` does not resolve in EITHER the personal root OR any project scope root in the walk (with a one-line "Available skills: personal=<list> project=<list>" hint). **When `--plugin=<name>` is set**, this personal/project resolution check is deferred to the plugin branch in Phase 1 Track B — the bare positional is resolved against the plugin's tracked skills, not personal/project.
 - `--scope=<glob>`: Reject control characters. Allowlist regex `^[a-zA-Z0-9_*?][a-zA-Z0-9_*?-]*$` (no slashes — scope is matched against bare directory name, not a path). Reject paths containing `..`.
 - `--scope-only=<level>`: Allowlist regex `^(personal|project)$`. Reject any other value.
+- `--plugin=<name>`: Allowlist regex `^[a-z0-9][a-z0-9-]*$` (plugin-name convention; alphanumeric first char — plugin names may legitimately start with a digit, several of which the official marketplace ships). Reject control characters, slashes, dots.
+- **Third-party `marketplace.json` values (`<mp>`, `source`) — untrusted**: `<mp>` (key/dir from `known_marketplaces.json`) and `source` (from a cloned third-party `marketplace.json`) are not user-typed but are equally untrusted — the pre-install-audit use case deliberately points `--plugin` at unvetted repos. Before any shell/path use, apply **all** of the following (cumulative — not "the regex alone"): reject control characters; reject a leading `-`/`--`; reject any `\.{2,}` substring (covers `..`); constrain `source` to `^(\./)?[A-Za-z0-9][A-Za-z0-9._/-]*$` (relative path; allows the conventional leading `./` — real `source` values look like `./plugins/agent-teams` — but fails-closed on a bare leading `/`, `.`, or `-`) and `<mp>` to `^[A-Za-z0-9][A-Za-z0-9._-]*$` (single segment, alphanumeric first char). Note `source` is NOT alphanumeric-first-anchored like `--scope`/`--branch` precisely because the `./` prefix is its standard form; the `\.{2,}` rule (not the first-char anchor) is what blocks `..` traversal here. Always double-quote the value AND pass `--` before positional path args (`realpath -- "…"`, `git -C "…" ls-files -- "…"`). On rejection: warn and skip that marketplace (abort `[ABORT — UNMATCHED SCOPE]` if it was the sole resolution). These get the same discipline as `--scope`/`--branch`, by provenance not by being user-typed.
 - `--only=<dims>`: Trim whitespace per value. Validate each is one of `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Reject unknown values.
 
 ### Model requirements
@@ -111,7 +119,13 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 
 Enumerate skill directories matching the argument set, across personal and project scopes.
 
-**Scope roots** (computed before any enumeration):
+**Plugin scope** (when `--plugin=<name>` is set): short-circuit the personal/project discovery below and resolve the plugin's git-backed marketplace source instead:
+1. **Locate the marketplace.** Read `~/.claude/plugins/known_marketplaces.json`; for each marketplace `<mp>` it lists, read `~/.claude/plugins/marketplaces/<mp>/.claude-plugin/marketplace.json` and find the `plugins[]` entry whose `name == <name>`. Take that entry's declared `source`. **`source` may be a string OR an object** — the in-marketplace form is a repo-relative path string (e.g. `./plugins/agent-teams`), but the schema also permits an object form for *externally vendored* plugins (`source: {"source":"git-subdir","url":…,"path":…}` — e.g. `claude-code-workflows`'s `pensyve`/`qa-orchestra`). Object-form sources point at a separate upstream clone, NOT the marketplace repo, so they are not auditable by the marketplace-clone model: **warn and skip** that entry (`Plugin <name> uses an external (git-subdir/url) source, not an in-marketplace path; skill-audit only audits plugins vendored in the marketplace repo.`); if it was the sole resolution, abort `[ABORT — UNMATCHED SCOPE]` with the same message. Only string-form sources proceed to step 2. If no marketplace declares `<name>`, abort `[ABORT — UNMATCHED SCOPE]` with `Plugin <name> not found. Available plugins: <union of plugins[].name across marketplaces>.` (If two marketplaces declare the same `<name>`, resolve both and audit each — rare; the `marketplace` tag disambiguates findings.)
+2. **Require git.** Validate `<mp>` per "Parameter sanitization" (untrusted marketplace values), then let `mpAbs="$HOME/.claude/plugins/marketplaces/<mp>"` and run `git -C "$mpAbs" rev-parse --is-inside-work-tree`. If it is not a git repo (e.g. `claude-plugins-official`), **warn and skip** that marketplace (`Plugin <name> lives in a non-git marketplace (<mp>); skill-audit only audits git-versioned skills.`); if it was the sole resolution, abort `[ABORT — UNMATCHED SCOPE]` with the same message.
+3. **Enumerate git-tracked skills.** Validate `source` per "Parameter sanitization" (untrusted marketplace values) first. This branch **requires `realpath`** (granted in `allowed-tools`; the else-path `REALPATH_AVAILABLE` fallback does not apply here) — if `realpath` is unavailable, abort `[ABORT — UNMATCHED SCOPE]` with `--plugin requires realpath to resolve the plugin's skills dir; realpath not found.`. Canonicalize the skills dir: `root="$(git -C "$mpAbs" rev-parse --show-toplevel)"; canon="$(realpath -- "$mpAbs/<source>/skills")"` — `<source>/skills` may be a **symlink** (e.g. worktrunk's `plugins/worktrunk/skills → ../../skills`), and `git ls-files` does NOT traverse symlinked pathspecs (a raw glob returns zero). If `realpath` exits non-zero, warn and skip. **Containment check** (boundary-safe, mirrors the personal/project trailing-slash discipline in "Per-walked-dir filter"): `case "$canon/" in "$root"/*) ;; *) warn-and-skip — never audit files outside the git repo ;; esac`. Compute the repo-relative path, **guarding the degenerate skills-dir-IS-repo-root case** (otherwise `relpath` stays absolute and the glob sweeps the whole repo): `if [ "$canon" = "$root" ]; then relpath=""; else relpath="${canon#"$root"/}"; fi; pathspec="${relpath:+$relpath/}*/SKILL.md"`, then `git -C "$root" ls-files -- "$pathspec"` — the glob scopes to the plugin AND drops untracked/gitignored files (reusing the repo-owned-skills-only philosophy), excluding the marketplace repo's own dev skills outside the resolved dir (e.g. worktrunk's top-level `.claude/skills/`). Then apply the argument filter: a bare positional `<skill>` or `--scope=<glob>` keeps only matching skill basenames within the plugin. If a bare positional resolves to **zero** tracked skills, abort `[ABORT — UNMATCHED SCOPE]` with `Skill <skill> not found in plugin <name>. Available skills: <plugin basenames>.` (mirrors the personal/project 0-match hint).
+4. **Tag** each surviving target `scope=plugin`, `pluginName=<name>`, `marketplace=<mp>`, and `sourceRepo` = the per-plugin `homepage`/`repository` field from marketplace.json when present, else `known_marketplaces.json[<mp>].source.repo`. Then skip to "For each surviving target" below — the personal/project discovery, gitignore filtering, and shadow detection are all bypassed (plugin scope is exclusive).
+
+**Scope roots** (computed before any enumeration) — personal/project path (when `--plugin` is NOT set):
 
 - **`realpath` availability probe**: run `command -v realpath >/dev/null 2>&1` once and store `REALPATH_AVAILABLE=true|false`. When `false`, the skip conditions and dedupe step below fall back to literal trailing-slash path comparison (`case "$dir/" in "$personalRoot"/*) ;; esac`) instead of `realpath`-normalized paths — slightly less symlink-robust but functionally equivalent for the common case (direct duplicates still caught; symlink aliases not collapsed).
 - **personalRoot**: `${HOME}/.claude/skills`. Always enumerated; `--scope-only=project` drops personal candidates post-enumeration (see "Apply `--scope-only` filter" below).
@@ -144,9 +158,9 @@ This matches the documented Claude Code runtime behavior (per `https://code.clau
 
 **Bare positional** + gitignored: if the single named skill is gitignored in its only resolving scope, abort with `<name> is gitignored in <scope> (externally maintained) — /skill-audit audits repo-owned skills only.` **`--scope` / no-filter**: exclude silently, but list the excluded skill names (with `[personal]` / `[project]` tags) in the Phase 1 discovery summary so the scope reduction is visible.
 
-For each surviving target, read the `SKILL.md` plus enumerate `<skill>/scripts/*.sh` and `<skill>/templates/*` as supplementary inputs (existence + executable bit only — content reads only when a reviewer cites them). Plugin skills are out of scope in v1 (tracked in issue #18).
+For each surviving target, read the `SKILL.md` plus enumerate `<skill>/scripts/*.sh` and `<skill>/templates/*` as supplementary inputs (existence + executable bit only — content reads only when a reviewer cites them). For plugin scope these paths are under the resolved `~/.claude/plugins/marketplaces/<mp>/<source>/`.
 
-**Empty-discovery guard**: if zero skills resolve (e.g., `--scope=foo*` matches nothing, or `--scope-only=project` from a dir with no `.claude/skills/` in the walk), abort with `[ABORT — UNMATCHED SCOPE]` per the canonical mapping. The abort message includes the active `--scope-only` value (if set) so the user can drop the flag and retry.
+**Empty-discovery guard**: if zero skills resolve (e.g., `--scope=foo*` matches nothing, `--scope-only=project` from a dir with no `.claude/skills/` in the walk, or `--plugin=<name>` whose marketplace is non-git or whose `<source>/skills/` has no tracked SKILL.md), abort with `[ABORT — UNMATCHED SCOPE]` per the canonical mapping. The abort message includes the active `--scope-only` or `--plugin` value (if set) so the user can drop the flag and retry.
 
 ### Track C — Live Anthropic references (cached with TTL)
 
@@ -189,6 +203,7 @@ Print a one-line summary. Omit scope segments that are empty (e.g., a personal-o
 ```
 Discovered N skill(s): personal=<p-list> project=<j-list>   |   Shadowed: <colliding-names>   |   Excluded (gitignored): <names with [personal]/[project] tags | "none">   |   M reviewer dimensions selected   |   Refs: <fresh|cached YYYY-MM-DD|stale|missing>
 ```
+For a `--plugin` run, render `Discovered N skill(s): plugin=<name> (skills: <s-list>)   |   M reviewer dimensions selected   |   Refs: <…>` instead — the `personal=`/`project=`/`Shadowed:` segments are bypassed.
 
 If a skill exceeds **2,000 lines**, warn before dispatch: huge skills cost reviewer-token budget and convergence-quality drops. Recommend the user narrow with `--only=<dims>` to focus on a single dimension first.
 
@@ -228,7 +243,7 @@ Why this shape: anchoring on the personal skill keeps Phase 3 sanity-check singl
 
 Spawn each selected reviewer dimension as a `agent-teams:team-reviewer` agent. Reviewers run **in parallel** within a single tool-use message.
 
-**Per-skill dispatch metadata (lead-side, mandatory)**: when handing each reviewer its list of per-skill assignments, include `scope: personal|project` alongside the SKILL.md path so the reviewer can echo it back on every finding per requirement #7 in "Reviewer instructions" below. This is the single source of truth for the `scope` field on findings — reviewers MUST NOT infer scope from the file path (paths can be ambiguous under symlinks; the lead's tag set by Track B's enumeration is authoritative).
+**Per-skill dispatch metadata (lead-side, mandatory)**: when handing each reviewer its list of per-skill assignments, include `scope: personal|project|plugin` alongside the SKILL.md path so the reviewer can echo it back on every finding per requirement #7 in "Reviewer instructions" below. For `plugin` scope, also pass `pluginName`, `marketplace`, and `sourceRepo`, and prepend a one-line third-party preamble to the reviewer prompt: *"This is a THIRD-PARTY plugin skill authored by someone other than the user; findings are advisory (the user cannot directly edit it) — tag each `[third-party — verify against plugin docs]` and do not treat the user's `~/.claude/skills/shared/*.md` as canonical for it."* This is the single source of truth for the `scope` field on findings — reviewers MUST NOT infer scope from the file path (paths can be ambiguous under symlinks; the lead's tag set by Track B's enumeration is authoritative).
 
 **Effort-adaptive overlay** (read `CLAUDE_EFFORT` at runtime via Bash: `effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=high`). At `xhigh|max`, lower the Phase 7 declare-done advisor's non-triviality threshold (e.g., `findingCount >= 3` instead of `>= 5`) so deeper-effort runs are more likely to receive a second opinion. At `low|medium`, keep the standard threshold. Mirrors `/review`'s pattern; requires Claude Code ≥ 2.1.133.
 
@@ -280,6 +295,10 @@ Per-finding requirements:
    - `~/.claude/skills/shared/<file>:<line>` (canonical shared protocol)
    - `<skill>/SKILL.md:<line>` only when citing a self-contradiction within the SAME
      audited skill (the `file` and `source` reference the same SKILL.md).
+   For `scope=plugin` findings, the valid forms are exactly the live-doc URL, the
+   `changelog:<version>`, or the plugin's OWN `<marketplace-skill-path>/SKILL.md:<line>`
+   self-contradiction. Do NOT cite `~/.claude/skills/shared/<file>` — those are the
+   auditing user's protocols, not canonical for a third-party skill.
    Cross-skill citations (e.g., a finding on `/audit` whose `source` cites
    `/review`'s line N) are NOT primary evidence — they're sibling-skill conventions
    and may themselves drift. If a finding is grounded in a sibling skill, cite the
@@ -297,9 +316,14 @@ Per-finding requirements:
    user can answer in Phase 4. Use sparingly: clarify is for judgment calls, not
    for findings you weren't sure about technically (use `speculative` for those).
 6. Drop `low` severity unless the fix is trivial.
-7. Set `scope` to `personal` or `project` matching the audited SKILL.md's
-   location. The lead injects this in your dispatch metadata; echo it back on
-   every finding so the Phase 7 report can group by scope.
+7. Set `scope` to `personal`, `project`, or `plugin` matching the audited
+   SKILL.md's location. The lead injects this in your dispatch metadata; echo it
+   back on every finding so the Phase 7 report can group by scope. When `scope`
+   is `plugin`, additionally (a) tag every finding `[third-party — verify against
+   plugin docs]` (these skills are owned by the plugin author; findings are
+   advisory), and (b) echo back `pluginName`, `marketplace`, and `sourceRepo`
+   exactly as provided in your dispatch metadata — the Phase 7 report needs
+   `marketplace` to disambiguate same-named skills across marketplaces.
 ```
 
 ### Finding format
@@ -309,7 +333,8 @@ Every reviewer finding must include:
 - `line` (positive integer)
 - `dimension` (one of the 7 reviewer dimensions above; `scope-resolution` is lead-only)
 - `severity` + `confidence`
-- `scope` (string — `personal` or `project`; required)
+- `scope` (string — `personal`, `project`, or `plugin`; required)
+- `pluginName` + `marketplace` + `sourceRepo` (strings — present when `scope` is `plugin`: the plugin's name, its owning marketplace, and its upstream repo URL)
 - `title` (≤ 80 chars)
 - `description` (1-3 sentences)
 - `recommendation` (concrete change)
@@ -324,8 +349,8 @@ Every reviewer finding must include:
 2. **Source-citation validation** — for every finding, validate the `source` field:
    - URL form (`https://...`) → strip the trailing citation-format suffix first: match `:[a-zA-Z#_][^:/]*$` (a colon followed by an identifier or `#anchor` at the end of the string, no path separator). This deliberately does NOT match `:` followed by digits (port numbers) or `:` mid-path. The remaining base URL MUST be a key in `cache/refs.json` whose `ok: true`. Mismatched URLs go to `ACTION REQUIRED` (not silent drop). Do NOT re-WebFetch — the cache is the source of truth for this run.
    - `changelog:<version>` → MUST appear as a `## <version>` heading in the cached changelog content.
-   - `~/.claude/skills/shared/<file>:<line>` → re-Read and confirm the cited line exists. Mismatches → `ACTION REQUIRED`.
-   - `<skill>/SKILL.md:<line>` → re-Read and confirm. Mismatches → `[REJECTED — citation broken]`.
+   - `~/.claude/skills/shared/<file>:<line>` → re-Read and confirm the cited line exists. Mismatches → `ACTION REQUIRED`. **On a `scope=plugin` finding this form is invalid regardless of whether the line exists** — route to `ACTION REQUIRED` (`third-party skill measured against the user's shared protocols`); without this guard the existing line would wrongly pass and defeat the third-party preamble.
+   - `<skill>/SKILL.md:<line>` → re-Read and confirm (generic re-Read, no path prefix — accepts a plugin's `marketplaces/.../SKILL.md` self-contradiction path). Mismatches → `[REJECTED — citation broken]`. For `scope=plugin` findings, the cited path MUST resolve within the plugin's canonical tracked tree (`<root>/<relpath>/` from Track B step 3); a path outside it → `[REJECTED — citation outside plugin tree]` (stops an adversarial third-party SKILL.md from steering a validation-time Read elsewhere).
    - Missing or malformed `source` → `ACTION REQUIRED: <dimension>-reviewer omitted source citation on finding "<title>" (<file>:<line>). Reviewer-quality issue.`
 3. **Dedup** — group findings by `(file, line, dimension)`. Cross-dimension duplicates on the same line are flagged with `[CROSS-DIM]` for the user.
 4. **Per-reviewer 25%-rejection escalation** — if any reviewer rejected ≥ 25% of its findings (excluding ACTION REQUIRED routings), flag a Phase 7 `ACTION REQUIRED`: `<dimension> reviewer had a high hallucination rate this run (N/M rejected). Consider re-running with --only=<other-dimensions> and treating <dimension> output cautiously.`
@@ -418,6 +443,7 @@ Print the report below. **No file is written in v1** beyond the cache update —
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Skills audited: <names>   Dimensions: <selected>   Findings: N (X dropped, Y kept)
 By scope: personal=<n> (skills: <p-list>)   project=<m> (skills: <j-list>)
+Plugin: <name>  (marketplace: <mp>, source repo: <url>)  [third-party — verify against plugin docs]
 
 Reference fetch status:
   skills-doc            ✓ fresh (2026-05-09)
@@ -458,6 +484,7 @@ Summary: N findings across M skills.   Total: <elapsed>
 - **`By scope` rollup line**: render only when `count(distinct scopes in approved findings) > 1`. When a run produces findings in just one scope, drop the `By scope:` line entirely.
 - **Inline `[personal]` / `[project]` tag on each finding**: render only when the same scope-count check is `> 1`. When findings are single-scope, drop the bracket prefix (no ambiguity to disambiguate). Two-space pad after `[project]` keeps the column aligned with `[personal]`.
 - **`By skill` rollup in Action items**: only append `[personal]` / `[project]` to skill names when the same name appears in both scopes (collision case). Otherwise the bare name suffices.
+- **Plugin runs (`--plugin`) override the single-scope simplification**: always render the `Plugin: <name> (…, source repo: <url>) [third-party — verify against plugin docs]` header line (in place of `By scope:`) and an inline `[plugin: <name>]` prefix on every finding — even though a plugin run is single-scope — because the report must always surface which plugin the finding is about and that it is third-party. **Two-marketplace collision** (a `<name>` resolved in two marketplaces — the audit-both case): qualify every per-finding tag, the `Skills audited:` list, the `By skill` rollup, and the Phase 1 `plugin=<name> (skills: …)` discovery-summary segment as `<name>@<mp>` so same-named skills from different marketplaces stay distinguishable, and repeat the `Plugin:` header line once per marketplace.
 
 **Naming contract**: The "Action items" rollup is **mandatory** on every report — never omitted, never empty when findings > 0. It is the single answer to "what do I need to do?". The "Audit integrity" section is a meta-section about the audit run itself (reviewer-quality, citation validity); an empty Audit-integrity section means the audit was clean, NOT that the user has nothing to act on. Past versions of this skill conflated the two via an "ACTION REQUIRED" label that was scoped to the meta-section only — that conflation caused the lead to render "ACTION REQUIRED: None" while leaving 28 findings un-rolled-up. Do NOT reuse the "ACTION REQUIRED" label.
 
@@ -487,7 +514,11 @@ Track C failures do NOT trigger abort — they degrade gracefully (stale cache �
 | Skill with `model:` field referencing a model alias added after this skill was last updated | `frontmatter-reviewer` cites the live skills-doc model section: if the alias is in the doc, finding is dropped; if not, flagged as `WARN_MODEL`. |
 | Skill referencing a `shared/<name>.md` that exists but was renamed | `shared-drift-reviewer` flags as broken-ref (mirrors `/doctor` Group I). Cross-references the canonical name if the renamed file is found via `git log --diff-filter=R`. |
 | Skill with `disable-model-invocation: true` AND a non-empty `description` exceeding 1,024 chars | `frontmatter-reviewer` flags as `medium`: when DMI is true, the description isn't loaded into context, so verbose descriptions are dead weight in `/`-menu listings. |
-| Plugin skills (`~/.claude/plugins/...`) | Not iterated in v1 (tracked in issue #18). Plugin skills are managed by the plugin author; auditing third-party content out of scope until a clear use case lands. |
+| `--plugin=<name>` (plugin audit) | Resolves to the plugin's git-backed marketplace clone (`~/.claude/plugins/marketplaces/<mp>/<source>/skills/`); audits git-tracked skills only, all 7 dimensions, every finding tagged `[third-party — verify against plugin docs]`. Read-only/advisory — owned by the plugin author. |
+| `--plugin=<name>` not declared by any marketplace | `[ABORT — UNMATCHED SCOPE]`: `Plugin <name> not found. Available plugins: <union of plugins[].name>.` |
+| `--plugin=<name>` whose marketplace is not a git repo (e.g. `claude-plugins-official`) | Warn and skip (`… non-git marketplace …; skill-audit only audits git-versioned skills.`); abort if it was the sole resolution. |
+| `--plugin=<name>` with an external object-form `source` (`git-subdir`/`url`, e.g. `pensyve`) | Warn and skip at Track B step 1 (`… uses an external (git-subdir/url) source, not an in-marketplace path …`); abort if it was the sole resolution. Vendored-elsewhere plugins aren't reachable via the marketplace clone. |
+| Same plugin `<name>` declared by two marketplaces | Audit both; the `marketplace` tag disambiguates findings. |
 | Bare `/skill-audit` invoked from a tackle worktree | The worktree path counts as project scope; `.claude/skills/` inside the worktree (and parents up to the worktree's repo root) is audited alongside personal skills. |
 | CWD is `~` or under `~/.claude/skills/` | Project walk skips any dir whose realpath resolves under personal-root, preventing duplicate iteration. Result: personal-only audit, no synthetic shadow findings. |
 | `--scope-only=project` from a dir with no `.claude/skills/` anywhere in the walk | Empty target set → `[ABORT — UNMATCHED SCOPE]` per the canonical mapping. The abort message includes `--scope-only=project` so the user can drop the flag and retry. |
