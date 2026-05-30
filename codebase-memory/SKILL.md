@@ -1,12 +1,13 @@
 ---
 name: codebase-memory
 description: Use the codebase knowledge graph for structural code queries. Triggers on: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, dead code, unused functions, high fan-out, refactor candidates, code quality audit, graph query syntax, Cypher query examples, edge types, how to use search_graph.
-allowed-tools: Read Glob Grep mcp__codebase-memory-mcp__search_graph mcp__codebase-memory-mcp__trace_path mcp__codebase-memory-mcp__detect_changes mcp__codebase-memory-mcp__query_graph mcp__codebase-memory-mcp__get_architecture mcp__codebase-memory-mcp__get_code_snippet mcp__codebase-memory-mcp__search_code mcp__codebase-memory-mcp__index_repository mcp__codebase-memory-mcp__index_status mcp__codebase-memory-mcp__list_projects mcp__codebase-memory-mcp__get_graph_schema mcp__codebase-memory-mcp__manage_adr mcp__codebase-memory-mcp__ingest_traces
 ---
 
 # Codebase Memory — Knowledge Graph Tools
 
 Graph tools return precise structural results in ~500 tokens vs ~80K for grep.
+
+Graph results are *structural facts* (exact call edges, definitions, degrees) — ground truth, not model claims; prefer them over a guess. Treat any *interpretation* you layer on top ("this is dead code", "this is a refactor candidate") as a claim to confirm against the actual result before asserting it — the verification posture in `../shared/claim-verification.md`.
 
 ## Quick Decision Matrix
 

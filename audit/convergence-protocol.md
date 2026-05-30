@@ -53,6 +53,7 @@ Check at the start of each new iteration:
 2. **Re-run Phases 2 → 6** in sequence, with these constraints:
    - **Phase 2**: spawn fewer reviewers — top 3 dimensions only (regardless of `quick`/`full` setting). Convergence passes are about catching regressions, not full coverage.
    - **Phase 3 step 0**: codeExcerpt content check still applies (working-tree mode — `/audit` has no `--pr` mode).
+   - **Phase 3 step 0.5**: claim verification still applies — external-authority claims are re-classified and re-verified each pass (default-on; `--no-verify-claims` falls back to the cap); refuted claims rejected, unverifiable ones capped to `speculative`.
    - **Phase 4 approval**: pre-approval advisor check (skewed-dimension / high-volume signals) STILL applies; the user re-approves each pass's findings interactively.
    - **Phase 4.5**: append to `.claude/audit-history.json` with the same `runId` as the initial pass (a single `/audit` invocation produces one logical history entry; convergence iterations are sub-events). Add an `iteration` field to `runs[]` and `reviewerStats[]` entries written during convergence so per-pass FP rates are visible.
    - **Phase 5 pre-dispatch advisor check**: SKIP — the advisor already ran for the initial dispatch; re-running adds latency without proportional benefit. The pre-iteration advisor check (#5 above) covers convergence-specific concerns.

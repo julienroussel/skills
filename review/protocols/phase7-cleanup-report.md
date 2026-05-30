@@ -88,7 +88,7 @@ Converge:  Phase 1 ✓ (3s) → Pass 1 [P2-6] ✓ (45s) → Pass 2 [P2-6] ✓ (2
 2. **Convergence** (if `--converge` was set): Number of iterations, per-iteration summary (files reviewed, findings count, outcome), whether fresh-eyes pass ran and its result, total convergence duration. Include the convergence summary table from the Display protocol.
 3. **Stack detected**: Package manager, validation commands found, key frameworks identified
 4. **Reviewed**: Number of files examined, list of reviewer agents and their dimension (only the ones that were spawned). If `--converge`, show per-iteration reviewer breakdown.
-5. **Findings**: Total findings per reviewer, breakdown by severity and confidence, number deduplicated/dropped. If `--converge`, show cumulative totals across all iterations.
+5. **Findings**: Total findings per reviewer, breakdown by severity and confidence, number deduplicated/dropped. If `--converge`, show cumulative totals across all iterations. **Claim verification** (when external-authority claims were found): confirmed / refuted (`[REJECTED — CLAIM REFUTED BY SOURCE]`) / capped-to-`speculative` (`[unverified external claim]`) counts; the sources cited (verification is default-on).
 6. **Cross-file impacts**: Any consumer breakage detected outside the direct diff
 7. **Coverage gaps**: Files that reviewers failed to examine (from Phase 3 coverage check)
 8. **User decisions**: Number of tasks approved, rejected, aborted (convergence-pass auto-approvals counted separately)

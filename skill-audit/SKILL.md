@@ -45,6 +45,8 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
                                                   would tie findings to whoever ran the skill last)
     - shared/gitignore-enforcement.md           — passed to safety-protocols-reviewer so it can flag missing
                                                   applications of the protocol in audited skills
+    - shared/claim-verification.md              — anti-hallucination doctrine; skill-audit's Track C + Phase 3
+                                                  source-validation are its reference Tier-2 implementation
   Files written:
     - ${CLAUDE_SKILL_DIR}/cache/refs.json       — Track C live-references cache (timestamp + URL → content map)
   Required tools:
@@ -109,6 +111,7 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 - `../shared/abort-markers.md` — applied at Phase 7 if an abort fires.
 - `../shared/advisor-criteria.md` — passed verbatim to `advisor-coverage-reviewer` as canonical advisor-call rules.
 - `../shared/gitignore-enforcement.md` — passed to `safety-protocols-reviewer` so it can flag missing applications of the protocol in audited skills.
+- `../shared/claim-verification.md` — anti-hallucination doctrine; skill-audit's Track C live-refs + Phase 3 source-citation validation are its reference **Tier 2** implementation (see the Track C "Doctrine anchor" note).
 - `../shared/phase1-track-a-protocol.md` — algorithm + Canonical Anchor Table consumed by the structural smoke-parse below.
 
 **Hard-fail guard**: if any shared file fails to Read, returns empty content, or fails the structural smoke-parse below, abort Phase 1 immediately with `[ABORT — SHARED FILE MISSING]` (per `../shared/abort-markers.md`) and exit non-zero. Do NOT fall back to inline text.
@@ -165,6 +168,8 @@ For each surviving target, read the `SKILL.md` plus enumerate `<skill>/scripts/*
 ### Track C — Live Anthropic references (cached with TTL)
 
 Reviewers cite live documentation so findings stay current as Claude Code ships features. The cache lives at `${CLAUDE_SKILL_DIR}/cache/refs.json` with a 7-day TTL.
+
+> **Doctrine anchor**: this Track C live-references cache plus the Phase 3 step 2 source-citation validation are the reference **Tier 2** implementation of `../shared/claim-verification.md` — fetching authoritative sources (here, `gh api` raw changelog + WebFetch docs) and refusing to surface a finding whose cited source cannot be confirmed. verification is always-on for `/skill-audit` with no opt-out (active verification is its whole purpose; `--no-verify-claims` is not offered here). The doctrine's outcomes map as: source key present in `refs.json` with `ok:true` (or a confirmed `changelog:`/shared-file line) → `confirmed`; `[REJECTED — citation broken]` / `[REJECTED — citation outside plugin tree]` → `refuted`; `ACTION REQUIRED` (source not in cache, missing, or sibling-skill) → `unverifiable`, routed to the user rather than silently dropped.
 
 **Cache schema**:
 
