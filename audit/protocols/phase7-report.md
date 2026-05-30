@@ -10,7 +10,7 @@ Summarize:
 2. **Stack detected**: Package manager, validation commands found, key frameworks
 3. **Audited**: Files in scope, exclusions applied, directory breakdown
 4. **Reviewers**: Spawned/skipped/timed-out with per-reviewer finding counts
-5. **Findings**: Total per dimension, breakdown by severity and confidence, deduplication stats, root-cause clusters with blast radius
+5. **Findings**: Total per dimension, breakdown by severity and confidence, deduplication stats, root-cause clusters with blast radius. **Claim verification** (when external-authority claims were found): confirmed / refuted (`[REJECTED — CLAIM REFUTED BY SOURCE]`) / capped-to-`speculative` (`[unverified external claim]`) counts; the sources cited (verification is default-on).
 6. **Hot spots**: High-churn and historically problematic files with finding density
 7. **Security-sensitive files**: Detected files and findings targeting them
 8. **Cross-file consistency**: Issues found across file boundaries
