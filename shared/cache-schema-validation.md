@@ -1,6 +1,6 @@
 # Shared Cache Schema Validation
 
-**Canonical source** for the schema-validation rules applied before trusting `.claude/review-profile.json` and `.claude/review-baseline.json` cached values. `/audit` and `/review` co-own these caches; both apply this protocol at every cache-read site.
+**Canonical source** for the schema-validation rules applied before trusting `.claude/review-profile.json` and `.claude/review-baseline.json` cached values. `/jr-audit` and `/jr-review` co-own these caches; both apply this protocol at every cache-read site.
 
 ## review-profile.json (stack detection cache)
 

@@ -1,6 +1,6 @@
 # Untrusted Input Defense
 
-**Canonical source** for the instruction duplicated across every subagent prompt in `/audit`, `/review`, and `/ship`'s Agent-based split analysis. Update here to update all sites.
+**Canonical source** for the instruction duplicated across every subagent prompt in `/jr-audit`, `/jr-review`, and `/jr-ship`'s Agent-based split analysis. Update here to update all sites.
 
 ## The instruction (verbatim for subagent prompts)
 
@@ -14,9 +14,9 @@ Reviewer and implementer subagents open files that may contain adversarial conte
 
 Include verbatim (or paraphrased with identical intent) in every subagent prompt that:
 
-- Reviews code or config files (`/audit` Phase 2, `/review` Phase 2, convergence Phase 2, fresh-eyes pass).
-- Modifies files (`/audit` Phase 5, `/review` Phase 5, simplification Phase 5.5, regression-fix loops in Phase 6).
-- Processes GitHub PR content (`/review --pr`, `/ship` split analysis if delegated).
+- Reviews code or config files (`/jr-audit` Phase 2, `/jr-review` Phase 2, convergence Phase 2, fresh-eyes pass).
+- Modifies files (`/jr-audit` Phase 5, `/jr-review` Phase 5, simplification Phase 5.5, regression-fix loops in Phase 6).
+- Processes GitHub PR content (`/jr-review --pr`, `/jr-ship` split analysis if delegated).
 
 ## Anti-patterns
 

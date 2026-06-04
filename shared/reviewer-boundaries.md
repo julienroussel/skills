@@ -1,6 +1,6 @@
 # Reviewer Dimension Boundaries, Severity, and Confidence
 
-**Canonical source** for rules duplicated across `/audit` and `/review`. Both skills read this file at Phase 1 Track A and pass the content to reviewers as context. Update here to update both skills.
+**Canonical source** for rules duplicated across `/jr-audit` and `/jr-review`. Both skills read this file at Phase 1 Track A and pass the content to reviewers as context. Update here to update both skills.
 
 ## Dimension ownership (prevents duplicate findings)
 
@@ -15,12 +15,12 @@ Each reviewer owns a **primary responsibility**. Borderline issues are deferred 
 | Missing `useMemo` / `useCallback` | `performance-reviewer` | react |
 | Unhandled promise rejection | `error-handling-reviewer` | typescript, security |
 | Silent failure (empty catch) | `error-handling-reviewer` | security, typescript |
-| Circular import | `architecture-reviewer` (`/audit` only) | typescript, performance |
+| Circular import | `architecture-reviewer` (`/jr-audit` only) | typescript, performance |
 | Dependency with CVE | `security-reviewer` | dependency |
-| Outdated dep without CVE | `dependency-reviewer` (`/audit` only) | security |
+| Outdated dep without CVE | `dependency-reviewer` (`/jr-audit` only) | security |
 | Color contrast | `accessibility-reviewer` | css |
-| Unused CSS | `css-reviewer` (`/audit` only) | performance |
-| Stale comment | `comment-reviewer` (`/audit` only) | any other dimension |
+| Unused CSS | `css-reviewer` (`/jr-audit` only) | performance |
+| Stale comment | `comment-reviewer` (`/jr-audit` only) | any other dimension |
 | Type design quality | `typescript-reviewer` | architecture |
 
 **Exception**: any reviewer may report a `critical` finding regardless of boundaries.

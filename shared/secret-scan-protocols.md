@@ -1,8 +1,8 @@
 # Shared Secret-Scan Protocols
 
-**Canonical source** for the secret-scan behavioral rules common to `/audit` and `/review` (and consumed by the pre-commit hook installed by `/review`). Both skills read this file at Phase 1 Track A. Update here to update both skills.
+**Canonical source** for the secret-scan behavioral rules common to `/jr-audit` and `/jr-review` (and consumed by the pre-commit hook installed by `/jr-review`). Both skills read this file at Phase 1 Track A. Update here to update both skills.
 
-`/review` consumes ALL sections (it has full headless/CI support and post-implementation re-scan flows). `/audit` consumes the **Advisory-tier classification** section only — at the time of writing `/audit` is interactive-only and does not run a CI/headless secret-halt protocol or User-continue path.
+`/jr-review` consumes ALL sections (it has full headless/CI support and post-implementation re-scan flows). `/jr-audit` consumes the **Advisory-tier classification** section only — at the time of writing `/jr-audit` is interactive-only and does not run a CI/headless secret-halt protocol or User-continue path.
 
 ## Headless/CI detection (`isHeadless`)
 
@@ -12,7 +12,7 @@
 
 1. The `--auto-approve` flag is set. This is the authoritative signal for non-interactive intent.
 2. Any of these CI environment variables is non-empty: `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`, `BUILDKITE`, `CIRCLECI`, `TF_BUILD`, `DRONE`, `WOODPECKER_CI`, `TEAMCITY_VERSION`.
-3. Stdin is not a terminal (`[ ! -t 0 ]`) — catches cases where AskUserQuestion would hang because the user cannot respond (e.g., `echo y | /review`).
+3. Stdin is not a terminal (`[ ! -t 0 ]`) — catches cases where AskUserQuestion would hang because the user cannot respond (e.g., `echo y | /jr-review`).
 
 ### `AUTO_APPROVE` export (mandatory)
 
@@ -44,7 +44,7 @@ isHeadless=$([ -n "$AUTO_APPROVE" ] || [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ] 
 
 At the start of Phase 1 Track B (after argument parsing), the lead SHOULD evaluate `isHeadless` once and log it: `Detected mode: headless=<true|false>` (use `shared/display-protocol.md`'s timeline format).
 
-Every reference to "headless/CI mode" in `/review` resolves to `isHeadless=true`. Sites affected: Phase 1 step 1 (staged-secret check), step 6 (diff size), step 7 (secret pre-scan), Phase 4 (`--auto-approve` interactive warning), Phase 5.6, Phase 6 regression re-scan, Convergence Phase 5.6, Fresh-eyes fix cycle, Phase 7 step 3(b) (unverified-entry acknowledgment prompt), and Phase 8 (follow-up issue creation). All sites MUST evaluate the same predicate; phase-specific exceptions (e.g., Phase 8's `--pr` carve-out) must be spelled out at that site.
+Every reference to "headless/CI mode" in `/jr-review` resolves to `isHeadless=true`. Sites affected: Phase 1 step 1 (staged-secret check), step 6 (diff size), step 7 (secret pre-scan), Phase 4 (`--auto-approve` interactive warning), Phase 5.6, Phase 6 regression re-scan, Convergence Phase 5.6, Fresh-eyes fix cycle, Phase 7 step 3(b) (unverified-entry acknowledgment prompt), and Phase 8 (follow-up issue creation). All sites MUST evaluate the same predicate; phase-specific exceptions (e.g., Phase 8's `--pr` carve-out) must be spelled out at that site.
 
 ## CI/headless secret-halt protocol
 
@@ -125,7 +125,7 @@ Behaviors 1-6 are unified because silently dropping any one of them degrades saf
 
 - Dropping (3) removes the only automated commit-blocker.
 - Dropping (4) or (5) hides the condition from CI wrappers.
-- Dropping (1) or (2) hides it from the audit trail and from `/ship`'s future enforcement contract.
+- Dropping (1) or (2) hides it from the audit trail and from `/jr-ship`'s future enforcement contract.
 - Dropping (6) re-prompts the user on every subsequent iteration and makes a later abort retroactively revert earlier accepted fixes.
 
 ## Advisory-tier classification for re-scans
@@ -134,7 +134,7 @@ All post-implementation secret re-scans (Phase 5.6, Phase 6 regression re-scan, 
 
 **Strict tier** (always halt): all patterns by default.
 
-**Advisory tier** (report in findings but do not halt): specific patterns with high false-positive rates (`SK`, `sk-`, `dapi`) may be demoted to advisory when they meet deterministic demotion criteria defined in each skill's Phase 1 Track B step 7 (the criteria differ slightly between skills based on scope — `/review` reviews diffs, `/audit` reviews full files). Advisory-tier matches are included in the Phase 7 report for human review.
+**Advisory tier** (report in findings but do not halt): specific patterns with high false-positive rates (`SK`, `sk-`, `dapi`) may be demoted to advisory when they meet deterministic demotion criteria defined in each skill's Phase 1 Track B step 7 (the criteria differ slightly between skills based on scope — `/jr-review` reviews diffs, `/jr-audit` reviews full files). Advisory-tier matches are included in the Phase 7 report for human review.
 
 **Halt vs. line-update semantics**:
 - Phase 5.6 / Phase 6 / Convergence 5.6: only **strict-tier matches trigger the halt**. Advisory matches are logged but do not halt.

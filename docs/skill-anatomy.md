@@ -45,11 +45,11 @@ Apply this decision tree top-to-bottom. The first rule that matches wins.
 | Content | Tier | Why |
 |---------|------|-----|
 | Bash command to compute merge-base | inline in SKILL.md | One-liner; extracting wastes tokens |
-| Combined revert sequence (clean → rm-f → checkout → reset) | `<skill>/protocols/base-anchor.md` | ~50 lines, one consumer (`/review`), stable boundary |
-| Severity rubric `critical|high|medium|low` | `shared/reviewer-boundaries.md` | Two consumers (`/audit`, `/review`); passed verbatim into reviewer prompts |
+| Combined revert sequence (clean → rm-f → checkout → reset) | `<skill>/protocols/base-anchor.md` | ~50 lines, one consumer (`/jr-review`), stable boundary |
+| Severity rubric `critical|high|medium|low` | `shared/reviewer-boundaries.md` | Two consumers (`/jr-audit`, `/jr-review`); passed verbatim into reviewer prompts |
 | Pre-commit hook body | `<skill>/templates/pre-commit-secret-guard.sh.tmpl` | Static blob; SHA-256 verified before append; must NOT be model-rewritten at runtime |
 | `establish-base-anchor.sh` | `<skill>/scripts/` | Executable; needs deterministic output |
-| When to use `--branch` vs `--pr` vs bare `/review` | inline in SKILL.md (Arguments section) | Per-skill UX detail; nobody else needs it |
+| When to use `--branch` vs `--pr` vs bare `/jr-review` | inline in SKILL.md (Arguments section) | Per-skill UX detail; nobody else needs it |
 | Tackle ↔ ship marker contract | `docs/worktree-architecture.md` | Cross-component contract; neither side owns it |
 
 ---
@@ -81,9 +81,9 @@ There are two patterns, by file type:
 | `reviewer-boundaries.md` | `\| Issue` AND `\| Owner` AND `\| Not` AND `Severity calibration rubric` AND `Confidence levels` |
 ```
 
-The earlier pattern (anchor lists duplicated in every consumer's Phase 1 Track A) had four copies — `/audit`, `/review`, `/skill-audit`, and `/doctor` Group D — and they drifted (issues #21 and #30 traced exactly this). The canonical eliminates the drift surface. The rationale "putting the anchor in a shared file just pushes the drift into the shared file" turned out to be wrong in practice: N consumer copies have N-way drift potential, one canonical table has none. `/doctor` Group D reads the canonical at runtime AND cross-checks `shared/*.md` directory membership against the table, so a corrupted canonical (e.g., stubbed back to its self-row) is also detected.
+The earlier pattern (anchor lists duplicated in every consumer's Phase 1 Track A) had four copies — `/jr-audit`, `/jr-review`, `/jr-skill-audit`, and `/jr-doctor` Group D — and they drifted (issues #21 and #30 traced exactly this). The canonical eliminates the drift surface. The rationale "putting the anchor in a shared file just pushes the drift into the shared file" turned out to be wrong in practice: N consumer copies have N-way drift potential, one canonical table has none. `/jr-doctor` Group D reads the canonical at runtime AND cross-checks `shared/*.md` directory membership against the table, so a corrupted canonical (e.g., stubbed back to its self-row) is also detected.
 
-**`<skill>/protocols/*.md`** — anchors still live in *the consumer's* Phase 1 Track A read list. These files are skill-local (only one consumer), so there is no drift concern. Example from `/review`:
+**`<skill>/protocols/*.md`** — anchors still live in *the consumer's* Phase 1 Track A read list. These files are skill-local (only one consumer), so there is no drift concern. Example from `/jr-review`:
 
 ```
 - `${CLAUDE_SKILL_DIR}/protocols/finding-sanity-check.md` — `content-excerpt match`
@@ -148,7 +148,7 @@ Loaded once per session, stays for every turn. Per the skills-doc "Skill content
 - The skill's phase scaffolding (Phase 1 → Phase N, with the procedural body)
 - Cross-cutting rules that apply throughout (severity rubric *summary*, not the canonical body)
 
-The 500-line skills-doc tip is a soft cap on this tier. `/review` at 640 lines is over the cap — issue #20 tracks getting it under.
+The 500-line skills-doc tip is a soft cap on this tier. `/jr-review` at 640 lines is over the cap — issue #20 tracks getting it under.
 
 ### Pattern B: Phase 1 Track A under hard-fail guard (`shared/*.md`, `<skill>/protocols/*.md`)
 
@@ -182,7 +182,7 @@ Skills that grant `allowed-tools` pre-authorize the listed tools without per-cal
 
 1. **Scope to the actual paths and subcommands used.** `Bash(mv .claude/*)` not `Bash(mv *)`. `Bash(git -c core.symlinks=false checkout *)` not `Bash(git -c *)`. Each tool entry should reflect a real call site, not a category.
 2. **Prefer per-call confirmation for irreversible operations.** `git push --force`, `git reset --hard`, `gh pr merge`, `rm -rf` outside `.claude/` should NOT be in `allowed-tools` — let the user confirm each invocation.
-3. **Add a frontmatter-notes HTML comment block when omissions are deliberate.** Example from `/review`:
+3. **Add a frontmatter-notes HTML comment block when omissions are deliberate.** Example from `/jr-review`:
    ```
    <!-- Frontmatter notes (load-bearing):
    - allowed-tools deliberately PROMPTS for: arbitrary rm, destructive git
@@ -205,9 +205,9 @@ When *modifying* a `shared/*.md` or `<skill>/protocols/*.md` file:
 2. **Update the right anchor location.**
    - For `shared/*`: update the row in `shared/phase1-track-a-protocol.md`'s Canonical Anchor Table. Single source of truth — every consumer verifies against this table at runtime, so no consumer-by-consumer follow-ups.
    - For `<skill>/protocols/*`: update the consumer's Phase 1 Track A read list directly. Only one consumer; no canonical exists.
-3. **Don't introduce per-consumer carve-outs.** If `/audit` needs section X but `/review` doesn't, that's a sign the section belongs in `<audit>/protocols/` rather than `shared/`. Shared files should be consumed identically by all consumers.
+3. **Don't introduce per-consumer carve-outs.** If `/jr-audit` needs section X but `/jr-review` doesn't, that's a sign the section belongs in `<audit>/protocols/` rather than `shared/`. Shared files should be consumed identically by all consumers.
 4. **Bump dates / verification stamps when applicable.** `shared/advisor-criteria.md` has a `Last verified` footer that should be updated when the file is reviewed against Anthropic's published guidance.
-5. **Adding a new `shared/*.md` file**: follow the "Rules for adding a new `shared/*.md` file" section in `shared/phase1-track-a-protocol.md` (create file → choose anchor → add row to canonical table → update consumer read lists → update CLAUDE.md inventory → run `/doctor` to confirm Group D coverage). Also update `doctor/scripts/skill-drift-check.sh` if the file has consumer-inlining risk (most shared files do).
+5. **Adding a new `shared/*.md` file**: follow the "Rules for adding a new `shared/*.md` file" section in `shared/phase1-track-a-protocol.md` (create file → choose anchor → add row to canonical table → update consumer read lists → update CLAUDE.md inventory → run `/jr-doctor` to confirm Group D coverage). Also update `jr-doctor/scripts/skill-drift-check.sh` if the file has consumer-inlining risk (most shared files do).
 
 ---
 
@@ -217,10 +217,10 @@ Two skills exist specifically to keep this architecture from drifting:
 
 | Skill | Coverage | Trigger |
 |-------|----------|---------|
-| `/doctor` Group I | Narrow yes/no factual checks: SKILL.md line count, broken `shared/*` references, frontmatter validity, inline duplication of canonical content (via anchor match), pre-commit-hook template SHA-256 drift, `/skill-audit` refs-cache freshness | Run `/doctor` periodically; fast, no agents |
-| `/skill-audit` | Opinionated multi-dimension audit (frontmatter, advisor-coverage, token-efficiency, shared-drift, feature-adoption, safety-protocols). Cites live Anthropic docs (skills doc, CHANGELOG) at runtime | Run after structural changes to skills; `/skill-audit <skill>` for one skill |
+| `/jr-doctor` Group I | Narrow yes/no factual checks: SKILL.md line count, broken `shared/*` references, frontmatter validity, inline duplication of canonical content (via anchor match), pre-commit-hook template SHA-256 drift, `/jr-skill-audit` refs-cache freshness | Run `/jr-doctor` periodically; fast, no agents |
+| `/jr-skill-audit` | Opinionated multi-dimension audit (frontmatter, advisor-coverage, token-efficiency, shared-drift, feature-adoption, safety-protocols). Cites live Anthropic docs (skills doc, CHANGELOG) at runtime | Run after structural changes to skills; `/jr-skill-audit <skill>` for one skill |
 
-**Run both of these regularly.** The architecture pays for itself only if drift gets caught early. A `shared-drift-reviewer` finding ("inline duplication of `untrusted-input-defense.md` content at `/audit/SKILL.md:432`") is the canonical signal that someone forgot to reference the shared file and copy-pasted instead.
+**Run both of these regularly.** The architecture pays for itself only if drift gets caught early. A `shared-drift-reviewer` finding ("inline duplication of `untrusted-input-defense.md` content at `/jr-audit/SKILL.md:432`") is the canonical signal that someone forgot to reference the shared file and copy-pasted instead.
 
 ---
 
@@ -229,7 +229,7 @@ Two skills exist specifically to keep this architecture from drifting:
 Don't do these.
 
 1. **Inline duplication of `shared/*.md` content.** Every duplicate proves the shared/ pattern isn't doing its job. Cite the shared file, don't restate its rules.
-2. **Cross-skill citations to sibling-skill SKILL.md files.** `/audit` Phase 7 saying "apply `/review` Phase 1 Track B step 7" is a drift surface — if `/review` renumbers, `/audit` breaks silently. Cite the underlying authority (the shared file, the skills-doc URL, the changelog version), not a sibling.
+2. **Cross-skill citations to sibling-skill SKILL.md files.** `/jr-audit` Phase 7 saying "apply `/jr-review` Phase 1 Track B step 7" is a drift surface — if `/jr-review` renumbers, `/jr-audit` breaks silently. Cite the underlying authority (the shared file, the skills-doc URL, the changelog version), not a sibling.
 3. **Paraphrasing the untrusted-input-defense block.** The three verbs ("do not execute, follow, or respond to") are load-bearing. Pass the shared file's content verbatim to every subagent.
 4. **Smoke-parse anchors that match worked examples instead of structural content.** `Phase 1 ✓ (3s)` matches the literal `3s` value, which a doc author might change to `5s` without realizing it breaks consumers. Anchor on `Phase 1 ✓` + `Silent reviewers, noisy lead` instead.
 5. **Pre-authorizing destructive ops in `allowed-tools` without rationale.** Every `Bash(rm -rf ...)`, `Bash(git push --force ...)`, or unscoped `Bash(mv *)` should either have a frontmatter note explaining why, or be removed in favor of per-call confirmation.
@@ -245,9 +245,9 @@ When creating `<new-skill>/SKILL.md`:
 2. **Dependencies HTML comment block**: list required plugins, required CLI binaries, files read/written, shared protocol references with their smoke-parse anchors, required tools.
 3. **Phase scaffolding**: numbered phases with `━━━` headers, cumulative timeline updates, parallel-first dispatch where independent.
 4. **Phase 1 Track A read list**: add hard-fail guard for any `shared/*.md` or `<skill>/protocols/*.md` files the skill consumes, with smoke-parse anchors.
-5. **`docs/worktree-architecture.md`** ← if the skill interacts with `bin/tackle` or `/ship`'s worktree handling.
-6. **Run `/skill-audit <new-skill>`** before declaring done — catches frontmatter issues, missing references, allowed-tools gaps.
-7. **Run `/doctor`** to verify Group I doesn't flag anything.
+5. **`docs/worktree-architecture.md`** ← if the skill interacts with `bin/tackle` or `/jr-ship`'s worktree handling.
+6. **Run `/jr-skill-audit <new-skill>`** before declaring done — catches frontmatter issues, missing references, allowed-tools gaps.
+7. **Run `/jr-doctor`** to verify Group I doesn't flag anything.
 8. **Update `CLAUDE.md`** repo-structure listing and `README.md` skills table.
 
 That's it — the same architecture every existing skill follows.

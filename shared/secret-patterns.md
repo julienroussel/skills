@@ -1,6 +1,6 @@
 # Shared Secret-Pattern Catalog
 
-**Canonical source** for the regex union and per-pattern demotion criteria used by `/review` Phase 1 Track B step 7, `/audit` Phase 1 step 6.5, and the post-implementation re-scans in `/review` Phase 5.6/6 + Convergence Phase 5.6 + Fresh-eyes. The pre-commit hook installed by `/review` reads `.claude/secret-hook-patterns.txt` (not this file directly) — this file is the human-maintained source of truth that `/review`'s install path materializes.
+**Canonical source** for the regex union and per-pattern demotion criteria used by `/jr-review` Phase 1 Track B step 7, `/jr-audit` Phase 1 step 6.5, and the post-implementation re-scans in `/jr-review` Phase 5.6/6 + Convergence Phase 5.6 + Fresh-eyes. The pre-commit hook installed by `/jr-review` reads `.claude/secret-hook-patterns.txt` (not this file directly) — this file is the human-maintained source of truth that `/jr-review`'s install path materializes.
 
 ## Portability and evaluation-time safeguards
 
@@ -36,16 +36,16 @@ Invoke with `grep -Ei`. The `-i` is mandatory — the case-insensitivity is anno
 
 ## Pre-scan vs post-implementation tier classification
 
-Pre-scan sites (`/review` Phase 1 step 7, `/audit` Phase 1 step 6.5) treat **ALL matches as strict tier** — no advisory demotion. Reasons: (a) the user is reviewing their own changes and false-positive tolerance is lower; (b) in headless mode the user explicitly opted into halt-on-detection.
+Pre-scan sites (`/jr-review` Phase 1 step 7, `/jr-audit` Phase 1 step 6.5) treat **ALL matches as strict tier** — no advisory demotion. Reasons: (a) the user is reviewing their own changes and false-positive tolerance is lower; (b) in headless mode the user explicitly opted into halt-on-detection.
 
-Post-implementation re-scan sites (`/review` Phase 5.6, Phase 6 regression re-scans, Convergence Phase 5.6, Fresh-eyes) apply the **Advisory-tier classification for re-scans** in `secret-scan-protocols.md`. The deterministic demotion criteria for the high-FP-rate patterns (`SK`, `sk-`, `dapi`) are codified there. Escalation conditions (assignment context, config/env file) take precedence over demotion.
+Post-implementation re-scan sites (`/jr-review` Phase 5.6, Phase 6 regression re-scans, Convergence Phase 5.6, Fresh-eyes) apply the **Advisory-tier classification for re-scans** in `secret-scan-protocols.md`. The deterministic demotion criteria for the high-FP-rate patterns (`SK`, `sk-`, `dapi`) are codified there. Escalation conditions (assignment context, config/env file) take precedence over demotion.
 
 ## Pattern-type enum mapping
 
-When writing `secret-warnings.json` (per `secret-warnings-schema.md`), set `patternType` per the matched sub-pattern. Patterns with no dedicated label fall through to `"other"` and are subject to the `"other"` full-scan fallback in `/review` Phase 7 step 3 (see `review/protocols/secret-warnings-lifecycle.md`).
+When writing `secret-warnings.json` (per `secret-warnings-schema.md`), set `patternType` per the matched sub-pattern. Patterns with no dedicated label fall through to `"other"` and are subject to the `"other"` full-scan fallback in `/jr-review` Phase 7 step 3 (see `jr-review/protocols/secret-warnings-lifecycle.md`).
 
 Dedicated labels: `aws-key` (`AKIA`), `stripe-key` (`sk_live_`/`rk_live_`/`sk_test_`/`rk_test_`), `anthropic-key` (`sk-ant-`), `github-token` (`ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_`/`github_pat_`), `slack-token` (`xox[bpaes]-`/`xoxe.xox[bp]-`), `pem-private-key` (`BEGIN PRIVATE KEY`), `sendgrid-key` (`SG.`), `google-api-key` (`AIza`), `jwt`, `connection-string-basic-auth`, `connection-string-query-credentials`, `jdbc-credentials`. All others use `"other"`.
 
 ## Updating this file
 
-Adding a new prefix pattern requires updating, in order: (1) this file's regex union, (2) `secret-warnings-schema.md` `patternType` enum if a new label is introduced, (3) the consumers (`/review` Phase 1 step 7, `/audit` Phase 1 step 6.5, the pre-commit hook patterns file via `/review`'s install path) by re-reading this file. The hook template SHA-256 is hardcoded; updating the patterns file does NOT change the template hash, so no template-hash bump is required.
+Adding a new prefix pattern requires updating, in order: (1) this file's regex union, (2) `secret-warnings-schema.md` `patternType` enum if a new label is introduced, (3) the consumers (`/jr-review` Phase 1 step 7, `/jr-audit` Phase 1 step 6.5, the pre-commit hook patterns file via `/jr-review`'s install path) by re-reading this file. The hook template SHA-256 is hardcoded; updating the patterns file does NOT change the template hash, so no template-hash bump is required.
