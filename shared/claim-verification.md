@@ -1,13 +1,13 @@
 # Claim Verification (Anti-Hallucination Doctrine)
 
 **Canonical source** for how a skill establishes that a finding/claim is *true* before it surfaces or acts
-on it. Read at Phase 1 Track A by `/audit`, `/review`, `/skill-audit` and passed to their reviewers as
-context. Cross-referenced (not Track-A-read) by `/ship`, `/tackle`, `/doctor`. Update here to update all
+on it. Read at Phase 1 Track A by `/jr-audit`, `/jr-review`, `/jr-skill-audit` and passed to their reviewers as
+context. Cross-referenced (not Track-A-read) by `/jr-ship`, `/jr-tackle`, `/jr-doctor`. Update here to update all
 consumers.
 
 ## Purpose — the gap this closes
 
-The `codeExcerpt` + Phase 3 sanity-check (`review/protocols/finding-sanity-check.md`, and `/audit`'s inline
+The `codeExcerpt` + Phase 3 sanity-check (`jr-review/protocols/finding-sanity-check.md`, and `/jr-audit`'s inline
 Phase 3 step 0) own **citation integrity**: they re-read the cited `file:line` and reject any finding whose
 3-line excerpt doesn't match the real file. That proves *the cited line exists verbatim* — it catches fabricated lines and fabricated
 descriptions of lines the reviewer couldn't read.
@@ -99,11 +99,11 @@ fetch is genuinely impossible, the Tier 1 fallback applies.
   - `unreachable` / `ambiguous` → fall back to Tier 1 (cap to `speculative` + route/defer).
 - **Cache (v1 = in-memory per-run).** Verify each unique claim-source once per run and reuse the result for
   the remainder of that run; no persisted file in v1. (Upgrade path if cross-run reuse proves worthwhile:
-  a persisted `.claude/claim-verification-cache.json` modeled on `skill-audit/cache/refs.json` — 7-day TTL,
+  a persisted `.claude/claim-verification-cache.json` modeled on `jr-skill-audit/cache/refs.json` — 7-day TTL,
   stale-fallback, atomic write, `.gitignore`-checked. Not in v1.)
 - **On by default** in every mode; `--no-verify-claims` opts out for offline/speed (the Tier 1 cap-and-defer
   fallback then applies). Local grounding resolves many claims with no network fetch, so the fetch cost is
-  bounded to the residual. For `/skill-audit` verification is always-on with no opt-out — its live refs-cache +
+  bounded to the residual. For `/jr-skill-audit` verification is always-on with no opt-out — its live refs-cache +
   Phase 3 source-citation validation are the reference implementation of Tier 2.
 
 ## Headless branch (mirrors the secret-scan halt)
@@ -113,7 +113,7 @@ external-authority claim is a checked fact and may be auto-applied like any othe
 **refuted** claim is rejected. Only a claim that **cannot be verified** (source unreachable/uncorroborable, or
 `--no-verify-claims` set) is capped to `speculative` and **deferred + reported, never auto-applied** — a run
 that had to defer ≥ 1 such finding surfaces it under a Phase 7 `ACTION REQUIRED` note for the user — an
-informational marker that is not itself among the Phase 7 exit-code conditions (`/review`'s
+informational marker that is not itself among the Phase 7 exit-code conditions (`/jr-review`'s
 `phase7-cleanup-report.md` → "Phase 7 exit-code rules"), so the deferral alone does not force a non-zero exit. The skill never
 silently auto-applies what it could not verify, but it no longer defers what it *can* verify.
 
@@ -130,11 +130,11 @@ finding-approval tiers, and the advisor pre-dispatch/pre-merge gates all already
 
 | Skill | Relationship to this doctrine |
 |-------|-------------------------------|
-| `/audit`, `/review` | Full consumers — Track-A read; Phase 3 lead classification + verify (default-on) with cap-and-defer fallback; Phase 4 approval routing; `--no-verify-claims` opts out of the fetch. |
-| `/skill-audit` | Reference Tier-2 implementation — its refs-cache + Phase 3 source-citation validation already enforce this doctrine; Track-A read for the shared smoke-parse. |
-| `/ship` | No findings, but its CI-fix diagnosis can rest on external facts — those must be grounded/confirmed via an authoritative source (the source-fetch discipline above) before the existing user confirm-gate, not asserted from memory. |
-| `/tackle` | Ad-hoc work that makes external claims — its rigor protocol applies the source-fetch discipline above. |
-| `/doctor` | Read-only, factual-local-only checks (no external-authority claims); in-scope-but-exempt. Group D smoke-parses this file like every other `shared/*.md`. |
+| `/jr-audit`, `/jr-review` | Full consumers — Track-A read; Phase 3 lead classification + verify (default-on) with cap-and-defer fallback; Phase 4 approval routing; `--no-verify-claims` opts out of the fetch. |
+| `/jr-skill-audit` | Reference Tier-2 implementation — its refs-cache + Phase 3 source-citation validation already enforce this doctrine; Track-A read for the shared smoke-parse. |
+| `/jr-ship` | No findings, but its CI-fix diagnosis can rest on external facts — those must be grounded/confirmed via an authoritative source (the source-fetch discipline above) before the existing user confirm-gate, not asserted from memory. |
+| `/jr-tackle` | Ad-hoc work that makes external claims — its rigor protocol applies the source-fetch discipline above. |
+| `/jr-doctor` | Read-only, factual-local-only checks (no external-authority claims); in-scope-but-exempt. Group D smoke-parses this file like every other `shared/*.md`. |
 | `/codebase-memory`, `/find-skills` | Outputs are tool-returned data (graph edges / registry metadata), not model-synthesized claims, so the doctrine does not govern their *outputs* — but any interpretive recommendation they layer on top does. |
 
 ## Last verified

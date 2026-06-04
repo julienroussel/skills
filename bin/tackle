@@ -16,13 +16,13 @@ MAX_BODY_LENGTH=3000
 MAX_COMMENTS_LENGTH=5000
 
 # --- Prefill (single-line; '{url}' is substituted at runtime) ---
-PROMPT_WORK_ISSUE_TEMPLATE='/tackle issue {url}'
-PROMPT_WORK_PR_TEMPLATE='/tackle PR {url}'
-PROMPT_REVIEW_TEMPLATE='/tackle review PR {url}'
+PROMPT_WORK_ISSUE_TEMPLATE='/jr-tackle issue {url}'
+PROMPT_WORK_PR_TEMPLATE='/jr-tackle PR {url}'
+PROMPT_REVIEW_TEMPLATE='/jr-tackle review PR {url}'
 # Legacy literal-prose fallbacks — used by build_prefill_text() when
-# ~/.claude/skills/tackle/SKILL.md is missing (uninstalled, deleted, or
+# ~/.claude/skills/jr-tackle/SKILL.md is missing (uninstalled, deleted, or
 # fresh-clone before the skill exists). Keep these in lockstep with the
-# /tackle skill body's rigor protocol when it evolves; they exist so the
+# /jr-tackle skill body's rigor protocol when it evolves; they exist so the
 # prefilled text remains a valid, useful prompt even without the skill.
 PROMPT_WORK_ISSUE_TEMPLATE_LEGACY='in plan mode, ultrathink to tackle issue {url}'
 PROMPT_WORK_PR_TEMPLATE_LEGACY='in plan mode, ultrathink to tackle PR {url}'
@@ -329,7 +329,7 @@ create_worktree_scratch() {
     log_info "Creating scratch worktree at ${WORKTREE_BASE}/${scratch_id}/"
 
     # Create a new branch `scratch_id` from HEAD in the new worktree.
-    # /ship later renames this branch in place via `git branch -m`.
+    # /jr-ship later renames this branch in place via `git branch -m`.
     git worktree add -b "$scratch_id" "$worktree_dir" >/dev/null 2>&1 \
         || die "Failed to create worktree. Run 'git worktree prune' and try again."
 
@@ -363,12 +363,12 @@ generate_scratch_md() {
 
 This is a scratch worktree — no PR or issue is associated.
 
-When you're done making changes, run \`/ship\` to derive a conventional-commit
-branch name from the diff and open a PR. \`/ship\` detects the scratch marker
+When you're done making changes, run \`/jr-ship\` to derive a conventional-commit
+branch name from the diff and open a PR. \`/jr-ship\` detects the scratch marker
 (\`.git/info/scratch-session\`) and renames this placeholder branch in place
 instead of creating a new one.
 
-Manual cleanup (if you don't use /ship):
+Manual cleanup (if you don't use /jr-ship):
 
 \`\`\`bash
 cd "\$(git worktree list --porcelain | awk '/^worktree/{print \$2; exit}')"
@@ -450,15 +450,15 @@ build_github_url() {
 build_prefill_text() {
     local mode="$1" number="$2" repo_dir="${3:-$(pwd)}"
     [[ -z "$number" ]] && return 0
-    # Skill-presence fallback: if /tackle skill is missing (uninstalled, deleted,
-    # or fresh clone before tackle/ exists), use legacy literal-prose templates
-    # so the prefilled prompt remains valid. The /tackle slash-command form
+    # Skill-presence fallback: if /jr-tackle skill is missing (uninstalled, deleted,
+    # or fresh clone before jr-tackle/ exists), use legacy literal-prose templates
+    # so the prefilled prompt remains valid. The /jr-tackle slash-command form
     # would otherwise produce "unknown command" when the user presses Enter.
     local issue_tmpl="$PROMPT_WORK_ISSUE_TEMPLATE"
     local pr_tmpl="$PROMPT_WORK_PR_TEMPLATE"
     local review_tmpl="$PROMPT_REVIEW_TEMPLATE"
-    if [[ ! -f "${HOME}/.claude/skills/tackle/SKILL.md" ]]; then
-        log_warn "/tackle skill not found at ~/.claude/skills/tackle/SKILL.md — using legacy literal-prose prefill"
+    if [[ ! -f "${HOME}/.claude/skills/jr-tackle/SKILL.md" ]]; then
+        log_warn "/jr-tackle skill not found at ~/.claude/skills/jr-tackle/SKILL.md — using legacy literal-prose prefill"
         issue_tmpl="$PROMPT_WORK_ISSUE_TEMPLATE_LEGACY"
         pr_tmpl="$PROMPT_WORK_PR_TEMPLATE_LEGACY"
         review_tmpl="$PROMPT_REVIEW_TEMPLATE_LEGACY"
@@ -622,7 +622,7 @@ inject_claude_local_md() {
     local worktree_dir="$1" content="$2"
     # Write to CLAUDE.local.md (auto-loaded by Claude Code alongside CLAUDE.md)
     # rather than CLAUDE.md itself — avoids polluting the repo's project-standards
-    # file (which /review and /audit read as authoritative) with ephemeral
+    # file (which /jr-review and /jr-audit read as authoritative) with ephemeral
     # per-session PR context. See CLAUDE.md "Per-session context injection".
     local claude_md="${worktree_dir}/CLAUDE.local.md"
 
@@ -1173,7 +1173,7 @@ USAGE
   tackle <number|url>          Work on PR or issue (number or GitHub URL)
   tackle <number|url> --review Review PR (read-only mode)
   tackle <number|url> --cleanup Remove worktree
-  tackle --scratch             Start a scratch session (branch name derived later by /ship)
+  tackle --scratch             Start a scratch session (branch name derived later by /jr-ship)
   tackle --list                List active worktrees
   tackle --help                Show this help
 
@@ -1185,13 +1185,13 @@ HOW IT WORKS
   4. Pre-loads context (description, comments, diff) into CLAUDE.local.md
   5. Launches Claude Code with the session named for easy resume
   6. After launch, a default prompt is pre-typed into Claude's input box
-     (NOT submitted): "/tackle issue <url>" / "/tackle PR <url>" / "/tackle
+     (NOT submitted): "/jr-tackle issue <url>" / "/jr-tackle PR <url>" / "/jr-tackle
      review PR <url>" depending on what was invoked. This invokes the
-     in-session /tackle rigor-wrapper skill (ultrathink + verify against
+     in-session /jr-tackle rigor-wrapper skill (ultrathink + verify against
      current sources or advisor + ask clarifying questions early). The
      leading "/" may trigger Claude Code's slash-command picker mid-
      keystroke — if the prefill looks distorted, edit before pressing
-     Enter. If ~/.claude/skills/tackle/SKILL.md is missing, the script
+     Enter. If ~/.claude/skills/jr-tackle/SKILL.md is missing, the script
      falls back to legacy literal-prose templates ("in plan mode,
      ultrathink to …"). Edit the PROMPT_*_TEMPLATE constants at the top
      of this script to customize. macOS only — grant Accessibility
@@ -1203,7 +1203,7 @@ HOW IT WORKS
 SCRATCH MODE
   `tackle --scratch` creates an empty worktree at
   .claude/worktrees/scratch-<ts>-<pid>/ with a placeholder branch of the same
-  name. A marker file in the worktree's .git/info/ tells /ship to rename this
+  name. A marker file in the worktree's .git/info/ tells /jr-ship to rename this
   branch in place (instead of creating a new one) once the diff is ready.
 
 REQUIREMENTS

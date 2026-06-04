@@ -3,14 +3,14 @@
 #
 # Drafts a `project_<name>.md` memory file with placeholder sections for the
 # project's goals and conventions — the kind of context that is NOT derivable
-# from code, git history, or CLAUDE.md. /audit and /review already read those
+# from code, git history, or CLAUDE.md. /jr-audit and /jr-review already read those
 # live every run; duplicating them here would just decay into stale snapshots
 # that get re-injected into every reviewer prompt forever.
 #
 # Opens the draft in $EDITOR for the user to fill in, then writes it to
 # ~/.claude/projects/<encoded-cwd>/memory/ alongside an updated MEMORY.md index.
 #
-# This is a ONE-SHOT helper, NOT a recurring skill. The /audit and /review skills
+# This is a ONE-SHOT helper, NOT a recurring skill. The /jr-audit and /jr-review skills
 # read the memory dir at Phase 1 Track A; seeding a project once means every
 # future reviewer in that project sees the project context.
 #
@@ -44,7 +44,7 @@ fi
 target=$(cd "$target" && pwd)
 project_name=$(basename "$target")
 
-# Encode CWD into the memory dir path the same way /audit and /review do:
+# Encode CWD into the memory dir path the same way /jr-audit and /jr-review do:
 # replace / with - and . with -.
 encoded="${target//[.\/]/-}"
 memory_dir="$HOME/.claude/projects/${encoded}/memory"
@@ -75,7 +75,7 @@ type: project
 # ${project_name}
 
 <!-- Edit this draft. Lines starting with HTML comments are hints; remove or replace them.
-     Stack, recent commits, and CLAUDE.md are read live by /audit and /review at Phase 1
+     Stack, recent commits, and CLAUDE.md are read live by /jr-audit and /jr-review at Phase 1
      Track A — do not copy them here. Only record facts a fresh Claude session cannot
      infer from the code or git history. -->
 
@@ -124,4 +124,4 @@ else
 fi
 
 echo
-echo "Done. /audit and /review will pick this up at Phase 1 Track A on the next run in $target."
+echo "Done. /jr-audit and /jr-review will pick this up at Phase 1 Track A on the next run in $target."

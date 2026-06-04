@@ -1,6 +1,6 @@
 # Abort Marker Rendering
 
-**Canonical source** for the `abortReason` → rendered-marker mapping used by `/audit`, `/review`, and `/skill-audit`'s Phase 7 cleanup. All three skills read this file at Phase 1 Track A and apply the rules below when rendering the report. Update here to update every skill.
+**Canonical source** for the `abortReason` → rendered-marker mapping used by `/jr-audit`, `/jr-review`, and `/jr-skill-audit`'s Phase 7 cleanup. All three skills read this file at Phase 1 Track A and apply the rules below when rendering the report. Update here to update every skill.
 
 ## When to render
 
@@ -22,8 +22,8 @@ A skill renders an abort marker in its Phase 7 report only when `abortMode=true`
 | `fresh-eyes-terminal-failure` | `[FRESH-EYES TERMINAL FAILURE]` |
 | `secret-halt-*` (all secret-halt variants: `secret-halt-phase-1`, `secret-halt-phase-5.6`, `secret-halt-phase-5.6-user-abort`, `secret-halt-phase-6-regression`, `secret-halt-convergence`, `secret-halt-convergence-5.6`, `secret-halt-convergence-5.6-user-abort`, `secret-halt-fresh-eyes`, `secret-halt-fresh-eyes-user-abort`) | Use the `[SECRET DETECTED — ...]` markers rendered by the secret-halt protocol (`[SECRET DETECTED — CHANGES REVERTED]` post-implementation, `[SECRET DETECTED — NO REVERT NEEDED]` pre-implementation). Do NOT render an additional `[ABORT — *]` marker — avoid duplicate emission for the same event. |
 | `user-abort`, `user-abort-convergence`, `user-abort-phase-5-dispatch` | `[ABORT — USER ABORT]` |
-| `unmatched-scope` | `[ABORT — UNMATCHED SCOPE]` — `/skill-audit` Phase 1 Track B discovered zero skills matching the user's filter (bare positional or `--scope=<glob>`). Caller appends an "Available skills: ..." hint. |
-| `shared-file-missing` | `[ABORT — SHARED FILE MISSING]` — `/skill-audit` Phase 1 Track A hard-fail guard tripped (any required shared protocol file was missing, empty, or failed structural smoke-parse). Distinct from `/audit` and `/review`'s reuse of an inline message because skill-audit has a smaller shared-file set. |
+| `unmatched-scope` | `[ABORT — UNMATCHED SCOPE]` — `/jr-skill-audit` Phase 1 Track B discovered zero skills matching the user's filter (bare positional or `--scope=<glob>`). Caller appends an "Available skills: ..." hint. |
+| `shared-file-missing` | `[ABORT — SHARED FILE MISSING]` — `/jr-skill-audit` Phase 1 Track A hard-fail guard tripped (any required shared protocol file was missing, empty, or failed structural smoke-parse). Distinct from `/jr-audit` and `/jr-review`'s reuse of an inline message because skill-audit has a smaller shared-file set. |
 | `*` (anything else, including unset) | `[ABORT — UNLABELED]` — **contract violation**: `abortMode=true` was set without a recognised `abortReason`. Surface as `ACTION REQUIRED` so the gap is visible. |
 
 ## Markers rendered outside the `abortReason` mapping

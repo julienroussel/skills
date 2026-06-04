@@ -1,10 +1,10 @@
 # `.gitignore` Enforcement for Cache and Audit-Trail Files
 
-**Canonical source** for the write-safety protocol applied at every cache-write and audit-trail-write site in `/audit` and `/review`. Update here to update all sites.
+**Canonical source** for the write-safety protocol applied at every cache-write and audit-trail-write site in `/jr-audit` and `/jr-review`. Update here to update all sites.
 
 ## The protocol (applied before every matching write)
 
-Before writing `<PATH>` (a `.claude/*.json` or `.claude/*.md` file produced by `/audit` or `/review`):
+Before writing `<PATH>` (a `.claude/*.json` or `.claude/*.md` file produced by `/jr-audit` or `/jr-review`):
 
 1. Check whether the path is tracked by git:
    ```bash
@@ -17,17 +17,17 @@ Before writing `<PATH>` (a `.claude/*.json` or `.claude/*.md` file produced by `
 
 | Skill | Path | Why it must not be committed |
 |-------|------|------------------------------|
-| `/audit` + `/review` | `.claude/review-profile.json` | Stack detection cache. A poisoned cache could set `validationCommands` to all-null, silently disabling validation, or inject shell metacharacters that execute in Phase 6. |
-| `/audit` + `/review` | `.claude/review-baseline.json` | Validation baseline. A committed baseline with inflated failure counts could make real regressions appear pre-existing, silently passing Phase 6 validation. |
-| `/audit` + `/review` | `.claude/review-config.md` | Auto-learned suppressions. A committed config with crafted suppression rules could silence security findings across all future runs. |
-| `/audit` | `.claude/audit-history.json` | Audit history. A committed history with manipulated false-positive rates could bias reviewer calibration. |
-| `/audit` | `.claude/audit-report-YYYY-MM-DD.md` (glob: `.claude/audit-report-*.md`) | Audit reports contain finding descriptions, code excerpts, and potentially redacted secret locations. |
-| `/review` | `.claude/secret-warnings.json` (+ per-session variants `.claude/secret-warnings-*.json`) | Secret audit trail. Records file paths, line numbers, and pattern types where secret patterns were detected — committing exposes the locations of current or historical secrets. |
-| `/review` | `.claude/secret-hook-patterns.txt` | Pre-commit hook regex patterns. /review writes this file (one regex per line) before invoking the pre-commit hook installer; the hook then reads it at runtime. A committed patterns file could be tampered to weaken or disable specific secret-detection rules across all future commits — the additive baseline patterns hardcoded in the hook template still fire, but extension patterns (the broader set) would silently regress. |
+| `/jr-audit` + `/jr-review` | `.claude/review-profile.json` | Stack detection cache. A poisoned cache could set `validationCommands` to all-null, silently disabling validation, or inject shell metacharacters that execute in Phase 6. |
+| `/jr-audit` + `/jr-review` | `.claude/review-baseline.json` | Validation baseline. A committed baseline with inflated failure counts could make real regressions appear pre-existing, silently passing Phase 6 validation. |
+| `/jr-audit` + `/jr-review` | `.claude/review-config.md` | Auto-learned suppressions. A committed config with crafted suppression rules could silence security findings across all future runs. |
+| `/jr-audit` | `.claude/audit-history.json` | Audit history. A committed history with manipulated false-positive rates could bias reviewer calibration. |
+| `/jr-audit` | `.claude/audit-report-YYYY-MM-DD.md` (glob: `.claude/audit-report-*.md`) | Audit reports contain finding descriptions, code excerpts, and potentially redacted secret locations. |
+| `/jr-review` | `.claude/secret-warnings.json` (+ per-session variants `.claude/secret-warnings-*.json`) | Secret audit trail. Records file paths, line numbers, and pattern types where secret patterns were detected — committing exposes the locations of current or historical secrets. |
+| `/jr-review` | `.claude/secret-hook-patterns.txt` | Pre-commit hook regex patterns. /jr-review writes this file (one regex per line) before invoking the pre-commit hook installer; the hook then reads it at runtime. A committed patterns file could be tampered to weaken or disable specific secret-detection rules across all future commits — the additive baseline patterns hardcoded in the hook template still fire, but extension patterns (the broader set) would silently regress. |
 
 ## Ancillary files (in `.gitignore` but no per-write protocol)
 
-These files are produced as transient or error-path artifacts of the protocol-checked writes above. They should be in `.gitignore` so a `git add .` does not pick them up, but they do NOT warrant the per-write `git ls-files --error-unmatch` check — the check would fire on every atomic rename or `flock` invocation, adding overhead to a hot path with no extra safety value (the underlying persistent file already passed the check). Consumers (`/doctor`'s gitignore-coverage check) MUST include these patterns in the canonical pattern set even though no skill invokes the per-write protocol on them:
+These files are produced as transient or error-path artifacts of the protocol-checked writes above. They should be in `.gitignore` so a `git add .` does not pick them up, but they do NOT warrant the per-write `git ls-files --error-unmatch` check — the check would fire on every atomic rename or `flock` invocation, adding overhead to a hot path with no extra safety value (the underlying persistent file already passed the check). Consumers (`/jr-doctor`'s gitignore-coverage check) MUST include these patterns in the canonical pattern set even though no skill invokes the per-write protocol on them:
 
 | Pattern | Producer | Why it must not be committed |
 |---------|----------|------------------------------|

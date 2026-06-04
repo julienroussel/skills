@@ -1,6 +1,6 @@
 # Advisor Call Criteria
 
-**Canonical source** for *when* and *how* a skill should call `advisor()`. Currently consumed by `/skill-audit`'s `advisor-coverage-reviewer` to evaluate other skills' coverage. The criteria here are extracted from Anthropic's published advisor tool guidance (see "Source" below) so they apply portably to any user's machine — they are **not** taken from any individual user's personal `CLAUDE.md`.
+**Canonical source** for *when* and *how* a skill should call `advisor()`. Currently consumed by `/jr-skill-audit`'s `advisor-coverage-reviewer` to evaluate other skills' coverage. The criteria here are extracted from Anthropic's published advisor tool guidance (see "Source" below) so they apply portably to any user's machine — they are **not** taken from any individual user's personal `CLAUDE.md`.
 
 ## Source
 
@@ -27,15 +27,15 @@ Calls MUST be guarded so they don't fire excessively or in ways that drain budge
 - **Conditional triggers on quality signals** — gate calls on "this looks suspicious" predicates rather than firing every time:
   - **Skewed-dimension** — a single reviewer dimension contributing ≥ 60% of all findings (the strongest empirical hallucination cue).
   - **Findings-volume** — total finding count crossing a threshold (e.g., ≥ 20).
-  - **Iteration depth** — convergence iteration ≥ 3 (`/review`) or ≥ 2 (`/audit`).
-- **Mode gating** — calls that only make sense in a particular mode should be gated by the flag (e.g., `/ship`'s pre-merge advisor only fires when `--merge` is set; the no-merge default leaves the advisor dormant).
+  - **Iteration depth** — convergence iteration ≥ 3 (`/jr-review`) or ≥ 2 (`/jr-audit`).
+- **Mode gating** — calls that only make sense in a particular mode should be gated by the flag (e.g., `/jr-ship`'s pre-merge advisor only fires when `--merge` is set; the no-merge default leaves the advisor dormant).
 - **Auto-approve compatibility** — if the skill supports `--auto-approve` / headless execution, decide explicitly whether the advisor still fires in that mode. The general rule: keep advisor calls active in headless mode for any branch that mutates user code or commits to an irreversible decision, since a wrong call is exactly what advisor catches.
 
 ## When advisor advice and primary-source evidence conflict
 
 If the skill has retrieved primary-source evidence that points one way (file says X, command output shows Y) and the advisor points another, do **not** silently switch. Surface the conflict in one more advisor call: "I found X, you suggest Y, which constraint breaks the tie?". The advisor saw the evidence but may have underweighted it; a reconcile call is cheaper than committing to the wrong branch. A passing self-test is not evidence the advice is wrong — it's evidence the test doesn't check what the advice is checking.
 
-## How `/skill-audit` applies these rules
+## How `/jr-skill-audit` applies these rules
 
 `advisor-coverage-reviewer` evaluates an audited skill's `advisor()` call sites against the criteria above and may flag:
 
