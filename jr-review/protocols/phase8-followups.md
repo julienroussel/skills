@@ -1,6 +1,6 @@
 # Phase 8 — Follow-up issue tracking
 
-**Canonical procedure** for `/review` Phase 8. Referenced by `review/SKILL.md` Phase 8. Loaded at Phase 1 Track A under the same hard-fail + smoke-parse discipline as the other protocol files.
+**Canonical procedure** for `/jr-review` Phase 8. Referenced by `jr-review/SKILL.md` Phase 8. Loaded at Phase 1 Track A under the same hard-fail + smoke-parse discipline as the other protocol files.
 
 ## When to run / skip
 

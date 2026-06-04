@@ -1,6 +1,6 @@
 # Phase 7 Step 3 — Secret-Warnings Lifecycle
 
-**Canonical procedure** for pruning, status transitions, and pattern-type absorption in `.claude/secret-warnings*.json`. Referenced by `review/SKILL.md` Phase 7 step 3. Applied for every entry in every `secret-warnings*.json` file when `abortMode=false`.
+**Canonical procedure** for pruning, status transitions, and pattern-type absorption in `.claude/secret-warnings*.json`. Referenced by `jr-review/SKILL.md` Phase 7 step 3. Applied for every entry in every `secret-warnings*.json` file when `abortMode=false`.
 
 ## Sub-step (a) — Schema validation
 
@@ -24,7 +24,7 @@ Track an integer `missingRunCount` on the entry. On each run where the file is m
 - If prior `status` was NOT `"unverified"` (i.e., `"active"`, `"acknowledged"`, or absent on a legacy entry): `missingRunCount = 1` — first run confirming the file is missing.
 - If prior `status` WAS `"unverified"`: increment by 1. Do NOT reset to `1` on re-confirmation.
 
-After 3 consecutive `/review` runs where the file remains missing (`missingRunCount` reaches `3`), the entry becomes eligible for pruning. Log each eviction: `expired unverified entry: <file>:<line> — file missing for 3 runs`.
+After 3 consecutive `/jr-review` runs where the file remains missing (`missingRunCount` reaches `3`), the entry becomes eligible for pruning. Log each eviction: `expired unverified entry: <file>:<line> — file missing for 3 runs`.
 
 In **interactive mode**, per `unverified` entry, AskUserQuestion: `Acknowledge entry <file>:<line>? Options: [Acknowledge — stop surfacing] / [Keep — surface in future runs]`. On Acknowledge, write `status: "acknowledged"` and stop surfacing in subsequent reports.
 
@@ -70,7 +70,7 @@ When the full-scan matches a sub-pattern whose dedicated enum label differs from
 
 - **No matches at all** (neither `"other"`-class nor dedicated-label): standard "no match → remove" — the secret has been resolved.
 
-This preserves the resolution path for entries whose underlying pattern has no dedicated enum label, prevents silent mis-labeling of the audit trail, and keeps the `patternType` field reliable for future `/ship` enforcement filtering.
+This preserves the resolution path for entries whose underlying pattern has no dedicated enum label, prevents silent mis-labeling of the audit trail, and keeps the `patternType` field reliable for future `/jr-ship` enforcement filtering.
 
 #### Interaction with the acknowledge-status override
 

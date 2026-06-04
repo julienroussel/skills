@@ -1,6 +1,6 @@
-# Phase 2 — Spawn reviewers (dynamically scaled) — `/review`
+# Phase 2 — Spawn reviewers (dynamically scaled) — `/jr-review`
 
-**Canonical source** for `/review`'s Phase 2. `review/SKILL.md` reads this file into lead context at Phase 1 Track A (under the hard-fail + non-empty + smoke-parse guard, alongside the `shared/*.md` files) and applies it at the `## Phase 2` step. Update here to update `/review`'s reviewer-swarm behavior.
+**Canonical source** for `/jr-review`'s Phase 2. `jr-review/SKILL.md` reads this file into lead context at Phase 1 Track A (under the hard-fail + non-empty + smoke-parse guard, alongside the `shared/*.md` files) and applies it at the `## Phase 2` step. Update here to update `/jr-review`'s reviewer-swarm behavior.
 
 ### Effort-adaptive breadth (`CLAUDE_EFFORT`)
 

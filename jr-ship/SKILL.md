@@ -1,5 +1,5 @@
 ---
-name: ship
+name: jr-ship
 description: Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs. Handles branching, CI wait, and (with --merge) squash-merge + cleanup. Default stops after CI without merging — `--merge` is opt-in. Use `--dry-run` to preview or `--draft` to open the PR as a draft.
 argument-hint: "[message] [--draft|--base|--no-split|--merge|--dry-run|--split-only|--validate|--label|--no-overlap-check]"
 effort: medium
@@ -16,10 +16,10 @@ allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *
 - `allowed-tools` grants `Bash(git checkout *)` (broad wildcard): every documented phase needs a
   `git checkout` form — branch switch + create (`-b`), HEAD detach in cleanup, file-level restore
   from the staging ref (`git checkout <staging> -- <files>`, step 7-multi). Each form is documented.
-- `allowed-tools` grants no `Write`/`Edit`: `/ship` mutates the repo only through `git`/`gh` and
+- `allowed-tools` grants no `Write`/`Edit`: `/jr-ship` mutates the repo only through `git`/`gh` and
   reads with `Read` — it has no file-write site of its own. The former `Write(.claude/**)` (the
   step-4 `.claude/secret-warnings.json` audit-trail write) was removed when that write was deferred
-  to the not-yet-implemented `/review`→`/ship` enforcement contract — see issue #32.
+  to the not-yet-implemented `/jr-review`→`/jr-ship` enforcement contract — see issue #32.
 -->
 
 <!-- Dependencies:
@@ -32,7 +32,7 @@ allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *
     - github@claude-plugins-official  — GitHub MCP for authenticated API access (gh CLI auth also works)
     - codebase-memory-mcp (MCP)       — detect_changes + trace_path for Phase 2 step 3 group-dependency
                                         detection when indexed; import-parse heuristic fallback otherwise
-    - .claude/review-profile.json     — reuses /review's stack cache for --validate
+    - .claude/review-profile.json     — reuses /jr-review's stack cache for --validate
   Shared protocol references (see ../shared/):
     - shared/untrusted-input-defense.md — verbatim into the split-analysis (Phase 2) and CI-fix subagent prompts
     - shared/code-edit-discipline.md    — verbatim into the CI-fix subagent prompt (with a CI-fix-specific
@@ -56,16 +56,16 @@ Parse arguments as space-separated tokens. Recognized flags:
 
 - `--draft`: Create the PR(s) as drafts and skip the CI wait and merge steps.
 - `--base <branch>`: Target a branch other than the repo's default branch. If omitted, auto-detect via `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` (fallback to `main`).
-- `--dry-run`: Perform split analysis and show the full plan (branch names, PR titles, file groups, commands) but execute nothing. Useful for previewing what `/ship` would do.
+- `--dry-run`: Perform split analysis and show the full plan (branch names, PR titles, file groups, commands) but execute nothing. Useful for previewing what `/jr-ship` would do.
 - `--no-split`: Skip the split analysis entirely and ship everything as a single PR.
 - `--split-only`: Force the multi-PR flow (override the split-vs-single heuristic). Otherwise behaves like the default — waits for CI, does not merge.
-- `--merge`: After creating the PR(s) and waiting for CI to pass, merge with `--squash --delete-branch`. Without this flag, `/ship` still returns to the base branch and cleans up the local feature branch + tackle worktree once CI is green — but leaves the PR open for review (safer default for team work; reviewers get a window to catch issues CI does not). Also enables resume: from a clean working tree on a non-base branch with an open ready-for-review PR, `/ship --merge` skips create/push and merges that existing PR.
+- `--merge`: After creating the PR(s) and waiting for CI to pass, merge with `--squash --delete-branch`. Without this flag, `/jr-ship` still returns to the base branch and cleans up the local feature branch + tackle worktree once CI is green — but leaves the PR open for review (safer default for team work; reviewers get a window to catch issues CI does not). Also enables resume: from a clean working tree on a non-base branch with an open ready-for-review PR, `/jr-ship --merge` skips create/push and merges that existing PR.
 - `--validate`: Run lint/typecheck/test before creating the PR. If any fail, stop and report. Use detected validation commands from `.claude/review-profile.json` if available.
 - `--label <labels>`: Add comma-separated labels to all created PRs. Example: `--label feature,auth`.
 - `--no-overlap-check`: Skip the post-create file-overlap warning (Phase 3a step 11a / Phase 3b step 10a-multi). Use when you know overlap with another open PR is intentional (a deliberate follow-up, a coordinated refactor). The check is informational only — this flag just suppresses the API call and the warning output.
 - Any remaining text is used as the commit message / PR title.
 
-Examples: `/ship`, `/ship --draft`, `/ship fix login bug --no-split`, `/ship --merge`, `/ship --validate`, `/ship --label feature,v2`, `/ship --merge --no-overlap-check`
+Examples: `/jr-ship`, `/jr-ship --draft`, `/jr-ship fix login bug --no-split`, `/jr-ship --merge`, `/jr-ship --validate`, `/jr-ship --label feature,v2`, `/jr-ship --merge --no-overlap-check`
 
 ### Flag conflicts
 
@@ -80,7 +80,7 @@ Examples: `/ship`, `/ship --draft`, `/ship fix login bug --no-split`, `/ship --m
 
 The `<base-branch>` and `<labels>` values flow into shell commands (`git checkout`, `git pull`, `gh pr edit --base`, `gh pr create --label`). Sanitize before any interpolation; reject on first failure:
 
-- `--base <branch>`: (1) reject control characters (`\0`, `\n`, `\r`); (2) allowlist `^[a-zA-Z0-9][a-zA-Z0-9._/-]*$`; (3) reject any `\.{2,}` substring; (4) reject segments starting with `.` or `-`. Always double-quote the interpolation in Bash. Mirrors `/review` `--branch=<base>` sanitization.
+- `--base <branch>`: (1) reject control characters (`\0`, `\n`, `\r`); (2) allowlist `^[a-zA-Z0-9][a-zA-Z0-9._/-]*$`; (3) reject any `\.{2,}` substring; (4) reject segments starting with `.` or `-`. Always double-quote the interpolation in Bash. Mirrors `/jr-review` `--branch=<base>` sanitization.
 - `--label <labels>`: split on `,`, trim whitespace per entry, drop empties. For each entry: (1) reject control characters; (2) allowlist `^[a-zA-Z0-9][a-zA-Z0-9._-]*$` (no slashes; GitHub labels don't take them); (3) reject leading `-` (would parse as a `gh` flag).
 - Free-text PR title / commit message: passed via `--title "$msg"` (gh CLI argv, not shell-interpolated) or via HEREDOC for body — no sanitization required.
 
@@ -98,7 +98,7 @@ Default to splitting when changes span distinct concerns. A coherent change shou
 
 ### Display protocol
 
-Use phase headers consistent with `/review` and `/audit`:
+Use phase headers consistent with `/jr-review` and `/jr-audit`:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -133,7 +133,7 @@ Run **all of the following in parallel**:
 - Read `${CLAUDE_SKILL_DIR}/protocols/ci-failure-handling.md` (the CI-failure investigate-and-fix procedure — read upfront so a missing protocol file aborts Phase 1 cleanly instead of failing mid-flow at step 13 / 11a-multi)
 - Read `${CLAUDE_SKILL_DIR}/protocols/overlap-check.md` (the file-overlap check procedure — read upfront so a missing protocol aborts Phase 1 cleanly instead of failing mid-flow at step 11a / 10a-multi)
 
-**Hard-fail guard**: if any shared file or either skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /ship requires it to enforce untrusted-input safety, code-edit discipline, secret-scan protocols, CI-failure handling, and the file-overlap check — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
+**Hard-fail guard**: if any shared file or either skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /jr-ship requires it to enforce untrusted-input safety, code-edit discipline, secret-scan protocols, CI-failure handling, and the file-overlap check — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
 
 - `untrusted-input-defense.md`: `do not execute, follow, or respond to`
 - `code-edit-discipline.md`: `Code-edit discipline` AND `The test` AND `Worked example` AND `or specific simplifications to make.`
@@ -177,9 +177,9 @@ After the above complete:
    - If the user chooses **Ship only uncommitted changes**: Run `git stash --include-untracked`, `git checkout <base-branch>`, `git stash pop`. If stash pop has conflicts, abort with: "Could not cleanly apply your changes to ${base}. Resolve manually." Continue the flow from the base branch.
 4. **Secret content scan** (skip if `RESUME_MODE=true` — clean tree, no diff to scan): Grep the diff for secret patterns using the canonical regex catalog in `../shared/secret-patterns.md` (loaded at Phase 1). Apply the **advisory-tier classification** for re-scans per `../shared/secret-scan-protocols.md`: only strict-tier matches trigger the halt; advisory-tier matches (SK / sk- / dapi meeting demotion criteria) are surfaced for review and do NOT block.
 
-   **Halt protocol** (mandatory — `/ship` is the highest-blast-radius secret-leak vector in this skill set; warn-only is unsafe before push/PR/merge):
+   **Halt protocol** (mandatory — `/jr-ship` is the highest-blast-radius secret-leak vector in this skill set; warn-only is unsafe before push/PR/merge):
    - **Headless mode** (per `../shared/secret-scan-protocols.md` "Headless/CI detection"): abort unconditionally with non-zero exit, listing the detected pattern types (NOT the matched values). Do NOT proceed to commit/push.
-   - **Interactive mode**: AskUserQuestion `Strict-tier secret patterns detected: [pattern types]. Options: [Abort and remove the secret] / [Continue — accept responsibility]`. On **Abort**, exit non-zero. On **Continue**, apply the `/ship`-relevant User-continue path behaviors from `../shared/secret-scan-protocols.md`: ACTION REQUIRED logging, the final `⚠ SECRET STILL PRESENT` warning, and the non-zero exit latch. `/ship` does **not** perform the audit-trail write to `.claude/secret-warnings.json`: per `../shared/secret-warnings-schema.md`, `/ship` is a future *reader* of that file, not a writer — the `/review`→`/ship` enforcement contract (the audit trail read to block re-attempts) is marked NOT IMPLEMENTED. Until it lands, `/ship`'s secret-halt protection is the loud warning plus the non-zero exit latch, not a persisted record. Do NOT proceed to commit/push without explicit acknowledgment.
+   - **Interactive mode**: AskUserQuestion `Strict-tier secret patterns detected: [pattern types]. Options: [Abort and remove the secret] / [Continue — accept responsibility]`. On **Abort**, exit non-zero. On **Continue**, apply the `/jr-ship`-relevant User-continue path behaviors from `../shared/secret-scan-protocols.md`: ACTION REQUIRED logging, the final `⚠ SECRET STILL PRESENT` warning, and the non-zero exit latch. `/jr-ship` does **not** perform the audit-trail write to `.claude/secret-warnings.json`: per `../shared/secret-warnings-schema.md`, `/jr-ship` is a future *reader* of that file, not a writer — the `/jr-review`→`/jr-ship` enforcement contract (the audit trail read to block re-attempts) is marked NOT IMPLEMENTED. Until it lands, `/jr-ship`'s secret-halt protection is the loud warning plus the non-zero exit latch, not a persisted record. Do NOT proceed to commit/push without explicit acknowledgment.
 
 #### Phase 2: Split Analysis (skip if `--no-split` or `RESUME_MODE=true` — no diff to split)
 
@@ -242,10 +242,10 @@ After the above complete:
    Options: [Continue] / [Edit grouping] / [Ship as single PR]
    ```
 
-   - If `--dry-run` is set, show the plan without options and stop: "Dry run complete — this is what /ship would do."
+   - If `--dry-run` is set, show the plan without options and stop: "Dry run complete — this is what /jr-ship would do."
    - If the user chooses **Edit grouping**, let them move files between groups, merge groups, or re-split. Then re-display the plan.
    - If the user chooses **Ship as single PR**, proceed with the single-PR flow (skip to step 6).
-   - If the user chooses **Continue**: before proceeding to step 6-multi, call `advisor()` (no parameters — the full transcript is auto-forwarded) for a second opinion on the split. The advisor reviews the proposed grouping and stacked-vs-independent decisions. If the advisor concurs or offers only minor notes, proceed silently to step 6-multi. If the advisor raises a concrete concern (e.g., a dependency was missed, a group should be merged, stacking is wrong), surface it via AskUserQuestion: `Advisor flagged a concern with the split: <one-line summary>. Options: [Edit grouping — revise] / [Continue anyway — I accept the risk] / [Ship as single PR] / [Abort]`. Do NOT silently override the user's choice. This check runs once per `/ship` invocation, before branches are created, because the split is hard to undo once PRs are pushed.
+   - If the user chooses **Continue**: before proceeding to step 6-multi, call `advisor()` (no parameters — the full transcript is auto-forwarded) for a second opinion on the split. The advisor reviews the proposed grouping and stacked-vs-independent decisions. If the advisor concurs or offers only minor notes, proceed silently to step 6-multi. If the advisor raises a concrete concern (e.g., a dependency was missed, a group should be merged, stacking is wrong), surface it via AskUserQuestion: `Advisor flagged a concern with the split: <one-line summary>. Options: [Edit grouping — revise] / [Continue anyway — I accept the risk] / [Ship as single PR] / [Abort]`. Do NOT silently override the user's choice. This check runs once per `/jr-ship` invocation, before branches are created, because the split is hard to undo once PRs are pushed.
 
 #### Phase 3a: Single-PR Flow
 
@@ -269,13 +269,13 @@ In **resume mode** (`RESUME_MODE=true`), steps 6–11 are SKIPPED — the PR alr
 
 12. **Check merge requirements**: Use `gh pr view <number> --json reviewDecision,mergeStateStatus` to check if the target branch requires review approvals. The check fires only when `reviewDecision` indicates reviews required AND not yet approved (silent otherwise).
     - **Default mode** (no `--merge`, not in resume): informational only. Print: `"Note: this PR needs review approval before it can be merged."` Continue to step 13.
-    - **`--merge` set** (including resume mode): blocking. Stop with: `"This PR requires review approval before it can be merged. Stopping here — after approval, re-run /ship --merge from this worktree, or merge directly with: gh pr merge <number> --squash --delete-branch (or via GitHub)."`
+    - **`--merge` set** (including resume mode): blocking. Stop with: `"This PR requires review approval before it can be merged. Stopping here — after approval, re-run /jr-ship --merge from this worktree, or merge directly with: gh pr merge <number> --squash --delete-branch (or via GitHub)."`
 13. **Wait for CI** to pass using `gh pr checks <number> --watch --fail-fast`. If no checks appear within 30 seconds (repo has no CI configured), skip the wait and proceed. If checks have not completed after 10 minutes, report the current status and stop. **If a check fails**, invoke the **CI-failure handling** procedure (see above): if it returns **green**, continue to step 14; if it returns **not-green**, stop here — step 15 cleanup is skipped. (On `--draft`, step 11b already short-circuited to step 16, so this step never runs.) Resume mode always reaches here.
 14. **Merge** the PR with `gh pr merge <number> --squash --delete-branch`. (**Run only if `--merge`** — resume mode satisfies this trivially since `--merge` is the resume trigger.)
-    - **Pre-merge advisor check**: Before calling `gh pr merge`, call `advisor()` (no parameters — the full transcript is auto-forwarded) for a second opinion on the merge. The advisor sees the branch, commits, PR title/body, CI state, and recent conversation. If the advisor concurs or has only minor notes, proceed silently with the merge. If the advisor raises a concrete concern (e.g., unexpected commit, PR body doesn't match the diff, missing test for a critical path, risky change in a hotspot file), surface via AskUserQuestion: `Advisor flagged a concern before merge: <one-line summary>. Options: [Merge anyway — I accept the risk] / [Edit PR first] / [Abort merge]`. On **Edit PR first**, stop here and report the advisor's concern; the user manually addresses and re-runs `/ship`. On **Abort merge**, stop without merging. Merge is irreversible once CI-squashed — this check has high ROI and runs only once per PR.
-15. **Return to base and clean up** — worktree-aware. (**Run after CI passes in step 13** — both with and without `--merge`. With `--merge`, runs after step 14's successful merge. Without `--merge`, runs as soon as step 13 confirms CI is green — the local feature branch and tackle worktree are removed, but the remote branch and PR remain open for team review. Skip if CI did not reach green in step 13 (10-minute timeout, or CI-failure handling returned not-green). On `--draft`, step 11b already short-circuited to step 16, so this step never runs. To merge later, use `gh pr merge <number> --squash --delete-branch` or the GitHub UI; resume mode (`/ship --merge` from the same worktree) is only available if cleanup did not run — i.e. `--draft`, CI failure, or step 12's required-review block in `--merge` mode.)
+    - **Pre-merge advisor check**: Before calling `gh pr merge`, call `advisor()` (no parameters — the full transcript is auto-forwarded) for a second opinion on the merge. The advisor sees the branch, commits, PR title/body, CI state, and recent conversation. If the advisor concurs or has only minor notes, proceed silently with the merge. If the advisor raises a concrete concern (e.g., unexpected commit, PR body doesn't match the diff, missing test for a critical path, risky change in a hotspot file), surface via AskUserQuestion: `Advisor flagged a concern before merge: <one-line summary>. Options: [Merge anyway — I accept the risk] / [Edit PR first] / [Abort merge]`. On **Edit PR first**, stop here and report the advisor's concern; the user manually addresses and re-runs `/jr-ship`. On **Abort merge**, stop without merging. Merge is irreversible once CI-squashed — this check has high ROI and runs only once per PR.
+15. **Return to base and clean up** — worktree-aware. (**Run after CI passes in step 13** — both with and without `--merge`. With `--merge`, runs after step 14's successful merge. Without `--merge`, runs as soon as step 13 confirms CI is green — the local feature branch and tackle worktree are removed, but the remote branch and PR remain open for team review. Skip if CI did not reach green in step 13 (10-minute timeout, or CI-failure handling returned not-green). On `--draft`, step 11b already short-circuited to step 16, so this step never runs. To merge later, use `gh pr merge <number> --squash --delete-branch` or the GitHub UI; resume mode (`/jr-ship --merge` from the same worktree) is only available if cleanup did not run — i.e. `--draft`, CI failure, or step 12's required-review block in `--merge` mode.)
 
-   **Consent basis for branch/worktree deletion**: the `git branch -d/-D` and `git worktree remove --force` operations below are the documented `/ship` cleanup contract — invoking `/ship` without `--draft` is the user's authorization for them. They are effect-safe: cleanup is gated on CI success (step 13), which runs only after the branch was pushed (step 10), so every commit is preserved on `origin/<branch>` plus the open PR; `git branch -D` only drops the local ref. Do NOT add a separate confirmation prompt here — with `--draft`, no cleanup runs at all.
+   **Consent basis for branch/worktree deletion**: the `git branch -d/-D` and `git worktree remove --force` operations below are the documented `/jr-ship` cleanup contract — invoking `/jr-ship` without `--draft` is the user's authorization for them. They are effect-safe: cleanup is gated on CI success (step 13), which runs only after the branch was pushed (step 10), so every commit is preserved on `origin/<branch>` plus the open PR; `git branch -D` only drops the local ref. Do NOT add a separate confirmation prompt here — with `--draft`, no cleanup runs at all.
 
    **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
 
@@ -323,11 +323,11 @@ In **resume mode** (`RESUME_MODE=true`), steps 6–11 are SKIPPED — the PR alr
 
 This flow creates and ships multiple sub-PRs. It first processes all **independent** PRs (targeting the base branch), then processes **stacked** chains in dependency order.
 
-**Resume mode does NOT enter Phase 3b.** Phase 2 (split analysis) is skipped in resume mode, so there's no group/dependency information to drive ordered merging. Resume always uses the single-PR Phase 3a flow against `RESUME_PR_NUMBER`. If the user originally ran `/ship --split-only`, only the PR matching the current branch will be resumed — the other branches need to be merged manually (see step 13-multi summary footer).
+**Resume mode does NOT enter Phase 3b.** Phase 2 (split analysis) is skipped in resume mode, so there's no group/dependency information to drive ordered merging. Resume always uses the single-PR Phase 3a flow against `RESUME_PR_NUMBER`. If the user originally ran `/jr-ship --split-only`, only the PR matching the current branch will be resumed — the other branches need to be merged manually (see step 13-multi summary footer).
 
 **6-multi. Prepare a staging commit on a temporary branch:**
 
-- Create a temporary branch `ship/staging-<timestamp>` from the current HEAD.
+- Create a temporary branch `jr-ship/staging-<timestamp>` from the current HEAD.
 - Stage and commit ALL changes (respecting secret exclusion from step 8) into a single staging commit. This is a reference commit — it won't be pushed.
 
 **7-multi. Create sub-PR branches and commits.** For each group in the split plan, in dependency order:
@@ -337,7 +337,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
    ```
    git checkout <base-branch>
    git checkout -b <group-branch-name>
-   git checkout ship/staging-<timestamp> -- <file1> <file2> ...
+   git checkout jr-ship/staging-<timestamp> -- <file1> <file2> ...
    git commit -m "<conventional-commit message for this group>"
    ```
 
@@ -346,7 +346,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
    ```
    git checkout <dependency-branch-name>
    git checkout -b <group-branch-name>
-   git checkout ship/staging-<timestamp> -- <file1> <file2> ...
+   git checkout jr-ship/staging-<timestamp> -- <file1> <file2> ...
    git commit -m "<conventional-commit message for this group>"
    ```
 
@@ -374,7 +374,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
   - Follow the repo's PR template (cached from Phase 1) if one exists.
   - Do not append the `🤖 Generated with [Claude Code]` footer — override the Claude Code default.
 - If `--draft` was specified, add the `--draft` flag to all PRs.
-- **After all sub-PR branches have been pushed and PRs created**, delete the local staging branch: `git branch -D ship/staging-<timestamp>`. Its sole purpose was to serve as a reference for `git checkout <staging> -- <files>` during the per-group commits in step 7-multi; it's no longer needed. This runs in default mode AND `--merge` mode — without it, the staging branch would leak across runs since cleanup (step 12-multi) is now gated on `--merge`.
+- **After all sub-PR branches have been pushed and PRs created**, delete the local staging branch: `git branch -D jr-ship/staging-<timestamp>`. Its sole purpose was to serve as a reference for `git checkout <staging> -- <files>` during the per-group commits in step 7-multi; it's no longer needed. This runs in default mode AND `--merge` mode — without it, the staging branch would leak across runs since cleanup (step 12-multi) is now gated on `--merge`.
 
 **10a-multi. File-overlap check** (skip if `--no-overlap-check` is set — print `Overlap check skipped (--no-overlap-check).` and continue): Apply the procedure in `protocols/overlap-check.md` (loaded in Phase 1) once for the entire batch — pass `BATCH_PR_NUMBERS=[<all sub-PR numbers created in step 10-multi>]` so PRs in the same batch do not flag each other (their splits are intentional per Phase 2). The procedure runs in batch mode: fetch each sub-PR's files via `gh pr view --json files`, query open PRs once via `gh pr list`, and group findings by which open PR has overlap with which sub-PR(s). Non-fatal in every case — any gh/jq error logs `Overlap check skipped: <reason>` and continues to step 11a-multi. Informational only; never blocks the chain. When `--merge` is set, the per-PR pre-merge `advisor()` at step 11b-multi sees the warning via transcript context.
 
@@ -401,7 +401,7 @@ This flow creates and ships multiple sub-PRs. It first processes all **independe
 
 **12-multi. Cleanup** — worktree-aware. (**Run after CI passes on every sub-PR in 11a-multi** — both with and without `--merge`. With `--merge`, runs after 11b-multi merges every sub-PR. Without `--merge`, runs as soon as 11a-multi confirms CI passed on every sub-PR — local sub-PR branches and tackle worktree are removed, but remote branches and PRs remain open for review. Skip if `--draft`, if any CI failed in 11a-multi, or if any merge failed in 11b-multi. The staging branch was already deleted in step 10-multi.)
 
-   **Consent basis**: identical to step 15 — cleanup is the documented `/ship` contract, gated on CI success (11a-multi) which runs after push (9-multi), so all commits are preserved on the remote. No separate confirmation prompt.
+   **Consent basis**: identical to step 15 — cleanup is the documented `/jr-ship` contract, gated on CI success (11a-multi) which runs after push (9-multi), so all commits are preserved on the remote. No separate confirmation prompt.
 
    **Path A — primary worktree (`IS_SECONDARY=false`):** existing behavior.
 

@@ -1,6 +1,6 @@
 # Phase 7 — Cleanup and report
 
-**Canonical procedure** for `/review` Phase 7 (cleanup + report rendering). Referenced by `review/SKILL.md` Phase 7. Loaded at Phase 1 Track A under the same hard-fail + smoke-parse discipline as the other protocol files.
+**Canonical procedure** for `/jr-review` Phase 7 (cleanup + report rendering). Referenced by `jr-review/SKILL.md` Phase 7. Loaded at Phase 1 Track A under the same hard-fail + smoke-parse discipline as the other protocol files.
 
 ## Phase 7 preamble
 
@@ -33,7 +33,7 @@ Phase 7 exits with a non-zero status when any of the following occurred during t
 
 ## Per-session filename banner (flock unavailable)
 
-If `FLOCK_AVAILABLE=false`, append to the Phase 7 report a banner: `To avoid per-session filename mode and use a single shared secret-warnings.json file, install GNU coreutils: brew install coreutils (then re-run /review).` This banner complements the existing per-session-fallback skip log (see Phase 5.6 `flock(1)` availability probe) by giving the user a concrete remediation. Emit the banner unconditionally when `FLOCK_AVAILABLE=false`, regardless of whether any secret warnings were written in this run.
+If `FLOCK_AVAILABLE=false`, append to the Phase 7 report a banner: `To avoid per-session filename mode and use a single shared secret-warnings.json file, install GNU coreutils: brew install coreutils (then re-run /jr-review).` This banner complements the existing per-session-fallback skip log (see Phase 5.6 `flock(1)` availability probe) by giving the user a concrete remediation. Emit the banner unconditionally when `FLOCK_AVAILABLE=false`, regardless of whether any secret warnings were written in this run.
 
 ## Steps
 
@@ -47,7 +47,7 @@ If `FLOCK_AVAILABLE=false`, append to the Phase 7 report a banner: `To avoid per
 
 4. **Report redaction**: Apply the canonical line-by-line console-output redaction rule from `../../shared/display-protocol.md` ("Console output redaction" section) using the canonical pattern catalog in `../../shared/secret-patterns.md`. Both files are already loaded at Phase 1 Track A. File paths (including the `.claude/secret-warnings.json.corrupt-<ts>` backup-path strings) are NOT redacted — only matched secret values are redacted. This is critical in CI/headless mode where console output is persisted in build logs that may be publicly accessible.
 
-5. **Save audit history (`.claude/audit-history.json`)**: Update the cross-skill registry per the schema in `../../shared/audit-history-schema.md`. Create the file as `{"runs": [], "runSummaries": [], "reviewerStats": [], "lastPromptedAt": {}}` if it doesn't exist; tolerate older array-only formats (legacy `/audit` schema) by upgrading them in place to the new schema before appending — preserve any old entries under `runSummaries[]`.
+5. **Save audit history (`.claude/audit-history.json`)**: Update the cross-skill registry per the schema in `../../shared/audit-history-schema.md`. Create the file as `{"runs": [], "runSummaries": [], "reviewerStats": [], "lastPromptedAt": {}}` if it doesn't exist; tolerate older array-only formats (legacy `/jr-audit` schema) by upgrading them in place to the new schema before appending — preserve any old entries under `runSummaries[]`.
 
    Write in this order (atomic, same `flock` + `.tmp` + `mv` pattern as `secret-warnings.json`):
    - Append one `runSummaries[]` entry: `{runId, skill: "review", date, scope, flags, filesReviewed, reviewersSpawned, findingCounts, approvedCount, rejectedCount, validationDelta, phaseTimings, runAt}`. `runId` is a fresh UUIDv4 generated at Phase 7. `runAt` is ISO 8601.

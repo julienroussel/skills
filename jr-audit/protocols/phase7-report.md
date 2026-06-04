@@ -1,6 +1,6 @@
-# Phase 7 Report Contents — `/audit`
+# Phase 7 Report Contents — `/jr-audit`
 
-**Canonical source** for the `/audit` Phase 7 final-report enumeration. `audit/SKILL.md` reads this file into lead context at Phase 1 Track A (under the hard-fail + non-empty + smoke-parse guard, alongside the `shared/*.md` files) and applies it at the Phase 7 "Report contents" step. Update here to update `/audit`'s report shape.
+**Canonical source** for the `/jr-audit` Phase 7 final-report enumeration. `jr-audit/SKILL.md` reads this file into lead context at Phase 1 Track A (under the hard-fail + non-empty + smoke-parse guard, alongside the `shared/*.md` files) and applies it at the Phase 7 "Report contents" step. Update here to update `/jr-audit`'s report shape.
 
 **Display**: Output the final progress timeline with all phases and total duration.
 

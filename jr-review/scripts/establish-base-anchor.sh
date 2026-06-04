@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # establish-base-anchor.sh — capture pre-Phase-5 baselines + validate symlinks
 #
-# Called by /review at Phase 5 entry, before spawning implementers. Captures
+# Called by /jr-review at Phase 5 entry, before spawning implementers. Captures
 # NUL-safe baselines for untracked files and symlinks (referenced by all
 # subsequent revert sites), probes NUL_SORT_AVAILABLE, validates that no
 # filename in the baseline contains a newline, and validates that every
@@ -16,8 +16,8 @@
 #
 # Caller responsibility (success path only): the caller MUST `rm -f` the three
 # returned temp paths (untrackedBaseline, untrackedBaselineAll, symlinkBaseline)
-# at the end of the run — typically /review Phase 7 cleanup (canonical step in
-# review/protocols/phase7-cleanup-report.md). The EXIT trap above is disarmed
+# at the end of the run — typically /jr-review Phase 7 cleanup (canonical step in
+# jr-review/protocols/phase7-cleanup-report.md). The EXIT trap above is disarmed
 # on success (via `_keep=1`) so the caller can consume the paths; without an
 # explicit caller-side rm, the files outlive the script invocation by design
 # and accumulate in $TMPDIR.
@@ -39,7 +39,7 @@
 #       printed below and proceed to Phase 7 in abort mode)
 #
 # ─────────────────────────────────────────────────────────────────
-# Abort-condition matrix (kept in sync with /review SKILL.md):
+# Abort-condition matrix (kept in sync with /jr-review SKILL.md):
 #
 #   Stderr marker                                           | abortReason
 #   --------------------------------------------------------|------------------------------
@@ -52,7 +52,7 @@
 #   [REVERT BLOCKED — FIND TRAVERSAL FAILED] <rc>            | find-traversal-failed
 #
 # The caller parses the marker and assigns abortReason accordingly. Adding a
-# new abort site here REQUIRES adding the matching abortReason to /review's
+# new abort site here REQUIRES adding the matching abortReason to /jr-review's
 # allowed-values list AND to ../shared/abort-markers.md.
 
 set -euo pipefail
@@ -133,7 +133,7 @@ _check_find_traversal() {
 # ── Step 0: Resolve REPO_ROOT, fail closed if unset, and cd into it ──
 # Resolved BEFORE baselining so that subsequent `find . -type l` and
 # `git ls-files` invocations enumerate from the repo root, not from whatever
-# subdirectory the caller invoked /review from. Without this, repo-wide
+# subdirectory the caller invoked /jr-review from. Without this, repo-wide
 # symlinks in untouched subtrees would evade the symlink-escape gate.
 # An unset REPO_ROOT would make the Step 5 case-arm match every absolute path
 # (because empty matches empty and "/*" matches any absolute path), silently

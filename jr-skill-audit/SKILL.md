@@ -1,5 +1,5 @@
 ---
-name: skill-audit
+name: jr-skill-audit
 description: Audit Claude Code skill files (SKILL.md) for 2026-feature alignment, advisor coverage, frontmatter validity, token efficiency, shared-file drift, safety-protocol consistency, and model-tier routing. Reviewers cite live Anthropic docs + changelog (fetched at runtime, cached) so findings are grounded, not hallucinated. Reports a prioritized improvements list with file:line citations. Findings-only — never modifies skill files.
 argument-hint: "[skill-name] [--scope=<glob>] [--scope-only=<level>] [--plugin=<name>] [--only=<dims>] [--auto-approve] [--refresh-refs]"
 effort: high
@@ -34,7 +34,7 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
   Shared protocol references (read at Phase 1 Track A; see ../shared/):
     - shared/reviewer-boundaries.md             — severity rubric (`critical|high|medium|low`) + confidence
                                                   levels (`certain|likely|speculative`); the dimension-ownership
-                                                  table is `/audit`/`/review`-specific and replaced inline below
+                                                  table is `/jr-audit`/`/jr-review`-specific and replaced inline below
                                                   for skill-audit's seven dimensions
     - shared/untrusted-input-defense.md         — passed verbatim into every reviewer prompt
     - shared/display-protocol.md                — phase headers, timeline, silent-reviewers, compact tables
@@ -54,20 +54,20 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
     - Bash, Read, WebFetch, Glob, Grep, Write
 -->
 
-Audit Claude Code skill files (`SKILL.md`) for quality, 2026-feature alignment, and drift against the canonical `shared/*.md` protocols. Reviewers cite **live Anthropic documentation** (skills doc, env-vars doc, release notes) fetched at runtime so findings stay current as Claude Code ships new features. **Findings-only** — never modifies skill files. Complements `/doctor`'s narrow factual drift checks (Group I) with opinionated, dimension-scoped review.
+Audit Claude Code skill files (`SKILL.md`) for quality, 2026-feature alignment, and drift against the canonical `shared/*.md` protocols. Reviewers cite **live Anthropic documentation** (skills doc, env-vars doc, release notes) fetched at runtime so findings stay current as Claude Code ships new features. **Findings-only** — never modifies skill files. Complements `/jr-doctor`'s narrow factual drift checks (Group I) with opinionated, dimension-scoped review.
 
 **Arguments**: $ARGUMENTS
 
 Parse arguments as space-separated tokens. Recognized flags:
-- `[skill-name]` — Bare positional. Limits the audit to a single skill (e.g., `/skill-audit review`). Resolved against personal (`~/.claude/skills/<name>/SKILL.md`) AND project scope roots (`<walked-dir>/.claude/skills/<name>/SKILL.md` for each dir from CWD up to the repo root). If `<name>` matches in both scopes, both are audited (no "primary" — the shadow-detection finding flags the collision).
+- `[skill-name]` — Bare positional. Limits the audit to a single skill (e.g., `/jr-skill-audit review`). Resolved against personal (`~/.claude/skills/<name>/SKILL.md`) AND project scope roots (`<walked-dir>/.claude/skills/<name>/SKILL.md` for each dir from CWD up to the repo root). If `<name>` matches in both scopes, both are audited (no "primary" — the shadow-detection finding flags the collision).
 - `--scope=<glob>` — Limits audit to skills whose directory name matches the glob (e.g., `--scope=*-reviewer`, `--scope=audit*`). Glob applies within whichever scope(s) `--scope-only` keeps. Mutually exclusive with the bare positional.
 - `--scope-only=<level>` — Restrict to a single scope. Values: `personal` (only `~/.claude/skills/`) or `project` (only `<CWD>/.claude/skills/` and parents up to repo root). Default: both scopes. Useful when bare positional `<name>` collides across scopes.
-- `--plugin=<name>` — Audit a third-party plugin's skills instead of your own. Resolves `<name>` to its **git-backed marketplace clone** under `~/.claude/plugins/marketplaces/` (the version-controlled upstream source — not the non-git `cache/` install) and audits the git-tracked skills there. Read-only and advisory: plugin skills are owned by the plugin author, so every finding is tagged `[third-party]`. Opt-in — bare `/skill-audit` never touches plugins. Mutually exclusive with `--scope-only`; composes with a bare skill name OR `--scope=<glob>` to narrow which of the plugin's skills are audited.
+- `--plugin=<name>` — Audit a third-party plugin's skills instead of your own. Resolves `<name>` to its **git-backed marketplace clone** under `~/.claude/plugins/marketplaces/` (the version-controlled upstream source — not the non-git `cache/` install) and audits the git-tracked skills there. Read-only and advisory: plugin skills are owned by the plugin author, so every finding is tagged `[third-party]`. Opt-in — bare `/jr-skill-audit` never touches plugins. Mutually exclusive with `--scope-only`; composes with a bare skill name OR `--scope=<glob>` to narrow which of the plugin's skills are audited.
 - `--only=<dims>` — Run only the specified reviewer dimensions (comma-separated). Valid values: `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Example: `--only=frontmatter,token-efficiency`. **Note**: `scope-resolution` (the lead-emitted shadow-detection finding) is NOT in this enum — it always fires when name collisions exist, since it runs before reviewer dispatch. Users dismiss intentional shadows via the Phase 4 [Clarify] flow.
 - `--auto-approve` — Skip the Phase 4 approval gate. Lists all findings in Phase 7 without filtering. Useful for CI / scripted reports. Skips the [Clarify] flow too — `clarify`-flagged findings render in their original tier with a `[CLARIFICATION SKIPPED — auto-approve]` qualifier.
 - `--refresh-refs` — Force a fresh Phase 1 Track C fetch even if `cache/refs.json` is within its 7-day TTL. Use after Anthropic publishes a release that adds substitution variables, frontmatter fields, or skill features.
 
-**Examples**: `/skill-audit`, `/skill-audit review`, `/skill-audit --scope=*-reviewer`, `/skill-audit --scope-only=project`, `/skill-audit --plugin=agent-teams`, `/skill-audit --only=frontmatter,advisor-coverage`, `/skill-audit --auto-approve`, `/skill-audit --refresh-refs review`
+**Examples**: `/jr-skill-audit`, `/jr-skill-audit review`, `/jr-skill-audit --scope=*-reviewer`, `/jr-skill-audit --scope-only=project`, `/jr-skill-audit --plugin=agent-teams`, `/jr-skill-audit --only=frontmatter,advisor-coverage`, `/jr-skill-audit --auto-approve`, `/jr-skill-audit --refresh-refs review`
 
 ### Flag conflicts
 
@@ -96,7 +96,7 @@ Parse arguments as space-separated tokens. Recognized flags:
 
 ## Display protocol
 
-Common rules — phase headers (`━━━`), running cumulative timeline, silent-reviewers/noisy-lead pattern, compact reviewer progress table — are in `../shared/display-protocol.md` (read into lead context at Phase 1 Track A; hard-fail guard ensures it was non-empty and structurally valid). Apply those verbatim. The Phase 4 finding-approval menu and the [Clarify] sub-flow below are `/skill-audit`-specific and stay inline.
+Common rules — phase headers (`━━━`), running cumulative timeline, silent-reviewers/noisy-lead pattern, compact reviewer progress table — are in `../shared/display-protocol.md` (read into lead context at Phase 1 Track A; hard-fail guard ensures it was non-empty and structurally valid). Apply those verbatim. The Phase 4 finding-approval menu and the [Clarify] sub-flow below are `/jr-skill-audit`-specific and stay inline.
 
 ## Phase 1 — Discover skills + load shared protocols + fetch live refs
 
@@ -135,12 +135,12 @@ Enumerate skill directories matching the argument set, across personal and proje
 - **projectRoots**: discovered by walking parents. **Walked unconditionally** — even with `--scope-only=personal` — so the cross-scope conflict probe below can detect cases where bare positional `<name>` resolves only in the dropped scope and produce the specific conflict message. Walk-start = `$PWD`; walk-stop = `git -C "$PWD" rev-parse --show-toplevel 2>/dev/null` (or `$PWD` if not in a git repo). Iterate from walk-start via repeated `dirname "$dir"` (quoted) until reaching walk-stop inclusive (extra safety: break if `dirname` returns the same value, i.e., at `/`).
 - **Per-walked-dir filter**: for each `<dir>`, add `<dir>/.claude/skills` to `projectRoots` only if `[ -d "$dir/.claude/skills" ]` is true AND BOTH skip conditions are false. Skip if either: (a) `<dir>` is at or under `<personalRoot>` — use `realpath`-normalized paths when `REALPATH_AVAILABLE=true`, else literal trailing-slash comparison (append `/` to both sides so `/a/b` never matches `/a/bb`); or (b) `<dir>/.claude/skills` (when it exists) equals `<personalRoot>` — same `realpath`/literal switch. Condition (b) catches the case where walk-start is a *parent* of personal-root (e.g., CWD is `$HOME`) — without it, the project walk would discover personal-root as a project-root and double-count.
 
-This matches the documented Claude Code runtime behavior (per `https://code.claude.com/docs/en/skills#automatic-discovery-from-parent-and-nested-directories` — project skills load from `.claude/skills/` in the starting directory and every parent up to the repository root). Nested-on-demand discovery (e.g., `packages/frontend/.claude/skills/` from a root-started session) and `--add-dir`-mounted skills are runtime-only behaviors `/skill-audit` does not have a signal for; they're out of scope here.
+This matches the documented Claude Code runtime behavior (per `https://code.claude.com/docs/en/skills#automatic-discovery-from-parent-and-nested-directories` — project skills load from `.claude/skills/` in the starting directory and every parent up to the repository root). Nested-on-demand discovery (e.g., `packages/frontend/.claude/skills/` from a root-started session) and `--add-dir`-mounted skills are runtime-only behaviors `/jr-skill-audit` does not have a signal for; they're out of scope here.
 
 **Enumerate SKILL.md candidates** from each scope root, dedupe by path (using `realpath` when `REALPATH_AVAILABLE=true` to catch symlinks and any project root that resolves to personal; else literal-path dedupe — direct duplicates still caught), and tag each surviving candidate with `scope = personal | project`.
 
 **Apply the argument-set filter** (runs BEFORE `--scope-only` so cross-scope conflicts can be detected):
-1. **Bare positional** (`/skill-audit <name>`): keep candidates whose directory basename == `<name>` in EITHER scope.
+1. **Bare positional** (`/jr-skill-audit <name>`): keep candidates whose directory basename == `<name>` in EITHER scope.
 2. **`--scope=<glob>`**: keep candidates whose directory basename matches the glob in EITHER scope.
 3. **No filter**: keep all candidates from both scopes. Skip directories without a `SKILL.md` (e.g., `bin/`, `docs/`, `shared/`).
 
@@ -153,13 +153,13 @@ This matches the documented Claude Code runtime behavior (per `https://code.clau
 - `--scope-only=project`: drop personal candidates.
 - Neither flag: keep both.
 
-**Bare positional resolution** (final, after both filters): 0 matches → abort with the "Available skills: personal=<list> project=<list>" hint from the sanitization rule. 1 match → audit it. ≥ 2 matches → audit ALL surviving matches. The common case is exactly 2 (one personal + one project, possible only when neither `--scope-only` is set), but the parent-walk can also surface multiple project roots with the same skill name (e.g., `repo/.claude/skills/<name>` AND `repo/packages/frontend/.claude/skills/<name>` from a session started under `frontend`). The shadow-detection finding (lead-side, see "After all tracks complete" below) emits one `scope-resolution` finding per basename appearing in BOTH personal and project scopes; project-internal duplicates (same name across multiple walked project roots) are audited but not synthetically flagged — Claude Code's exact collision-resolution behavior for multiple walked project roots is runtime-dependent and outside `/skill-audit`'s scope to specify, and the user can manually deduplicate if needed.
+**Bare positional resolution** (final, after both filters): 0 matches → abort with the "Available skills: personal=<list> project=<list>" hint from the sanitization rule. 1 match → audit it. ≥ 2 matches → audit ALL surviving matches. The common case is exactly 2 (one personal + one project, possible only when neither `--scope-only` is set), but the parent-walk can also surface multiple project roots with the same skill name (e.g., `repo/.claude/skills/<name>` AND `repo/packages/frontend/.claude/skills/<name>` from a session started under `frontend`). The shadow-detection finding (lead-side, see "After all tracks complete" below) emits one `scope-resolution` finding per basename appearing in BOTH personal and project scopes; project-internal duplicates (same name across multiple walked project roots) are audited but not synthetically flagged — Claude Code's exact collision-resolution behavior for multiple walked project roots is runtime-dependent and outside `/jr-skill-audit`'s scope to specify, and the user can manually deduplicate if needed.
 
 **Gitignore exclusion (mandatory, per scope)**: After enumeration, drop any skill whose directory is gitignored — those skills are externally maintained (e.g., installed via `npx skills`), not owned by this repo, so findings on them are not actionable here and a local fix would be clobbered on the next update. Apply per-scope independently:
 - **Personal scope**: one batched call `git -C "$personalRoot" check-ignore <basename>/SKILL.md ...` — every path it prints is ignored; remove from the target set. Exit 128 (`$personalRoot` not a git repo) → skip personal gitignore filtering only.
 - **Project scope**: per project root R (each `<walked-dir>/.claude/skills`), one batched call `git -C "$R" check-ignore <basename>/SKILL.md ...`. The enclosing repo's `.gitignore` is consulted automatically via git's normal walk. Exit 128 → skip filtering for that root only.
 
-**Bare positional** + gitignored: if the single named skill is gitignored in its only resolving scope, abort with `<name> is gitignored in <scope> (externally maintained) — /skill-audit audits repo-owned skills only.` **`--scope` / no-filter**: exclude silently, but list the excluded skill names (with `[personal]` / `[project]` tags) in the Phase 1 discovery summary so the scope reduction is visible.
+**Bare positional** + gitignored: if the single named skill is gitignored in its only resolving scope, abort with `<name> is gitignored in <scope> (externally maintained) — /jr-skill-audit audits repo-owned skills only.` **`--scope` / no-filter**: exclude silently, but list the excluded skill names (with `[personal]` / `[project]` tags) in the Phase 1 discovery summary so the scope reduction is visible.
 
 For each surviving target, read the `SKILL.md` plus enumerate `<skill>/scripts/*.sh` and `<skill>/templates/*` as supplementary inputs (existence + executable bit only — content reads only when a reviewer cites them). For plugin scope these paths are under the resolved `~/.claude/plugins/marketplaces/<mp>/<source>/`.
 
@@ -169,7 +169,7 @@ For each surviving target, read the `SKILL.md` plus enumerate `<skill>/scripts/*
 
 Reviewers cite live documentation so findings stay current as Claude Code ships features. The cache lives at `${CLAUDE_SKILL_DIR}/cache/refs.json` with a 7-day TTL.
 
-> **Doctrine anchor**: this Track C live-references cache plus the Phase 3 step 2 source-citation validation are the reference **Tier 2** implementation of `../shared/claim-verification.md` — fetching authoritative sources (here, `gh api` raw changelog + WebFetch docs) and refusing to surface a finding whose cited source cannot be confirmed. verification is always-on for `/skill-audit` with no opt-out (active verification is its whole purpose; `--no-verify-claims` is not offered here). The doctrine's outcomes map as: source key present in `refs.json` with `ok:true` (or a confirmed `changelog:`/shared-file line) → `confirmed`; `[REJECTED — citation broken]` / `[REJECTED — citation outside plugin tree]` → `refuted`; `ACTION REQUIRED` (source not in cache, missing, or sibling-skill) → `unverifiable`, routed to the user rather than silently dropped.
+> **Doctrine anchor**: this Track C live-references cache plus the Phase 3 step 2 source-citation validation are the reference **Tier 2** implementation of `../shared/claim-verification.md` — fetching authoritative sources (here, `gh api` raw changelog + WebFetch docs) and refusing to surface a finding whose cited source cannot be confirmed. verification is always-on for `/jr-skill-audit` with no opt-out (active verification is its whole purpose; `--no-verify-claims` is not offered here). The doctrine's outcomes map as: source key present in `refs.json` with `ok:true` (or a confirmed `changelog:`/shared-file line) → `confirmed`; `[REJECTED — citation broken]` / `[REJECTED — citation outside plugin tree]` → `refuted`; `ACTION REQUIRED` (source not in cache, missing, or sibling-skill) → `unverifiable`, routed to the user rather than silently dropped.
 
 **Cache schema**:
 
@@ -250,7 +250,7 @@ Spawn each selected reviewer dimension as a `agent-teams:team-reviewer` agent. R
 
 **Per-skill dispatch metadata (lead-side, mandatory)**: when handing each reviewer its list of per-skill assignments, include `scope: personal|project|plugin` alongside the SKILL.md path so the reviewer can echo it back on every finding per requirement #7 in "Reviewer instructions" below. For `plugin` scope, also pass `pluginName`, `marketplace`, and `sourceRepo`, and prepend a one-line third-party preamble to the reviewer prompt: *"This is a THIRD-PARTY plugin skill authored by someone other than the user; findings are advisory (the user cannot directly edit it) — tag each `[third-party — verify against plugin docs]` and do not treat the user's `~/.claude/skills/shared/*.md` as canonical for it."* This is the single source of truth for the `scope` field on findings — reviewers MUST NOT infer scope from the file path (paths can be ambiguous under symlinks; the lead's tag set by Track B's enumeration is authoritative).
 
-**Effort-adaptive overlay** (read `CLAUDE_EFFORT` at runtime via Bash: `effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=high`). At `xhigh|max`, lower the Phase 7 declare-done advisor's non-triviality threshold (e.g., `findingCount >= 3` instead of `>= 5`) so deeper-effort runs are more likely to receive a second opinion. At `low|medium`, keep the standard threshold. Mirrors `/review`'s pattern; requires Claude Code ≥ 2.1.133.
+**Effort-adaptive overlay** (read `CLAUDE_EFFORT` at runtime via Bash: `effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=high`). At `xhigh|max`, lower the Phase 7 declare-done advisor's non-triviality threshold (e.g., `findingCount >= 3` instead of `>= 5`) so deeper-effort runs are more likely to receive a second opinion. At `low|medium`, keep the standard threshold. Mirrors `/jr-review`'s pattern; requires Claude Code ≥ 2.1.133.
 
 ### Per-reviewer reference excerpts (token budget)
 
@@ -276,7 +276,7 @@ Each reviewer receives ONLY the references it needs (mirrors the principle "skil
 | `shared-drift-reviewer` | Inline duplicates of `shared/*.md` content (every duplicate proves the shared/ pattern isn't doing its job); missing references where shared files apply (e.g., subagent prompt without `untrusted-input-defense.md` reference); smoke-parse substring presence at every Read site of a shared file. | Whether the shared file itself is the right design (architecture concern, out of scope here). |
 | `feature-adoption-reviewer` | 2026 substitutions used vs. **what the live skills-doc lists** (`${CLAUDE_EFFORT}`, `${CLAUDE_SESSION_ID}`, `${CLAUDE_SKILL_DIR}`, `$ARGUMENTS`, `$N`, `$name`); `allowed-tools` minimization (over-permissive grants like blanket `Bash(*)` without rationale); features adopted by Anthropic post-skill-creation that the skill could leverage (cross-reference the changelog). Every finding MUST cite the doc URL (`https://code.claude.com/docs/en/skills:<heading>`) or a changelog version (`changelog:<version>`). | Whether to add a feature at all if not present (advisor-coverage / token-efficiency may flag instead). |
 | `safety-protocols-reviewer` | Untrusted-input defense applied at **every** subagent prompt site (reviewer, implementer, simplifier, convergence, fresh-eyes); gitignore-enforcement applied at every `.claude/*` cache/audit-trail write site; secret-scan tier classification correctly referenced when applicable; explicit-consent gates on destructive operations (e.g., `git push --force`, `rm -rf`); abort markers used on irrecoverable failures. | Specific finding text in shared files (shared-drift dimension). |
-| `model-routing-reviewer` | Model-tier appropriateness: frontmatter `model:` / `effort:` vs. the skill's actual workload — flag premium `opus` on a skill whose phases are predominantly mechanical (discovery / dedup / reporting / validation), or an under-powered tier on a heavy-reasoning skill; body-level subagent-spawn `model:` choices vs. the work each spawned agent does. Evidence is the skill's own phase descriptions; `source` cites `<skill>/SKILL.md:<line>` as a self-contradiction within the same skill. Set `clarify: true` when premium tier is a defensible headroom choice. Canonical good shape: skill-audit/SKILL.md:79. | Whether `model:` is a *legal enum value* (frontmatter dimension owns that); line-level prose cost (token-efficiency dimension). |
+| `model-routing-reviewer` | Model-tier appropriateness: frontmatter `model:` / `effort:` vs. the skill's actual workload — flag premium `opus` on a skill whose phases are predominantly mechanical (discovery / dedup / reporting / validation), or an under-powered tier on a heavy-reasoning skill; body-level subagent-spawn `model:` choices vs. the work each spawned agent does. Evidence is the skill's own phase descriptions; `source` cites `<skill>/SKILL.md:<line>` as a self-contradiction within the same skill. Set `clarify: true` when premium tier is a defensible headroom choice. Canonical good shape: jr-skill-audit/SKILL.md:79. | Whether `model:` is a *legal enum value* (frontmatter dimension owns that); line-level prose cost (token-efficiency dimension). |
 | `scope-resolution` (lead-synthesized, not a reviewer) | Name collisions across personal and project scopes — emits one `medium`/`clarify:true` finding per colliding basename per the spec in "Shadow detection (lead-side synthesis)" above. Always fires when collisions exist (NOT filterable via `--only=` since it runs before reviewer dispatch). | Everything else; reviewer-dispatch dimensions own the rest. |
 
 ### Reviewer instructions (passed to every dimension)
@@ -304,8 +304,8 @@ Per-finding requirements:
    `changelog:<version>`, or the plugin's OWN `<marketplace-skill-path>/SKILL.md:<line>`
    self-contradiction. Do NOT cite `~/.claude/skills/shared/<file>` — those are the
    auditing user's protocols, not canonical for a third-party skill.
-   Cross-skill citations (e.g., a finding on `/audit` whose `source` cites
-   `/review`'s line N) are NOT primary evidence — they're sibling-skill conventions
+   Cross-skill citations (e.g., a finding on `/jr-audit` whose `source` cites
+   `/jr-review`'s line N) are NOT primary evidence — they're sibling-skill conventions
    and may themselves drift. If a finding is grounded in a sibling skill, cite the
    underlying authority (live doc OR shared protocol) as `source` and mention the
    sibling skill in `description` as supporting context. Findings whose `source`
@@ -444,7 +444,7 @@ Print the report below. **No file is written in v1** beyond the cache update —
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- /skill-audit — Findings Report
+ /jr-skill-audit — Findings Report
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Skills audited: <names>   Dimensions: <selected>   Findings: N (X dropped, Y kept)
 By scope: personal=<n> (skills: <p-list>)   project=<m> (skills: <j-list>)
@@ -507,7 +507,7 @@ Track C failures do NOT trigger abort — they degrade gracefully (stale cache �
 
 ## Phase 8 — Optional: file follow-up issues (future)
 
-**Not implemented in v1** (tracked in issue #16). When implemented, would create a GitHub issue per `Critical` finding (analogous to `/audit` Phase 8) so high-severity findings get tracked outside the conversation.
+**Not implemented in v1** (tracked in issue #16). When implemented, would create a GitHub issue per `Critical` finding (analogous to `/jr-audit` Phase 8) so high-severity findings get tracked outside the conversation.
 
 ## Edge cases
 
@@ -515,20 +515,20 @@ Track C failures do NOT trigger abort — they degrade gracefully (stale cache �
 |------|----------|
 | Cache > 7 days old, network unavailable | Use stale cache + `[STALE: cached YYYY-MM-DD]` warning. `feature-adoption-reviewer` runs but tags every finding `[Source: cached YYYY-MM-DD]`. |
 | Cache missing, network unavailable | Skip `feature-adoption-reviewer` with a Phase 7 warning. Other 5 dimensions run normally. |
-| Bare `/skill-audit` with zero skills installed | `[ABORT — UNMATCHED SCOPE]` and the (empty) "Available skills" hint. Should never trigger in practice — `/doctor` would already flag a broken skills install. |
+| Bare `/jr-skill-audit` with zero skills installed | `[ABORT — UNMATCHED SCOPE]` and the (empty) "Available skills" hint. Should never trigger in practice — `/jr-doctor` would already flag a broken skills install. |
 | Skill with `model:` field referencing a model alias added after this skill was last updated | `frontmatter-reviewer` cites the live skills-doc model section: if the alias is in the doc, finding is dropped; if not, flagged as `WARN_MODEL`. |
-| Skill referencing a `shared/<name>.md` that exists but was renamed | `shared-drift-reviewer` flags as broken-ref (mirrors `/doctor` Group I). Cross-references the canonical name if the renamed file is found via `git log --diff-filter=R`. |
+| Skill referencing a `shared/<name>.md` that exists but was renamed | `shared-drift-reviewer` flags as broken-ref (mirrors `/jr-doctor` Group I). Cross-references the canonical name if the renamed file is found via `git log --diff-filter=R`. |
 | Skill with `disable-model-invocation: true` AND a non-empty `description` exceeding 1,024 chars | `frontmatter-reviewer` flags as `medium`: when DMI is true, the description isn't loaded into context, so verbose descriptions are dead weight in `/`-menu listings. |
 | `--plugin=<name>` (plugin audit) | Resolves to the plugin's git-backed marketplace clone (`~/.claude/plugins/marketplaces/<mp>/<source>/skills/`); audits git-tracked skills only, all 7 dimensions, every finding tagged `[third-party — verify against plugin docs]`. Read-only/advisory — owned by the plugin author. |
 | `--plugin=<name>` not declared by any marketplace | `[ABORT — UNMATCHED SCOPE]`: `Plugin <name> not found. Available plugins: <union of plugins[].name>.` |
 | `--plugin=<name>` whose marketplace is not a git repo (e.g. `claude-plugins-official`) | Warn and skip (`… non-git marketplace …; skill-audit only audits git-versioned skills.`); abort if it was the sole resolution. |
 | `--plugin=<name>` with an external object-form `source` (`git-subdir`/`url`, e.g. `pensyve`) | Warn and skip at Track B step 1 (`… uses an external (git-subdir/url) source, not an in-marketplace path …`); abort if it was the sole resolution. Vendored-elsewhere plugins aren't reachable via the marketplace clone. |
 | Same plugin `<name>` declared by two marketplaces | Audit both; the `marketplace` tag disambiguates findings. |
-| Bare `/skill-audit` invoked from a tackle worktree | The worktree path counts as project scope; `.claude/skills/` inside the worktree (and parents up to the worktree's repo root) is audited alongside personal skills. |
+| Bare `/jr-skill-audit` invoked from a tackle worktree | The worktree path counts as project scope; `.claude/skills/` inside the worktree (and parents up to the worktree's repo root) is audited alongside personal skills. |
 | CWD is `~` or under `~/.claude/skills/` | Project walk skips any dir whose realpath resolves under personal-root, preventing duplicate iteration. Result: personal-only audit, no synthetic shadow findings. |
 | `--scope-only=project` from a dir with no `.claude/skills/` anywhere in the walk | Empty target set → `[ABORT — UNMATCHED SCOPE]` per the canonical mapping. The abort message includes `--scope-only=project` so the user can drop the flag and retry. |
 | Same skill name in personal + project (deliberate per-repo override) | Lead emits `scope-resolution` finding with `clarify: true`. User picks "Drop this finding" in the Phase 4 [Clarify] flow. The personal AND project SKILL.md files are still both audited; the finding is the ONLY collision-driven artifact. |
-| `--add-dir` directories at session start | Out of scope (v2 candidate). `/skill-audit` has no access to the running session's `--add-dir` set. If a user's monorepo workflow depends on `--add-dir`-mounted skills, they should run `/skill-audit` from each mount root separately. |
+| `--add-dir` directories at session start | Out of scope (v2 candidate). `/jr-skill-audit` has no access to the running session's `--add-dir` set. If a user's monorepo workflow depends on `--add-dir`-mounted skills, they should run `/jr-skill-audit` from each mount root separately. |
 | Bare positional `<name>` with `--scope-only=personal` but `<name>` only in project | Abort per flag-conflict block: `Skill <name> not found in personal scope (exists in project: drop --scope-only or use --scope-only=project).` |
 | `gh` CLI not installed or unauthenticated | Track C `claude-code-changelog` fetch fails. `feature-adoption-reviewer` falls back to skills-doc only (changelog evidence missing). Phase 7 warns. |
 | Skill legitimately needs `opus` despite mechanical-looking phases | `model-routing-reviewer` sets `clarify: true` with a `clarificationQuestion` rather than asserting a finding — premium tier is often a deliberate headroom choice, and a hard finding would re-fire on every re-run. |

@@ -1,6 +1,6 @@
 # Phase 5 — Base Commit Anchor + Combined Revert Sequence
 
-**Canonical procedure** for capturing the pre-Phase-5 baselines and reverting on any subsequent abort. Referenced by `review/SKILL.md` Phase 5 and every later abort site that needs to roll back implementer/simplification edits.
+**Canonical procedure** for capturing the pre-Phase-5 baselines and reverting on any subsequent abort. Referenced by `jr-review/SKILL.md` Phase 5 and every later abort site that needs to roll back implementer/simplification edits.
 
 ## Anchor capture (run once at Phase 5 entry)
 
@@ -41,7 +41,7 @@ case $ec in
 esac
 ```
 
-The script's header comment carries the canonical abort-condition matrix (`[REVERT BLOCKED — *]` marker → `abortReason` mapping). **Adding a new abort condition** requires updating: the script, /review's `abortReason` allowed-values list (now defined in `shared/abort-markers.md`), and `shared/abort-markers.md` itself.
+The script's header comment carries the canonical abort-condition matrix (`[REVERT BLOCKED — *]` marker → `abortReason` mapping). **Adding a new abort condition** requires updating: the script, /jr-review's `abortReason` allowed-values list (now defined in `shared/abort-markers.md`), and `shared/abort-markers.md` itself.
 
 ## Symlink-escape validation
 

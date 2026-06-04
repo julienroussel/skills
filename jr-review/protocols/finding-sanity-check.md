@@ -1,6 +1,6 @@
 # Phase 3 Step 0 — Finding Sanity-Check (Reject Hallucinations)
 
-**Canonical procedure** for validating reviewer findings before dedup. Referenced by `review/SKILL.md` Phase 3 step 0.
+**Canonical procedure** for validating reviewer findings before dedup. Referenced by `jr-review/SKILL.md` Phase 3 step 0.
 
 ## What every reviewer was required to submit (per finding)
 

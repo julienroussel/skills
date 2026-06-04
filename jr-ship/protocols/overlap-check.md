@@ -1,13 +1,13 @@
-# File-overlap check — `/ship`
+# File-overlap check — `/jr-ship`
 
-**Canonical source** for `/ship`'s post-create *File-overlap warning*. `ship/SKILL.md` reads this file into lead context at Phase 1 (under the hard-fail + smoke-parse guard, alongside `ci-failure-handling.md` and the `shared/*.md` files) and applies it at Phase 3a step 11a and Phase 3b step 10a-multi. Update here to update the procedure.
+**Canonical source** for `/jr-ship`'s post-create *File-overlap warning*. `jr-ship/SKILL.md` reads this file into lead context at Phase 1 (under the hard-fail + smoke-parse guard, alongside `ci-failure-handling.md` and the `shared/*.md` files) and applies it at Phase 3a step 11a and Phase 3b step 10a-multi. Update here to update the procedure.
 
 The check is **informational only** — it never blocks the merge, never asks the user a question, never returns a non-green outcome. Any failure to compute (gh error, jq error, gh too old) is logged with a one-line `Overlap check skipped: <reason>` and execution continues to the caller's next step.
 
 ## Inputs
 
 - `PR_NUMBER` (single-PR mode only): the GitHub PR number created in Phase 3a step 11.
-- `BATCH_PR_NUMBERS`: JSON array of PR numbers that should be excluded from the open-PR scan — the PRs created in this `/ship` invocation. Single-PR mode passes `[PR_NUMBER]`; multi-PR mode passes every sub-PR number from step 10-multi. Used so the batch's own splits do not flag each other (their splits are intentional per Phase 2).
+- `BATCH_PR_NUMBERS`: JSON array of PR numbers that should be excluded from the open-PR scan — the PRs created in this `/jr-ship` invocation. Single-PR mode passes `[PR_NUMBER]`; multi-PR mode passes every sub-PR number from step 10-multi. Used so the batch's own splits do not flag each other (their splits are intentional per Phase 2).
 
 ## Procedure
 
@@ -19,7 +19,7 @@ The check is **informational only** — it never blocks the merge, never asks th
 my_files=$(gh pr view "$PR_NUMBER" --json files --jq '[.files[].path] | unique | .[]' 2>/dev/null)
 ```
 
-The jq filter is `[.files[].path] | unique | .[]` rather than `... | sort -u` so the command stays inside `/ship`'s `allowed-tools` (`Bash(gh pr view *)` + the in-flight `--jq` filter — no separate `sort` invocation). The output is newline-delimited and deduplicated.
+The jq filter is `[.files[].path] | unique | .[]` rather than `... | sort -u` so the command stays inside `/jr-ship`'s `allowed-tools` (`Bash(gh pr view *)` + the in-flight `--jq` filter — no separate `sort` invocation). The output is newline-delimited and deduplicated.
 
 **Batch mode** (`BATCH_PR_NUMBERS` has 2+ entries): build a per-sub-PR file map by calling `gh pr view --json files` once per sub-PR (same `--jq` form as above for dedup). Conceptually `{ "<num>": ["path1", "path2", ...], ... }`. The batch-mode warning attributes each open-PR overlap to the specific sub-PR(s) it intersects.
 

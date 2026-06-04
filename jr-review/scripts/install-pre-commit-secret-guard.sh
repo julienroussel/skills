@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# install-pre-commit-secret-guard.sh — install the /review pre-commit secret-guard hook
+# install-pre-commit-secret-guard.sh — install the /jr-review pre-commit secret-guard hook
 #
-# Called by /review at Phase 5.6 only when (a) the user accepted the User-continue
+# Called by /jr-review at Phase 5.6 only when (a) the user accepted the User-continue
 # path AND (b) chose [Install hook] at the AskUserQuestion. Appends the canonical
 # template (delimited by `# BEGIN claude-secret-guard` / `# END claude-secret-guard`)
 # to `.git/hooks/pre-commit`. Refuses to install if any prerequisite fails — ad-hoc
@@ -47,7 +47,7 @@
 #     skill source — manually recreating the template would bypass the SHA check
 #     against an unknown body. → exit 2.
 #
-# Caller dispatch contract: see review/protocols/pre-commit-hook-offer.md
+# Caller dispatch contract: see jr-review/protocols/pre-commit-hook-offer.md
 # "Install procedure" — its `case $ec in ... esac` block MUST cover every exit code
 # above. When adding a new exit code here, update the caller in the same commit.
 #
@@ -62,13 +62,13 @@
 #   1. Edit `../templates/pre-commit-secret-guard.sh.tmpl`.
 #   2. Run `shasum -a 256 ../templates/pre-commit-secret-guard.sh.tmpl`.
 #   3. Update `EXPECTED_TEMPLATE_SHA256` below to the new hash.
-#   4. Commit all three (template + script + any prose) together. /doctor's
+#   4. Commit all three (template + script + any prose) together. /jr-doctor's
 #      template-hash drift check (Group I, when implemented) catches step 3
 #      omissions; until then, the cryptic exit-2 in the field IS the signal.
 
 set -euo pipefail
 
-EXPECTED_TEMPLATE_SHA256="8ba769b1c994aaf5c513dd0baccba3caff1631320092fdd1de862a1264040127"
+EXPECTED_TEMPLATE_SHA256="d17d9bec9cb36caa3ff160da5171d450647c6634809ee6566a166dc2050e3759"
 
 scriptDir=$(cd "$(dirname "$0")" && pwd -P)
 templatePath="$scriptDir/../templates/pre-commit-secret-guard.sh.tmpl"
@@ -117,7 +117,7 @@ hookPath="$hooksDir/pre-commit"
 
 # ── Acquire exclusive lock BEFORE the idempotent check ──
 # Serializes the entire decide-then-append region across concurrent installs
-# (e.g. parallel /review invocations across worktrees that share .git/hooks).
+# (e.g. parallel /jr-review invocations across worktrees that share .git/hooks).
 # Without this, two invocations could both pass the idempotent check on a
 # fresh hook and both append, producing duplicate blocks. flock is best-effort:
 # if unavailable on the platform, proceed without it. Uses a 30-second
@@ -149,7 +149,7 @@ if [ -f "$hookPath" ] && grep -qE '^# BEGIN claude-secret-guard$' "$hookPath"; t
     echo "Pre-commit hook installation aborted — multiple claude-secret-guard blocks present ($beginCount BEGIN, $endCount END markers); TAMPERING SUSPECTED." >&2
     echo "  Marker lines:" >&2
     grep -nE '^# (BEGIN|END) claude-secret-guard$' "$hookPath" >&2
-    echo "  Manual action: open $hookPath, remove ALL claude-secret-guard blocks, then re-run /review." >&2
+    echo "  Manual action: open $hookPath, remove ALL claude-secret-guard blocks, then re-run /jr-review." >&2
     exit 5
   fi
   # The on-disk block was appended verbatim from $templatePath. Compare its
@@ -171,7 +171,7 @@ if [ -f "$hookPath" ] && grep -qE '^# BEGIN claude-secret-guard$' "$hookPath"; t
     echo "  expected (template): $actualHash" >&2
     echo "  on-disk (block):     $existingHash" >&2
     echo "  Manual action: delete the block between '# BEGIN claude-secret-guard' and" >&2
-    echo "  '# END claude-secret-guard' in $hookPath, then re-run /review to reinstall." >&2
+    echo "  '# END claude-secret-guard' in $hookPath, then re-run /jr-review to reinstall." >&2
     exit 4
   fi
   echo "Pre-commit hook block already installed — no-op." >&2

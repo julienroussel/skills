@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Group I — skill drift checks. Iterates ~/.claude/skills/*/SKILL.md and emits
-# stable marker lines on stdout that the /doctor SKILL.md parses verbatim. See
-# the "Marker semantics" table in /doctor SKILL.md for the marker → status →
+# stable marker lines on stdout that the /jr-doctor SKILL.md parses verbatim. See
+# the "Marker semantics" table in /jr-doctor SKILL.md for the marker → status →
 # hint mapping. New markers MUST be added there too — the script and the table
 # are co-authored.
 
@@ -80,11 +80,11 @@ for d in "$HOME"/.claude/skills/*/; do
   check_inline_drift 'Before substantive work'               'advisor-criteria\.md'
 done
 
-# 5. Template SHA-256 drift (one-shot; not per-skill). /review's installer
-#    hardcodes EXPECTED_TEMPLATE_SHA256; /doctor surfaces drift earlier so
+# 5. Template SHA-256 drift (one-shot; not per-skill). /jr-review's installer
+#    hardcodes EXPECTED_TEMPLATE_SHA256; /jr-doctor surfaces drift earlier so
 #    the user can update the constant before the install path starts failing.
-tmpl="$HOME/.claude/skills/review/templates/pre-commit-secret-guard.sh.tmpl"
-script="$HOME/.claude/skills/review/scripts/install-pre-commit-secret-guard.sh"
+tmpl="$HOME/.claude/skills/jr-review/templates/pre-commit-secret-guard.sh.tmpl"
+script="$HOME/.claude/skills/jr-review/scripts/install-pre-commit-secret-guard.sh"
 if [ -f "$tmpl" ] && [ -f "$script" ]; then
   if command -v shasum >/dev/null 2>&1; then
     actual=$(shasum -a 256 "$tmpl" | awk '{print $1}')
@@ -99,11 +99,11 @@ if [ -f "$tmpl" ] && [ -f "$script" ]; then
   fi
 fi
 
-# 6. /skill-audit live-references cache freshness (one-shot; not per-skill).
+# 6. /jr-skill-audit live-references cache freshness (one-shot; not per-skill).
 #    Mirrors the template-hash drift mechanism — without it, the cache rots
 #    silently and feature-adoption-reviewer audits against stale data.
-cache="$HOME/.claude/skills/skill-audit/cache/refs.json"
-if [ -d "$HOME/.claude/skills/skill-audit" ]; then
+cache="$HOME/.claude/skills/jr-skill-audit/cache/refs.json"
+if [ -d "$HOME/.claude/skills/jr-skill-audit" ]; then
   if [ ! -f "$cache" ]; then
     echo "WARN_REFS_CACHE_MISSING"
   else
