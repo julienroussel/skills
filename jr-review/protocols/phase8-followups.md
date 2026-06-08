@@ -2,6 +2,8 @@
 
 **Canonical procedure** for `/jr-review` Phase 8. Referenced by `jr-review/SKILL.md` Phase 8. Loaded at Phase 1 Track A under the same hard-fail + smoke-parse discipline as the other protocol files.
 
+**Forge note (all Phase 8 forge calls are *user-forge* — they switch with the detected forge).** The `gh issue list/create`, `gh pr comment`, `gh repo view --json visibility`, and `gh pr view --json baseRepository` commands below are the GitHub reference form. On GitLab (`FORGE=gitlab`, see `../../shared/forge-detection.md`) translate per its command-equivalence + terminology tables: `gh issue list/create` → `glab issue list/create`; `gh pr comment <n>` → `glab mr note <iid> -m`; visibility via `glab api projects/:fullpath | jq -r '.visibility'` (`glab api` has no `--jq`); the target-repo resolve (`gh pr view --json baseRepository`) via `glab mr view <iid> -F json` (fields TBD §c). "PR comment" becomes "MR note"; "issue" stays "issue". Confirm glab `-F json` field names against a live GitLab MR at implementation.
+
 ## When to run / skip
 
 **Skip if `quick` is set. Skip if `nofix` is set AND `--pr` is NOT set** — in nofix-without-PR mode, the user chose findings-only and doesn't want follow-up issues. But in PR mode, Phase 8 posts findings as a PR comment, which is the primary output.

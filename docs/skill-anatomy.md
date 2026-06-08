@@ -47,6 +47,7 @@ Apply this decision tree top-to-bottom. The first rule that matches wins.
 | Bash command to compute merge-base | inline in SKILL.md | One-liner; extracting wastes tokens |
 | Combined revert sequence (clean → rm-f → checkout → reset) | `<skill>/protocols/base-anchor.md` | ~50 lines, one consumer (`/jr-review`), stable boundary |
 | Severity rubric `critical|high|medium|low` | `shared/reviewer-boundaries.md` | Two consumers (`/jr-audit`, `/jr-review`); passed verbatim into reviewer prompts |
+| Forge `gh`↔`glab` command/field mapping | `shared/forge-detection.md` | Multiple consumers (`/jr-audit`, `/jr-review`, `/jr-ship`); the `bin/` CLIs mirror the detection natively. Note the external-authority `gh api` carve-out — a shared rule consumed identically, not a per-consumer carve-out |
 | Pre-commit hook body | `<skill>/templates/pre-commit-secret-guard.sh.tmpl` | Static blob; SHA-256 verified before append; must NOT be model-rewritten at runtime |
 | `establish-base-anchor.sh` | `<skill>/scripts/` | Executable; needs deterministic output |
 | When to use `--branch` vs `--pr` vs bare `/jr-review` | inline in SKILL.md (Arguments section) | Per-skill UX detail; nobody else needs it |

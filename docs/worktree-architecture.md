@@ -3,17 +3,17 @@
 This file documents the contract between the `tackle` CLI and the `/jr-ship` skill. It is imported into the project CLAUDE.md only when needed (`@docs/worktree-architecture.md`) so non-tackle work doesn't pay the token cost of loading it. **Edit this file when changing how worktrees, marker files, or cleanup paths work — both ends of the contract must stay aligned.**
 
 ## Role split
-- **`bin/tackle`** — user-invoked shell CLI. Not a skill; Claude does not invoke it. Bootstraps Claude Code sessions against a GitHub PR/issue (`tackle <N>`) or an empty scratch worktree (`tackle --scratch`).
+- **`bin/tackle`** — user-invoked shell CLI. Not a skill; Claude does not invoke it. Bootstraps Claude Code sessions against a GitHub PR or GitLab MR / issue (`tackle <N>`) or an empty scratch worktree (`tackle --scratch`). The forge (gh vs glab) is auto-detected from the repo's `origin` remote (github.com→gh, gitlab.com→glab; `CLAUDE_FORGE` overrides) — see `shared/forge-detection.md`.
 - **`/jr-ship`** — skill Claude invokes when the user types `/jr-ship`. Consumes the worktree state tackle set up.
 - **Coordination**: no IPC. They agree on filesystem conventions (paths + marker files). Changing one end of the contract requires changing the other.
 
 ## Worktree layout convention
 - All tackle worktrees live at `<repo>/.claude/worktrees/<id>/`.
-- `<id>` = `<N>-<slug>` for PR/issue worktrees (slug from PR/issue title), `scratch-<ts>-<pid>` for scratch worktrees.
+- `<id>` = `<N>-<slug>` for PR/issue worktrees (slug from PR/issue title), `scratch-<ts>-<pid>` for scratch worktrees. On GitLab, where an MR `!N` and an issue `#N` share a number but are distinct, the id is type-prefixed (`mr-<N>-<slug>` / `issue-<N>-<slug>`) to avoid worktree collisions; GitHub keeps the bare `<N>-<slug>` form (numbers are unique there).
 - Branch naming per mode:
   - **Scratch**: branch equals `<id>` (tackle uses `git worktree add -b <scratch-id>`).
-  - **Issue**: branch equals `<id>` (tackle uses `gh issue develop --name <N>-<slug>`, or a local-branch fallback with the same name).
-  - **PR**: branch is the PR's own branch name (via `gh pr checkout <N>`), NOT `<id>`. Fork PRs use the PR branch directly; if the branch is already checked out elsewhere, tackle falls back to a local name `<N>-<slug>`.
+  - **Issue**: branch equals `<id>` (GitHub: `gh issue develop --name <N>-<slug>`; GitLab has no `issue develop` equivalent, so tackle uses the local-branch fallback with the same name — see `shared/forge-detection.md`).
+  - **PR / MR**: branch is the PR/MR's own source branch name (GitHub `gh pr checkout <N>`; GitLab `glab mr checkout <iid>`), NOT `<id>`. Fork PRs/MRs use the source branch directly; if it's already checked out elsewhere, tackle falls back to a local name `<N>-<slug>`.
 - `/jr-ship` treats any worktree whose path contains the segment `/.claude/worktrees/` as tackle-managed (`IS_TACKLE_WORKTREE=true`) and ephemeral — it auto-removes them after merge. (Running `/jr-ship` inside a PR worktree is unusual; use `git push` to update the existing PR instead.)
 
 ## Why tackle does NOT use `claude -w`

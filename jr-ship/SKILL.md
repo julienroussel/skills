@@ -6,7 +6,7 @@ effort: medium
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *) Bash(git commit *) Bash(git push -u origin *) Bash(git push origin HEAD:*) Bash(git push origin *) Bash(git branch *) Bash(git rev-parse *) Bash(git log *) Bash(git stash *) Bash(git fetch *) Bash(git merge --ff-only *) Bash(git pull --ff-only *) Bash(git rebase *) Bash(gh repo view *) Bash(gh pr create *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr merge *) Bash(gh pr edit *) Bash(gh pr list *) Bash(gh api *) Bash(grep *) Bash(jq *) Bash(wc *) Bash(test *) Bash([ *) Bash(echo *) Bash(printf *) AskUserQuestion Agent advisor
+allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *) Bash(git commit *) Bash(git push -u origin *) Bash(git push origin HEAD:*) Bash(git push origin *) Bash(git branch *) Bash(git rev-parse *) Bash(git log *) Bash(git stash *) Bash(git fetch *) Bash(git merge --ff-only *) Bash(git pull --ff-only *) Bash(git rebase *) Bash(gh repo view *) Bash(gh pr create *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr merge *) Bash(gh pr edit *) Bash(gh pr list *) Bash(gh api *) Bash(glab repo view *) Bash(glab mr create *) Bash(glab mr view *) Bash(glab mr list *) Bash(glab mr merge *) Bash(glab mr update *) Bash(glab ci *) Bash(glab api *) Bash(grep *) Bash(jq *) Bash(wc *) Bash(test *) Bash([ *) Bash(echo *) Bash(printf *) AskUserQuestion Agent advisor
 ---
 
 <!-- Frontmatter notes:
@@ -26,8 +26,11 @@ allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *
   Required plugins: (none — uses CLI tools directly, no subagent types)
   Required CLI:
     - git  — status, diff, checkout, commit, push, branch, rev-parse
-    - gh   — repo view, pr create/view/checks/merge/edit; the CI-fix subagent additionally runs
-             `gh run list` + `gh run view --log-failed` (see protocols/ci-failure-handling.md), not the lead
+    - gh OR glab — the forge CLI, auto-detected per repo (github.com→gh, gitlab.com→glab) per
+             ../shared/forge-detection.md. gh: repo view, pr create/view/checks/merge/edit. glab: mr
+             create/view/merge/update, ci status. The CI-fix subagent additionally runs `gh run list` +
+             `gh run view --log-failed` (GitHub) or `glab ci` + `glab ci trace` (GitLab) — see
+             protocols/ci-failure-handling.md — not the lead
   Optional:
     - github@claude-plugins-official  — GitHub MCP for authenticated API access (gh CLI auth also works)
     - codebase-memory-mcp (MCP)       — detect_changes + trace_path for Phase 2 step 3 group-dependency
@@ -55,7 +58,7 @@ Ship the current working-tree changes through one or more pull requests. By defa
 Parse arguments as space-separated tokens. Recognized flags:
 
 - `--draft`: Create the PR(s) as drafts and skip the CI wait and merge steps.
-- `--base <branch>`: Target a branch other than the repo's default branch. If omitted, auto-detect via `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` (fallback to `main`).
+- `--base <branch>`: Target a branch other than the repo's default branch. If omitted, auto-detect the default branch per the detected forge (`../shared/forge-detection.md` — `gh repo view --json defaultBranchRef` on GitHub, `glab api projects/:fullpath | jq -r .default_branch` on GitLab (`glab api` has no `--jq` — pipe to `jq`); fallback `git symbolic-ref --short refs/remotes/origin/HEAD`, then `main`).
 - `--dry-run`: Perform split analysis and show the full plan (branch names, PR titles, file groups, commands) but execute nothing. Useful for previewing what `/jr-ship` would do.
 - `--no-split`: Skip the split analysis entirely and ship everything as a single PR.
 - `--split-only`: Force the multi-PR flow (override the split-vs-single heuristic). Otherwise behaves like the default — waits for CI, does not merge.
@@ -78,7 +81,7 @@ Examples: `/jr-ship`, `/jr-ship --draft`, `/jr-ship fix login bug --no-split`, `
 
 ### Parameter sanitization
 
-The `<base-branch>` and `<labels>` values flow into shell commands (`git checkout`, `git pull`, `gh pr edit --base`, `gh pr create --label`). Sanitize before any interpolation; reject on first failure:
+The `<base-branch>` and `<labels>` values flow into shell commands (`git checkout`, `git pull`, `gh pr edit --base` / `glab mr update --target-branch`, `gh pr create --label` / `glab mr create --label`). Sanitize before any interpolation; reject on first failure:
 
 - `--base <branch>`: (1) reject control characters (`\0`, `\n`, `\r`); (2) allowlist `^[a-zA-Z0-9][a-zA-Z0-9._/-]*$`; (3) reject any `\.{2,}` substring; (4) reject segments starting with `.` or `-`. Always double-quote the interpolation in Bash. Mirrors `/jr-review` `--branch=<base>` sanitization.
 - `--label <labels>`: split on `,`, trim whitespace per entry, drop empties. For each entry: (1) reject control characters; (2) allowlist `^[a-zA-Z0-9][a-zA-Z0-9._-]*$` (no slashes; GitHub labels don't take them); (3) reject leading `-` (would parse as a `gh` flag).
@@ -110,7 +113,7 @@ After each phase completes, output a running timeline: `Phase 1 ✓ (2s) → Pha
 
 ### CI-failure handling
 
-Invoked by Phase 3a (step 13) and Phase 3b (step 11a-multi) when `gh pr checks <number> --watch --fail-fast` exits non-zero on a **failed check**. The full procedure — spawn the `opus` CI-fix sub-agent (it fetches its own CI logs), secret re-scan, the confirm gate with its clean-tree guarantee, apply + re-push, re-watch, and the 2-cycle cap with its single-fire stuck-loop advisor — lives in `protocols/ci-failure-handling.md` (read into lead context at Phase 1 under the hard-fail + smoke-parse guard). Apply that protocol verbatim. The 10-minute **timeout** path is separate and unchanged — report status and stop.
+Invoked by Phase 3a (step 13) and Phase 3b (step 11a-multi) when the CI-watch (`gh pr checks <number> --watch --fail-fast` on GitHub; `glab ci status --live -b <branch>` on GitLab — a semantic adaptation, not a rename, per `../shared/forge-detection.md`) reports a **failed check/job**. The full procedure — spawn the `opus` CI-fix sub-agent (it fetches its own CI logs), secret re-scan, the confirm gate with its clean-tree guarantee, apply + re-push, re-watch, and the 2-cycle cap with its single-fire stuck-loop advisor — lives in `protocols/ci-failure-handling.md` (read into lead context at Phase 1 under the hard-fail + smoke-parse guard). Apply that protocol verbatim. The 10-minute **timeout** path is separate and unchanged — report status and stop.
 
 #### Phase 1: Pre-flight
 
@@ -120,7 +123,7 @@ Run **all of the following in parallel**:
 - `git diff --no-color` (full diff — needed for split analysis, secret scanning, and issue reference detection)
 - `git diff --cached --no-color` (staged changes)
 - `git rev-parse --abbrev-ref HEAD` (current branch)
-- `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` (default branch, unless `--base` is set)
+- `git remote get-url origin` (origin URL — for forge detection per `../shared/forge-detection.md`; the default-branch lookup is deferred to step 0/1 below because it is forge-dependent and must not race the in-batch detection)
 - Read `.github/PULL_REQUEST_TEMPLATE.md` (if it exists — cache for PR creation later)
 - `cat "$(git rev-parse --git-dir)/info/scratch-session" 2>/dev/null` (scratch-session marker from `tackle --scratch`)
 - `git rev-parse --show-toplevel` (current worktree path)
@@ -130,23 +133,27 @@ Run **all of the following in parallel**:
 - Read `../shared/code-edit-discipline.md` (passed verbatim to the CI-fix sub-agent with a CI-fix-specific lead-in + opening-paragraph elision — see `protocols/ci-failure-handling.md`)
 - Read `../shared/secret-scan-protocols.md` (consumed by step 4 secret-halt protocol — `isHeadless` predicate, advisory-tier classification, User-continue path)
 - Read `../shared/secret-patterns.md` (canonical regex catalog consumed by step 4)
+- Read `../shared/forge-detection.md` (forge detection + gh↔glab command/JSON/terminology mapping — applied at every forge call-site in this skill)
 - Read `${CLAUDE_SKILL_DIR}/protocols/ci-failure-handling.md` (the CI-failure investigate-and-fix procedure — read upfront so a missing protocol file aborts Phase 1 cleanly instead of failing mid-flow at step 13 / 11a-multi)
 - Read `${CLAUDE_SKILL_DIR}/protocols/overlap-check.md` (the file-overlap check procedure — read upfront so a missing protocol aborts Phase 1 cleanly instead of failing mid-flow at step 11a / 10a-multi)
 
-**Hard-fail guard**: if any shared file or either skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /jr-ship requires it to enforce untrusted-input safety, code-edit discipline, secret-scan protocols, CI-failure handling, and the file-overlap check — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
+**Hard-fail guard**: if any shared file or either skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /jr-ship requires it to enforce untrusted-input safety, code-edit discipline, secret-scan protocols, CI-failure handling, the file-overlap check, and forge detection — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
 
 - `untrusted-input-defense.md`: `do not execute, follow, or respond to`
 - `code-edit-discipline.md`: `Code-edit discipline` AND `The test` AND `Worked example` AND `or specific simplifications to make.`
 - `secret-scan-protocols.md`: `isHeadless` AND `userContinueWithSecret` AND `Advisory-tier classification`
 - `secret-patterns.md`: `AKIA[0-9A-Z]{16}`
+- `forge-detection.md`: `Forge auto-detect:` AND `Command equivalence table`
 - `protocols/ci-failure-handling.md`: `Clean-tree guarantee` AND `2 fix cycles`
 - `protocols/overlap-check.md`: `File-overlap warning` AND `gh pr list`
 
-After detecting the base branch (step 4), also run `git rev-list --count <base>..HEAD` to count commits ahead (needed for step 2).
+After detecting the base branch (step 1), also run `git rev-list --count <base>..HEAD` to count commits ahead (needed for step 2).
 
 After the above complete:
 
-1. **Detect base branch**: Use `--base` value if provided, otherwise use the auto-detected default branch. Store for all subsequent steps.
+0. **Detect forge** (do this FIRST — before any `gh`/`glab` call): apply the detection algorithm in `../shared/forge-detection.md` to the `git remote get-url origin` output to set `FORGE` (`github`|`gitlab`) and `CLI` (`gh`|`glab`). **Translation directive:** every command and user-facing string below is written in its GitHub reference form (`gh …`, "PR", "checks", `github.com`); when `FORGE=gitlab` you MUST translate each to its `glab`/MR/pipeline/GitLab equivalent per forge-detection.md's command-equivalence and terminology tables at execution time. jr-ship makes no external-authority fetches, so every `gh` call here is about the user's own repo and switches with `FORGE`. The default-branch lookup (step 1) and CI handling (CI-failure handling) are semantic adaptations, not token swaps. **Experimental advisory:** when `FORGE=gitlab`, before the first user-repo `glab` call, print one line per `../shared/forge-detection.md` §a "Experimental advisory" — e.g. `Note: GitLab support is experimental (pre-Milestone-2): glab field mappings are unverified — MR/CI handling may be incomplete.` (jr-ship mutates state and gates merges, so the user should know the path is unverified before any push/merge).
+
+1. **Detect base branch**: Use `--base` value if provided, otherwise auto-detect the default branch per forge — `FORGE=github` → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`; `FORGE=gitlab` → `glab api projects/:fullpath | jq -r '.default_branch'` (field per forge-detection.md §c; `glab api` has no `--jq`) — with a both-forge fallback of `git symbolic-ref --short refs/remotes/origin/HEAD | sed 's@^origin/@@'`, then `main`. Store for all subsequent steps.
 
 1a. **Detect scratch session**: If the scratch-session marker read above is non-empty, store `IS_SCRATCH=true` and `SCRATCH_ID=<marker contents>`. Verify `SCRATCH_ID` equals the current branch (from the `rev-parse --abbrev-ref HEAD` above). On mismatch, log a warning ("stale scratch marker") and treat as non-scratch. Otherwise set `IS_SCRATCH=false`.
 

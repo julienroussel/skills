@@ -111,7 +111,7 @@ Run these in one tool-use message with multiple Bash calls in parallel:
 git rev-parse --git-dir 2>/dev/null            # IN_REPO if exit 0
 git rev-parse --show-toplevel 2>/dev/null      # REPO_ROOT
 ls "$(git rev-parse --git-dir 2>/dev/null)/info/scratch-session" 2>/dev/null  # IS_SCRATCH
-git remote -v 2>/dev/null | grep -q github.com && echo yes || echo no  # HAS_REMOTE
+git remote -v 2>/dev/null | grep -qE 'github\.com|gitlab\.com' && echo yes || echo no  # HAS_REMOTE (github.com or gitlab.com)
 [ -f ~/.claude/settings.json ] && echo yes || echo no  # SETTINGS_PRESENT
 [ -d ~/.claude/skills ] && echo yes || echo no   # SKILLS_PRESENT
 pwd                                              # CWD
@@ -142,16 +142,26 @@ POSIX `command -v` is single-arg; loop:
 
 ```bash
 missing_cli=""
-for c in git gh jq claude rtk wt; do
+for c in git jq claude rtk wt; do
   command -v "$c" >/dev/null 2>&1 || missing_cli="$missing_cli $c"
 done
 echo "missing:$missing_cli"
 ```
 
-Required: `git`, `jq` (✗ if missing). Recommended: `gh`, `claude` (warn if missing). Optional: `rtk`, `wt` (warn).
+Required: `git`, `jq` (✗ if missing). Recommended: `claude` (warn if missing). Optional: `rtk`, `wt` (warn).
+
+**Forge CLI** (`gh` for GitHub, `glab` for GitLab — at least one is needed; `/jr-ship`, `/jr-review --pr/--branch`, and `tackle` auto-detect per repo per `shared/forge-detection.md`):
+
+```bash
+command -v gh   >/dev/null 2>&1 && echo "gh:yes"   || echo "gh:no"
+command -v glab >/dev/null 2>&1 && echo "glab:yes" || echo "glab:no"
+```
+
+✗ if BOTH are missing (no forge CLI). Otherwise ✓; if only one is present, note that the other is needed only for that host's repos (`gh`→GitHub, `glab`→GitLab).
 
 Additional probes:
 - If `gh` present: `gh auth status 2>&1 | head -3` — warn if not authenticated.
+- If `glab` present: `glab auth status 2>&1 | head -3` — warn if not authenticated (needed for GitLab repos).
 - If `rtk` present: `rtk --version 2>&1 | grep -E "^rtk " >/dev/null` — warn if it's `reachingforthejack/rtk` (lacks `rtk gain` subcommand).
 
 ### Group B — settings.json
@@ -230,7 +240,7 @@ If not in a repo: emit one line `Not in a git repo — skipping per-repo checks`
 [ -f "$REPO_ROOT/CLAUDE.md" ]                                                          # required for /jr-audit, /jr-review Phase 1
 [ -d "$REPO_ROOT/.claude" ]                                                            # warn — created on first run if missing
 [ -f "$REPO_ROOT/.gitignore" ]                                                         # warn — informs --fix
-git -C "$REPO_ROOT" remote -v | grep -q github.com                                     # warn — required for /jr-ship and /jr-review --pr
+git -C "$REPO_ROOT" remote -v | grep -qE 'github\.com|gitlab\.com'                       # warn — required for /jr-ship and /jr-review --pr/--branch (gh→GitHub, glab→GitLab; forge auto-detected)
 ```
 
 **Tracked-cache scan** — single batched `git ls-files` for literal paths, separate calls for globs:

@@ -4,9 +4,11 @@
 
 The check is **informational only** — it never blocks the merge, never asks the user a question, never returns a non-green outcome. Any failure to compute (gh error, jq error, gh too old) is logged with a one-line `Overlap check skipped: <reason>` and execution continues to the caller's next step.
 
+**Forge note:** the `gh pr view`/`gh pr list --json …` commands below are the GitHub reference form. On GitLab (`FORGE=gitlab`, see `../../shared/forge-detection.md`) they map to `glab mr view`/`glab mr list -F json`, but the jq filters here assume gh-shaped field names (`.files[].path`, `.number`, `.title`, `.isDraft`, `.updatedAt`) — remap them to glab's `-F json` field names (forge-detection.md §c, confirmed against a live GitLab MR at implementation). Since the check is informational only, if the GitLab field mapping is not yet confirmed, log `Overlap check skipped: forge field mapping unconfirmed` and fall through rather than guessing.
+
 ## Inputs
 
-- `PR_NUMBER` (single-PR mode only): the GitHub PR number created in Phase 3a step 11.
+- `PR_NUMBER` (single-PR mode only): the PR number (MR iid on GitLab) created in Phase 3a step 11.
 - `BATCH_PR_NUMBERS`: JSON array of PR numbers that should be excluded from the open-PR scan — the PRs created in this `/jr-ship` invocation. Single-PR mode passes `[PR_NUMBER]`; multi-PR mode passes every sub-PR number from step 10-multi. Used so the batch's own splits do not flag each other (their splits are intentional per Phase 2).
 
 ## Procedure
