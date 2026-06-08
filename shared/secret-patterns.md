@@ -44,7 +44,7 @@ Post-implementation re-scan sites (`/jr-review` Phase 5.6, Phase 6 regression re
 
 When writing `secret-warnings.json` (per `secret-warnings-schema.md`), set `patternType` per the matched sub-pattern. Patterns with no dedicated label fall through to `"other"` and are subject to the `"other"` full-scan fallback in `/jr-review` Phase 7 step 3 (see `jr-review/protocols/secret-warnings-lifecycle.md`).
 
-Dedicated labels: `aws-key` (`AKIA`), `stripe-key` (`sk_live_`/`rk_live_`/`sk_test_`/`rk_test_`), `anthropic-key` (`sk-ant-`), `github-token` (`ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_`/`github_pat_`), `slack-token` (`xox[bpaes]-`/`xoxe.xox[bp]-`), `pem-private-key` (`BEGIN PRIVATE KEY`), `sendgrid-key` (`SG.`), `google-api-key` (`AIza`), `jwt`, `connection-string-basic-auth`, `connection-string-query-credentials`, `jdbc-credentials`. All others use `"other"`.
+Dedicated labels: `aws-key` (`AKIA`), `stripe-key` (`sk_live_`/`rk_live_`/`sk_test_`/`rk_test_`), `anthropic-key` (`sk-ant-`), `github-token` (`ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_`/`github_pat_`), `gitlab-token` (`glpat-`), `slack-token` (`xox[bpaes]-`/`xoxe.xox[bp]-`), `pem-private-key` (`BEGIN PRIVATE KEY`), `sendgrid-key` (`SG.`), `google-api-key` (`AIza`), `jwt`, `connection-string-basic-auth`, `connection-string-query-credentials`, `jdbc-credentials`. All others use `"other"`.
 
 ## Updating this file
 

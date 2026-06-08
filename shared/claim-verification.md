@@ -92,6 +92,10 @@ fetch is genuinely impossible, the Tier 1 fallback applies.
   repos/<org>/<repo>/contents/<path>` raw markdown for GitHub-hosted docs/changelogs; (b) the document's raw
   `.md`/`.txt` variant; (c) if only an HTML page exists, fetch it AND cross-check the load-bearing token
   against a second independent fetch or the raw source. Always cite the fetched source + date on the outcome.
+  **Forge-independence:** the CLI for an authority fetch follows the *authority's* host, not the user's repo
+  forge — GitHub-hosted authorities (e.g. `anthropics/claude-code`) stay on `gh api` even when the user's repo
+  is on GitLab; reach for `glab api projects/:fullpath/repository/files/<path>/raw` only when the authority is
+  itself gitlab-hosted (`forge-detection.md` §(e)).
 - **Outcomes:**
   - `confirmed` → keep the finding, tag `[verified: <source> <date>]`.
   - `refuted` → REJECT the finding, logged under `[REJECTED — CLAIM REFUTED BY SOURCE]` with the cited

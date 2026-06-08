@@ -32,7 +32,7 @@ You have been invoked via `/jr-tackle`. The task is at the end after `Task:`. Ap
 This skill cannot engage Claude Code's harness plan mode from its body — that's a user action (Shift+Tab or `--permission-mode plan` at startup). Whether or not the harness is actually in plan mode:
 
 - **File edits are the deliverable.** Use Edit/Write freely on the task at hand.
-- **Git mutations are OUT OF SCOPE.** Never run `git add`, `git commit`, `git push`, `git merge`, `git reset`, `git checkout -- <path>`, `git clean`, `git stash drop`, `git rebase`, `gh pr create`, `gh pr merge`, or any other git/gh command that mutates state — including destructive resets that discard working-tree changes (your edits are the deliverable; do not destroy them). The companion `/jr-ship` skill is the dedicated commit/push/PR/merge path — stop at the working-tree-modified state and report `git diff --stat` to the user.
+- **Git mutations are OUT OF SCOPE.** Never run `git add`, `git commit`, `git push`, `git merge`, `git reset`, `git checkout -- <path>`, `git clean`, `git stash drop`, `git rebase`, `gh pr create` / `glab mr create`, `gh pr merge` / `glab mr merge`, or any other git/forge (gh/glab) command that mutates state — including destructive resets that discard working-tree changes (your edits are the deliverable; do not destroy them). The companion `/jr-ship` skill is the dedicated commit/push/PR/merge path — stop at the working-tree-modified state and report `git diff --stat` to the user.
 - **Other irreversible actions** (external sends, destructive shell, dropping tables) require explicit user confirmation per scope.
 - **Read-only operations** (file reads, grep, web fetches, `advisor()`, `git status`/`log`/`diff`) are always fine.
 

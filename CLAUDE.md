@@ -32,9 +32,9 @@ jr-review/protocols/                  — skill-local procedures read at Phase 1
                                      phase8-followups.md (Phase 8 body — dedup + cross-repo
                                      visibility checks). These extractions pull /jr-review toward
                                      Anthropic's 500-line guideline (issue #20).
-jr-ship/SKILL.md                      — ship working-tree changes via PR (split analysis, branching, CI
-                                     wait + opus CI-failure fix loop, merge + file-overlap warning
-                                     after PR creation)
+jr-ship/SKILL.md                      — ship working-tree changes via PR (GitHub) / MR (GitLab), forge
+                                     auto-detected per repo (split analysis, branching, CI wait + opus
+                                     CI-failure fix loop, merge + file-overlap warning after PR/MR creation)
 jr-ship/protocols/                    — skill-local procedures read at Phase 1 under hard-fail + smoke-parse
                                      guard: ci-failure-handling.md (the opus CI-fix investigate →
                                      confirm-gate → re-watch loop, 2-cycle cap + single-fire stuck-loop
@@ -113,6 +113,15 @@ shared/claim-verification.md       — canonical anti-hallucination doctrine: co
                                      and the no-autonomous-decision-without-a-checked-fact rule. Read at Phase 1
                                      Track A by /jr-audit, /jr-review, /jr-skill-audit; cross-ref'd by /jr-ship, /jr-tackle,
                                      /jr-doctor. /jr-skill-audit's live refs-cache is the reference Tier-2 impl.
+shared/forge-detection.md          — canonical forge auto-detection (GitHub gh ↔ GitLab glab): host-heuristic
+                                     detection algorithm (origin host → gh/glab; CLAUDE_FORGE overrides), the
+                                     gh↔glab command / JSON-field / terminology mapping, and the per-site
+                                     application rule incl. the external-authority gh api carve-out (stays gh
+                                     regardless of the user's repo forge — only user-repo ops switch). Read at
+                                     Phase 1 Track A by /jr-audit, /jr-review (and /jr-ship inline); /jr-doctor
+                                     Group D smoke-parses it. The bin/ CLIs implement the same detection
+                                     natively. gitlab.com-only heuristic; glab JSON field names are confirmed
+                                     against a live GitLab MR at implementation (Milestone 2).
 jr-skill-audit/cache/refs.json        — /jr-skill-audit Phase 1 Track C live-references cache (Anthropic skills doc,
                                      env-vars doc, claude-code CHANGELOG); 7-day TTL, stale-cache fallback,
                                      `--refresh-refs` to force refresh; /jr-doctor Group I warns if > 30 days old
@@ -124,7 +133,7 @@ docs/skill-anatomy.md              — framework meta-doc explaining the five-ti
                                      pattern, allowed-tools narrowing, anti-patterns, new-skill
                                      checklist. Loaded on-demand via `@docs/skill-anatomy.md` when
                                      adding a skill, extracting from SKILL.md, or onboarding
-bin/tackle                         — bootstrap a Claude Code session for a PR/issue/scratch worktree
+bin/tackle                         — bootstrap a Claude Code session for a PR/MR/issue/scratch worktree
                                      (drops a marker that /jr-ship reads to rename the scratch branch in
                                      place; prefills "/jr-tackle <verb> <url>" into Claude's input box to
                                      invoke the in-session rigor wrapper — jr-tackle/SKILL.md is the
@@ -140,7 +149,7 @@ bin/seed-project-memory            — one-shot helper to draft a project_<name>
                                      derivable from the live repo — stack, git log, and CLAUDE.md are
                                      read fresh every run, so duplicating them would just decay).
                                      Opens $EDITOR, then writes to ~/.claude/projects/<encoded-cwd>/memory/
-bin/tackle-top                     — rank a repo's open GitHub issues via headless `claude -p` (haiku,
+bin/tackle-top                     — rank a repo's open issues (GitHub or GitLab — forge auto-detected) via headless `claude -p` (haiku,
                                      `--json-schema` constrained), then spawn N WezTerm tabs each
                                      running `tackle <N>` in the target repo. Interactive selection by
                                      default; `--yes` to skip the prompt; `--dry-run` for ranking-only.
@@ -165,6 +174,7 @@ Usage pattern per file:
 - `advisor-criteria.md` — passed verbatim to `/jr-skill-audit`'s `advisor-coverage-reviewer` (the only consumer today). Extracted from Anthropic's published advisor tool guidance so the criteria are portable across users — explicitly NOT sourced from any individual user's `~/.claude/CLAUDE.md`. If Anthropic's advisor guidance changes, update this file (and bump the `Last verified` timestamp at the bottom).
 - `phase1-track-a-protocol.md` — read at Phase 1 Track A by `/jr-audit`, `/jr-review`, `/jr-skill-audit` (as a shared file) AND parsed by them for the Canonical Anchor Table that drives the structural smoke-parse. `/jr-doctor` Group D consumes the same canonical at runtime to smoke-parse every shared file (warn-only). Each consumer hardcodes one self-reference anchor (`Canonical Anchor Table`) to break the circularity. Abort message wording is **not canonical** — consumers own it; the file documents that intentional divergence (`/jr-audit` and `/jr-review` use inline prose; `/jr-skill-audit` uses the `[ABORT — SHARED FILE MISSING]` marker).
 - `claim-verification.md` — read at Phase 1 Track A by `/jr-audit`, `/jr-review`, `/jr-skill-audit` and passed to reviewers as context; the lead applies its claim classification + cap/verify at Phase 3 and the no-autonomous-decision-without-a-checked-fact rule at every auto-apply/merge site. Cross-referenced (not Track-A-read) by `/jr-ship`'s CI-fix protocol and `/jr-tackle`'s rigor protocol. `/jr-skill-audit`'s live refs-cache is the reference Tier-2 implementation of the doctrine.
+- `forge-detection.md` — read at Phase 1 Track A by `/jr-audit` and `/jr-review`; `/jr-ship` reads it inline in Phase 1; `/jr-doctor` Group D smoke-parses it via the anchor table. The lead detects the forge once per run from the `origin` host and translates every `gh`/PR/checks reference to its `glab`/MR/pipeline equivalent per the command-equivalence + terminology tables at each **user-repo** call-site. The **external-authority `gh api` carve-out** is the load-bearing distinction: a `gh api …/contents/…` that fetches an Anthropic/framework doc (claim verification) stays `gh` even on a GitLab repo — only ops on the user's own repo switch. The `bin/` CLIs (`tackle`, `tackle-top`) implement the same detection natively (they can't read `shared/` at runtime). gitlab.com-only hostname heuristic; `CLAUDE_FORGE` env overrides. glab JSON field names are an implementation-time deliverable verified against a live GitLab MR.
 
 ## Skill file anatomy
 
@@ -182,6 +192,7 @@ Each `SKILL.md` has:
 - **Silent agents, noisy lead**: Reviewer/implementer subagents report via TaskCreate and SendMessage only — no console output. Only the lead agent prints progress.
 - **Shared cache files** in `.claude/`: `review-profile.json` (stack/package-manager detection), `review-baseline.json` (validation command baselines), `review-config.md` (suppressions and auto-learned rules), `audit-history.json` (append-only audit log).
 - **Model routing**: Reviewer and implementer agents spawn with `model: "opus"`. Mechanical phases (context gathering, dedup, validation, cleanup) use the default model. `/jr-ship` keeps its lead on `sonnet` and spawns `model: "opus"` sub-agents for its two judgment-heavy tasks — split analysis (Phase 2) and CI-failure diagnosis/fix (CI-failure handling).
+- **Forge auto-detection** (canonical: `shared/forge-detection.md`): `/jr-review` and `/jr-ship` detect the repo's forge once per run from the `origin` host — `github.com`→`gh`, `gitlab.com`→`glab` (gitlab.com-only hostname heuristic; `CLAUDE_FORGE` overrides) — and translate every `gh`/PR/checks reference to its `glab`/MR/pipeline equivalent at each **user-repo** call-site (`gh pr merge`→`glab mr merge`, `gh pr checks --watch`→`glab ci status --live`, etc.; CI is a semantic adaptation, not a rename). `/jr-audit` has **no user-repo forge call-site** — its sole `gh` use is the external-authority claim-verification `gh api` (which stays `gh`), so it reads `forge-detection.md` for the carve-out context + glab-mirror readiness only, with nothing to translate. The **external-authority carve-out** is load-bearing: a `gh api …/contents/…` that fetches an Anthropic/framework doc for claim verification stays `gh` regardless of the user's forge — only the user's own repo switches. `/jr-doctor` accepts `gh` OR `glab`; the `bin/` CLIs (`tackle`, `tackle-top`) implement the same detection natively. glab `-F json` field names are an implementation-time deliverable verified against a live GitLab MR (Milestone 2).
 - **Severity rubric** (canonical: `shared/reviewer-boundaries.md`): critical → high → medium → low, with confidence levels certain → likely → speculative. Low-severity findings are dropped unless trivially fixable.
 - **Reviewer dimension boundaries** (canonical: `shared/reviewer-boundaries.md`): Strict ownership of finding categories to prevent duplicates (e.g., silent failures → error-handling-reviewer, not security or typescript).
 - **Finding format**: Every reviewer finding must include `file`, `line`, AND a `codeExcerpt` (3 consecutive lines from the cited file, verbatim). Phase 3 step 0 sanity-check reads the cited range and rejects any finding whose excerpt doesn't match — catches line-number AND content hallucinations. Per-reviewer 25% rejection rate escalates to Phase 7 `ACTION REQUIRED`.

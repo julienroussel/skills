@@ -49,9 +49,9 @@ These checks apply at every read site (Phase 5.6 append, Phase 7 step 3 prune, t
 
 Schema validators MUST reject any `patternType` value not in this enum (route through the corrupt-file backup path):
 
-`aws-key`, `stripe-key`, `openai-key`, `anthropic-key`, `github-token`, `slack-token`, `slack-webhook`, `discord-webhook`, `google-api-key`, `twilio-sid`, `private-key-pem`, `jwt`, `sendgrid-key`, `generic-url-credentials`, `database-url`, `generic-env-assignment`, `generic-quoted-assignment`, `other`.
+`aws-key`, `stripe-key`, `openai-key`, `anthropic-key`, `github-token`, `gitlab-token`, `slack-token`, `slack-webhook`, `discord-webhook`, `google-api-key`, `twilio-sid`, `private-key-pem`, `jwt`, `sendgrid-key`, `generic-url-credentials`, `database-url`, `generic-env-assignment`, `generic-quoted-assignment`, `other`.
 
-These labels are derived from the Phase 1 secret-pre-scan pattern names. Writers SHOULD select the most specific enum value matching the detected pattern and SHOULD NOT default to `"other"` when a specific label exists. `"other"` is reserved for patterns genuinely lacking a dedicated enum value (e.g., `npm_`, `pypi-`, `dapi`, `glpat-`).
+These labels are derived from the Phase 1 secret-pre-scan pattern names. Writers SHOULD select the most specific enum value matching the detected pattern and SHOULD NOT default to `"other"` when a specific label exists. `"other"` is reserved for patterns genuinely lacking a dedicated enum value (e.g., `npm_`, `pypi-`, `dapi`).
 
 ## Validation-failure halt
 
