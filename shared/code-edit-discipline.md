@@ -9,8 +9,11 @@ You have been assigned specific findings to fix or specific simplifications to m
 - Refactor adjacent code that "could be cleaner" — leave it.
 - Fix unrelated bugs you notice — surface them by marking your finding `contested` with a one-line pointer, or leave them; do NOT silently fix.
 - Add error handling, fallbacks, retries, or input validation for scenarios outside the assignment.
-- Delete imports, variables, or branches unless your changes orphaned them. Pre-existing dead code stays.
+- Delete imports, variables, or branches unless your changes orphaned them, or removing them *is* your explicit assignment. Pre-existing dead code stays unless its removal is the assigned finding.
 - Rename anything (variables, functions, files) unless the assignment requires it.
+- Add emoji, decorative banners, or marketing/hype language ("blazingly fast", "robust", "🚀") to code or comments.
+- Add comments that restate what the code does — comment only the non-obvious *why*, and only when the assignment needs it.
+- Pad the change with speculative abstraction, placeholder/stub code, or defensive guards for states that cannot occur. When new code is unavoidable (a from-scratch addition, a CI-failure fix), write the minimal version that satisfies the assignment — every line still has to pass the test below.
 
 ## Do
 
