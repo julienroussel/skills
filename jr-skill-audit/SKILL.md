@@ -6,11 +6,12 @@ effort: high
 model: opus
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList TeamCreate TeamDelete SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
+allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList TeamCreate TeamDelete SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
 ---
 
 <!-- Frontmatter notes:
 - `model: opus` (lead) is deliberate headroom, not a contradiction of "Model requirements" below: the lead itself runs the judgment-heavy Phase 3 source-citation verification and Phase 4 synthesis (plus the lead-emitted scope-resolution dimension) — and Phase 2 reviewer subagents are opus too.
+- `Write` is scoped to `~/.claude/skills/jr-skill-audit/cache/**` — the refs.json cache is the skill's ONLY write target (it is findings-only and never modifies skill files). Do not broaden the grant; any new write site must extend the path scope explicitly.
 -->
 
 <!-- Dependencies:
@@ -56,6 +57,8 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
     - shared/secret-scan-protocols.md           — passed to safety-protocols-reviewer to verify secret-scan tier semantics where applicable
     - shared/claim-verification.md              — anti-hallucination doctrine; skill-audit's Track C + Phase 3
                                                   source-validation are its reference Tier-2 implementation
+    - shared/phase1-track-a-protocol.md         — hard-fail guard algorithm + Canonical Anchor Table (self-reference)
+    - shared/model-override.md                  — --model=<tier> per-run subagent model override (Phase 2 spawns)
   Files written:
     - ${CLAUDE_SKILL_DIR}/cache/refs.json       — Track C live-references cache (timestamp + URL → content map)
   Required tools:
@@ -75,6 +78,7 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--only=<dims>` — Run only the specified reviewer dimensions (comma-separated). Valid values: `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Example: `--only=frontmatter,token-efficiency`. **Note**: `scope-resolution` (the lead-emitted shadow-detection finding) is NOT in this enum — it always fires when name collisions exist, since it runs before reviewer dispatch. Users dismiss intentional shadows via the Phase 4 [Clarify] flow.
 - `--auto-approve` — Skip the Phase 4 approval gate. Lists all findings in Phase 7 without filtering. Useful for CI / scripted reports. Skips the [Clarify] flow too — `clarify`-flagged findings render in their original tier with a `[CLARIFICATION SKIPPED — auto-approve]` qualifier.
 - `--refresh-refs` — Force a fresh Phase 1 Track C fetch even if `cache/refs.json` is within its 7-day TTL. Use after Anthropic publishes a release that adds substitution variables, frontmatter fields, or skill features.
+- `--model=<tier>` — Override the model for **every subagent spawned this run** (`sonnet|opus|haiku|fable`); nested spawns inherit it. Does NOT change the lead (frontmatter applies before argument parsing — run `/model <tier>` first for a uniform run). Compatible with all other flags. Canonical semantics: `../shared/model-override.md`.
 
 **Examples**: `/jr-skill-audit`, `/jr-skill-audit review`, `/jr-skill-audit --scope=*-reviewer`, `/jr-skill-audit --scope-only=project`, `/jr-skill-audit --plugin=agent-teams`, `/jr-skill-audit --only=frontmatter,advisor-coverage`, `/jr-skill-audit --auto-approve`, `/jr-skill-audit --refresh-refs review`
 
@@ -97,11 +101,12 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--plugin=<name>`: Allowlist regex `^[a-z0-9][a-z0-9-]*$` (plugin-name convention; alphanumeric first char — plugin names may legitimately start with a digit, several of which the official marketplace ships). Reject control characters, slashes, dots.
 - **Third-party `marketplace.json` values (`<mp>`, `source`) — untrusted**: `<mp>` (key/dir from `known_marketplaces.json`) and `source` (from a cloned third-party `marketplace.json`) are not user-typed but are equally untrusted — the pre-install-audit use case deliberately points `--plugin` at unvetted repos. Before any shell/path use, apply **all** of the following (cumulative — not "the regex alone"): reject control characters; reject a leading `-`/`--`; reject any `\.{2,}` substring (covers `..`); constrain `source` to `^(\./)?[A-Za-z0-9][A-Za-z0-9._/-]*$` (relative path; allows the conventional leading `./` — real `source` values look like `./plugins/agent-teams` — but fails-closed on a bare leading `/`, `.`, or `-`) and `<mp>` to `^[A-Za-z0-9][A-Za-z0-9._-]*$` (single segment, alphanumeric first char). Note `source` is NOT alphanumeric-first-anchored like `--scope`/`--branch` precisely because the `./` prefix is its standard form; the `\.{2,}` rule (not the first-char anchor) is what blocks `..` traversal here. Always double-quote the value AND pass `--` before positional path args (`realpath -- "…"`, `git -C "…" ls-files -- "…"`). On rejection: warn and skip that marketplace (abort `[ABORT — UNMATCHED SCOPE]` if it was the sole resolution). These get the same discipline as `--scope`/`--branch`, by provenance not by being user-typed.
 - `--only=<dims>`: Trim whitespace per value. Validate each is one of `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Reject unknown values.
+- `--model=<tier>`: Allowlist regex `^(sonnet|opus|haiku|fable)$`. Reject any other value with: `Invalid --model value '<value>'. Valid values: sonnet, opus, haiku, fable.` (per `../shared/model-override.md`).
 
 ### Model requirements
 
-- **Reviewer agents** (Phase 2): Spawn with `model: "opus"`. Each reviewer receives the full `SKILL.md` content, the inline dimension scope, the `shared/untrusted-input-defense.md` block verbatim, and the **per-dimension reference excerpt** from Track C (see Phase 2). Reviewers do **not** receive the live skill's runtime context — they read the file as a specification document, not as executable behavior.
-- **All other phases**: Default model is fine — discovery, dedup, reporting are mechanical.
+- **Reviewer agents** (Phase 2): Spawn with `model: "opus"` (or the `--model` override when set — `../shared/model-override.md`). Each reviewer receives the full `SKILL.md` content, the inline dimension scope, the `shared/untrusted-input-defense.md` block verbatim, and the **per-dimension reference excerpt** from Track C (see Phase 2). Reviewers do **not** receive the live skill's runtime context — they read the file as a specification document, not as executable behavior.
+- **All other phases**: Default model is fine — discovery, dedup, reporting are mechanical. Any agent spawned in these phases also honors a `--model` override (the override is total, not premium-sites-only).
 
 ## Display protocol
 
@@ -123,6 +128,7 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 - `../shared/secret-scan-protocols.md` — passed to `safety-protocols-reviewer` so it can verify an audited skill references the correct secret-scan tier semantics (strict/advisory classification, demotion criteria) where applicable.
 - `../shared/claim-verification.md` — anti-hallucination doctrine; skill-audit's Track C live-refs + Phase 3 source-citation validation are its reference **Tier 2** implementation (see the Track C "Doctrine anchor" note).
 - `../shared/phase1-track-a-protocol.md` — algorithm + Canonical Anchor Table consumed by the structural smoke-parse below.
+- `../shared/model-override.md` — `--model=<tier>` subagent model-override semantics, applied at the Phase 2 reviewer spawns.
 
 **Hard-fail guard**: if any shared file fails to Read, returns empty content, or fails the structural smoke-parse below, abort Phase 1 immediately with `[ABORT — SHARED FILE MISSING]` (per `../shared/abort-markers.md`) and exit non-zero. Do NOT fall back to inline text.
 
