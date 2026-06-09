@@ -10,6 +10,11 @@ A collection of personal Claude Code skills (slash commands) — `/jr-audit`, `/
 
 ```
 jr-audit/SKILL.md                     — full codebase audit swarm (--converge for re-audit loops)
+jr-audit/protocols/                   — skill-local procedures read at Phase 1 Track A under hard-fail +
+                                     smoke-parse guard: phase2-reviewers.md (Phase 2 reviewer-swarm body —
+                                     scope/effort/selection/scaling/reviewer instructions/finding format;
+                                     anchors: `### Classify scope size` AND `### Finding format`),
+                                     phase7-report.md (Phase 7 cleanup/report body; anchor `False positive rates`).
 jr-review/SKILL.md                    — multi-agent PR review swarm (--converge for re-review loops)
 jr-review/convergence-protocol.md     — skill-local convergence loop body (state tracking, file tracking,
                                      convergence Phases 2-6, fresh-eyes pass); NOT in shared/ because
@@ -52,6 +57,14 @@ jr-skill-audit/SKILL.md               — opinionated audit of SKILL.md files; c
                                      factual drift checks. Spawns 7 reviewer dimensions in parallel
                                      (frontmatter, advisor-coverage, token-efficiency, shared-drift,
                                      feature-adoption, safety-protocols, model-routing). Findings-only (no auto-fix in v1)
+jr-skill-audit/protocols/plugin-scope.md — Track B `--plugin` scope-resolution procedure (marketplace
+                                     location, git-tracked-skill enumeration, symlink/containment
+                                     canonicalization, tagging); read at Phase 1 Track A ONLY when
+                                     `--plugin` is set (conditional, mirrors jr-review convergence-protocol.md).
+                                     Anchors: `Locate the marketplace` AND `Enumerate git-tracked skills`.
+jr-skill-audit/edge-cases.md          — case→behavior reference table (~21 rows); loaded on demand, NOT
+                                     read at Phase 1 (reference material, no hard-fail guard). SKILL.md
+                                     `## Edge cases` points here.
 codebase-memory/SKILL.md           — personal cheat-sheet for the optional codebase-memory-mcp
                                      integration (decision matrix, edge types, Cypher examples)
 find-skills/SKILL.md               — discover and install agent skills from the open ecosystem when
