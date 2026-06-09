@@ -39,6 +39,7 @@ For each consumer at Phase 1 (Track A in `/jr-audit`, `/jr-review`, `/jr-skill-a
 | `phase1-track-a-protocol.md` | `Canonical Anchor Table` AND `Self-reference escape hatch` |
 | `claim-verification.md` | `External-authority claim` AND `Independent detection (lead, not reviewer)` AND `[REJECTED — CLAIM REFUTED BY SOURCE]` AND `Source-fetch discipline` |
 | `forge-detection.md` | `Forge auto-detect:` AND `Command equivalence table` |
+| `model-override.md` | `Model override semantics` AND `every subagent spawn` |
 
 ## Abort rendering
 
