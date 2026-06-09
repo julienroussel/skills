@@ -33,10 +33,11 @@ Only spawn reviewers relevant to the files in scope. Do NOT spawn reviewers with
 - **dependency-reviewer** — If `package.json` is in scope. Outdated deps, unnecessary deps duplicating native APIs, license issues, duplicate transitive deps, mismatched peer deps.
 - **architecture-reviewer** — If 20+ source files in scope. Circular imports, module boundary violations, coupling, prop drilling, barrel export bloat, dead routes, inconsistent patterns across similar files.
 - **comment-reviewer** — If files with significant JSDoc, docstrings, or inline comments are in scope. Comment accuracy verification: cross-reference claims against code behavior, identify stale references (removed params, renamed functions, changed algorithms), flag 'why' vs 'what' balance, check for misleading language, outdated references, temporary/transitional state comments that should have been removed. Report: critical inaccuracies, recommended removals, improvement opportunities.
+- **simplicity-reviewer** — Cross-cutting quality add-on (not a file-type match): eligible when 16+ files in scope or `--only=simplicity` is set; select it *after* the file-type dimensions, within the reviewer cap. Owns over-engineering and speculative abstraction, defensive code for states that can't occur, local dead code (unused symbols, unreachable branches), redundant/verbose code with a simpler behavior-identical equivalent, comments that merely restate the code, and emoji/marketing language. Flag only genuine excess that materially hurts clarity or maintainability — treat borderline cleanups as optional, skip cosmetic nitpicks (an over-zealous simplifier itself drives churn — extra abstraction layers, defensive code, tests for cases that can't happen). Cap severity at `medium` unless the slop is actually a bug. Not file-bound: pass it ALL in-scope files — the file→dimension mapping does not filter it.
 
 **Custom reviewers**: If `.claude/review-config.md` has a `## Custom reviewers` section, spawn those too (for full audits, or when explicitly included via `--only`).
 
-**`--only` filter**: If set, takes precedence. Only spawn the named reviewers. Use short dimension names without the `-reviewer` suffix: `typescript`, `security`, `react`, `node`, `database`, `performance`, `testing`, `accessibility`, `infra`, `css`, `error-handling`, `dependency`, `architecture`, `comment`.
+**`--only` filter**: If set, takes precedence. Only spawn the named reviewers. Use short dimension names without the `-reviewer` suffix: `typescript`, `security`, `react`, `node`, `database`, `performance`, `testing`, `accessibility`, `infra`, `css`, `error-handling`, `dependency`, `architecture`, `comment`, `simplicity`.
 
 ### Scale the swarm
 
@@ -68,7 +69,7 @@ Defined in `../../shared/reviewer-boundaries.md` (read at Phase 1 Track A). Phas
 
 ### Cross-file consistency analysis
 
-Each reviewer must check for cross-file consistency: inconsistent patterns, dead code, duplicated logic, broken imports of modified exports. When `GRAPH_INDEXED=true`, use `detect_changes()` to map modifications to affected symbols, then `trace_path(direction="both", depth=3)` on each symbol to find consumers — these are authoritative and much cheaper than Grep. When `GRAPH_INDEXED=false`, fall back to Grep on the symbol name across the scope.
+Each reviewer must check for cross-file consistency: inconsistent patterns, dead code, duplicated logic, broken imports of modified exports (report only cross-file/structural instances here — defer local dead code and within-unit redundancy to `simplicity-reviewer` per the boundary table). When `GRAPH_INDEXED=true`, use `detect_changes()` to map modifications to affected symbols, then `trace_path(direction="both", depth=3)` on each symbol to find consumers — these are authoritative and much cheaper than Grep. When `GRAPH_INDEXED=false`, fall back to Grep on the symbol name across the scope.
 
 ### Finding format
 

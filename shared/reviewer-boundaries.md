@@ -22,6 +22,13 @@ Each reviewer owns a **primary responsibility**. Borderline issues are deferred 
 | Unused CSS | `css-reviewer` (`/jr-audit` only) | performance |
 | Stale comment | `comment-reviewer` (`/jr-audit` only) | any other dimension |
 | Type design quality | `typescript-reviewer` | architecture |
+| Over-engineering / needless abstraction | `simplicity-reviewer` | architecture, typescript |
+| Defensive code for impossible states | `simplicity-reviewer` | error-handling |
+| Local dead code (unused symbol, unreachable branch) | `simplicity-reviewer` | architecture |
+| Redundant / verbose code with a simpler equivalent | `simplicity-reviewer` | performance |
+| Comment that merely restates the code | `simplicity-reviewer` | comment (owns stale) |
+
+`simplicity-reviewer` owns *within-unit* excess (over-engineering, local dead code, redundancy, comments that restate code, defensive code for impossible states). *Between-module* structure (dead routes, coupling, circular imports) stays with `architecture-reviewer`; *inaccurate* comments with `comment-reviewer`; *type* complexity with `typescript-reviewer`; *runtime* cost with `performance-reviewer`. Runs in both `/jr-review` (diff-scoped) and `/jr-audit` (scope-wide). Findings are code-internal — settled by the `codeExcerpt` sanity-check, no external-authority verification.
 
 **Exception**: any reviewer may report a `critical` finding regardless of boundaries.
 
