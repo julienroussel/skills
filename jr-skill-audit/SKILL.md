@@ -9,6 +9,10 @@ user-invocable: true
 allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList TeamCreate TeamDelete SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
 ---
 
+<!-- Frontmatter notes:
+- `model: opus` (lead) is deliberate headroom, not a contradiction of "Model requirements" below: the lead itself runs the judgment-heavy Phase 3 source-citation verification and Phase 4 synthesis (plus the lead-emitted scope-resolution dimension) — and Phase 2 reviewer subagents are opus too.
+-->
+
 <!-- Dependencies:
   Required plugins:
     - agent-teams@claude-code-workflows        — team-reviewer agents (Phase 2), TeamCreate/TeamDelete (Phase 2/7)
@@ -29,6 +33,7 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
                                                   refreshed on stale (>7 days) or --refresh-refs
     - ${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md — Track B `--plugin` scope-resolution procedure;
                                                   read at Phase 1 Track A ONLY when --plugin is set (conditional)
+    - ${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md — Track B personal/project scope-resolution procedure; read at Phase 1 Track A ONLY when --plugin is NOT set (complementary conditional to plugin-scope.md)
     - ${CLAUDE_SKILL_DIR}/edge-cases.md         — case→behavior reference table; loaded on demand (NOT Track-A-read)
   Out of scope in v1 (tracked in GitHub issues):
     - Auto-fix mode (Phase 5/6 implementer + validation)        — issue #15
@@ -48,6 +53,7 @@ allowed-tools: Read Write Glob Grep WebFetch AskUserQuestion Agent advisor TaskC
                                                   would tie findings to whoever ran the skill last)
     - shared/gitignore-enforcement.md           — passed to safety-protocols-reviewer so it can flag missing
                                                   applications of the protocol in audited skills
+    - shared/secret-scan-protocols.md           — passed to safety-protocols-reviewer to verify secret-scan tier semantics where applicable
     - shared/claim-verification.md              — anti-hallucination doctrine; skill-audit's Track C + Phase 3
                                                   source-validation are its reference Tier-2 implementation
   Files written:
@@ -114,6 +120,7 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 - `../shared/abort-markers.md` — applied at Phase 7 if an abort fires.
 - `../shared/advisor-criteria.md` — passed verbatim to `advisor-coverage-reviewer` as canonical advisor-call rules.
 - `../shared/gitignore-enforcement.md` — passed to `safety-protocols-reviewer` so it can flag missing applications of the protocol in audited skills.
+- `../shared/secret-scan-protocols.md` — passed to `safety-protocols-reviewer` so it can verify an audited skill references the correct secret-scan tier semantics (strict/advisory classification, demotion criteria) where applicable.
 - `../shared/claim-verification.md` — anti-hallucination doctrine; skill-audit's Track C live-refs + Phase 3 source-citation validation are its reference **Tier 2** implementation (see the Track C "Doctrine anchor" note).
 - `../shared/phase1-track-a-protocol.md` — algorithm + Canonical Anchor Table consumed by the structural smoke-parse below.
 
@@ -121,7 +128,7 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 
 **Structural smoke-parse** (mandatory, after non-empty Read): apply the smoke-parse algorithm and Canonical Anchor Table from `../shared/phase1-track-a-protocol.md` — each row of the canonical's table lists the required substrings for one shared file (case-sensitive, `grep -F` semantics, AND-joined within a row). **Self-reference escape hatch (hardcoded)**: before parsing the canonical's table, verify `../shared/phase1-track-a-protocol.md` itself contains the literal string `Canonical Anchor Table` — a stub corruption of the canonical that preserves only its self-row anchor would otherwise pass the table-driven check. If any file fails the smoke-parse (self check OR any row check), abort Phase 1 with `[ABORT — SHARED FILE MISSING]` as above.
 
-**Skill-local protocol file (conditional — `--plugin` only)**: when `--plugin=<name>` is set, also Read `${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md` into lead context (parallel with the shared files above) and apply the same hard-fail + non-empty + smoke-parse discipline — abort with `[ABORT — SHARED FILE MISSING]` if it is absent, empty, or fails its anchors `Locate the marketplace` AND `Enumerate git-tracked skills` (case-sensitive `grep -F`). Skip the read + smoke-parse entirely when `--plugin` is not passed (mirrors `/jr-review`'s conditional `convergence-protocol.md` read under `--converge`).
+**Skill-local protocol files (conditional — exactly one per run)**: when `--plugin=<name>` is set, also Read `${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md` into lead context (parallel with the shared files above) and apply the same hard-fail + non-empty + smoke-parse discipline — abort with `[ABORT — SHARED FILE MISSING]` if it is absent, empty, or fails its anchors `Locate the marketplace` AND `Enumerate git-tracked skills` (case-sensitive `grep -F`). When `--plugin` is NOT set, Read `${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md` instead (same discipline; anchors `Scope roots` AND `Gitignore exclusion`) — the two are mutually exclusive, so exactly one is read per run (mirrors `/jr-review`'s conditional `convergence-protocol.md` read under `--converge`).
 
 ### Track B — Discover skill targets
 
@@ -129,38 +136,7 @@ Enumerate skill directories matching the argument set, across personal and proje
 
 **Plugin scope** (when `--plugin=<name>` is set): short-circuit the personal/project discovery below and follow the plugin-scope resolution procedure (marketplace location, git-tracking enumeration, symlink/containment canonicalization, tagging) in `${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md` — read into lead context at Phase 1 Track A **only when `--plugin` is set** (mirrors how `/jr-review` reads `convergence-protocol.md` only under `--converge`). On success it tags each surviving target `scope=plugin` and skips to "For each surviving target" below; the personal/project discovery, gitignore filtering, and shadow detection are all bypassed (plugin scope is exclusive).
 
-**Scope roots** (computed before any enumeration) — personal/project path (when `--plugin` is NOT set):
-
-- **`realpath` availability probe**: run `command -v realpath >/dev/null 2>&1` once and store `REALPATH_AVAILABLE=true|false`. When `false`, the skip conditions and dedupe step below fall back to literal trailing-slash path comparison (`case "$dir/" in "$personalRoot"/*) ;; esac`) instead of `realpath`-normalized paths — slightly less symlink-robust but functionally equivalent for the common case (direct duplicates still caught; symlink aliases not collapsed).
-- **personalRoot**: `${HOME}/.claude/skills`. Always enumerated; `--scope-only=project` drops personal candidates post-enumeration (see "Apply `--scope-only` filter" below).
-- **projectRoots**: discovered by walking parents. **Walked unconditionally** — even with `--scope-only=personal` — so the cross-scope conflict probe below can detect cases where bare positional `<name>` resolves only in the dropped scope and produce the specific conflict message. Walk-start = `$PWD`; walk-stop = `git -C "$PWD" rev-parse --show-toplevel 2>/dev/null` (or `$PWD` if not in a git repo). Iterate from walk-start via repeated `dirname "$dir"` (quoted) until reaching walk-stop inclusive (extra safety: break if `dirname` returns the same value, i.e., at `/`).
-- **Per-walked-dir filter**: for each `<dir>`, add `<dir>/.claude/skills` to `projectRoots` only if `[ -d "$dir/.claude/skills" ]` is true AND BOTH skip conditions are false. Skip if either: (a) `<dir>` is at or under `<personalRoot>` — use `realpath`-normalized paths when `REALPATH_AVAILABLE=true`, else literal trailing-slash comparison (append `/` to both sides so `/a/b` never matches `/a/bb`); or (b) `<dir>/.claude/skills` (when it exists) equals `<personalRoot>` — same `realpath`/literal switch. Condition (b) catches the case where walk-start is a *parent* of personal-root (e.g., CWD is `$HOME`) — without it, the project walk would discover personal-root as a project-root and double-count.
-
-This matches the documented Claude Code runtime behavior (per `https://code.claude.com/docs/en/skills#automatic-discovery-from-parent-and-nested-directories` — project skills load from `.claude/skills/` in the starting directory and every parent up to the repository root). Nested-on-demand discovery (e.g., `packages/frontend/.claude/skills/` from a root-started session) and `--add-dir`-mounted skills are runtime-only behaviors `/jr-skill-audit` does not have a signal for; they're out of scope here.
-
-**Enumerate SKILL.md candidates** from each scope root, dedupe by path (using `realpath` when `REALPATH_AVAILABLE=true` to catch symlinks and any project root that resolves to personal; else literal-path dedupe — direct duplicates still caught), and tag each surviving candidate with `scope = personal | project`.
-
-**Apply the argument-set filter** (runs BEFORE `--scope-only` so cross-scope conflicts can be detected):
-1. **Bare positional** (`/jr-skill-audit <name>`): keep candidates whose directory basename == `<name>` in EITHER scope.
-2. **`--scope=<glob>`**: keep candidates whose directory basename matches the glob in EITHER scope.
-3. **No filter**: keep all candidates from both scopes. Skip directories without a `SKILL.md` (e.g., `bin/`, `docs/`, `shared/`).
-
-**Cross-scope conflict probe** (only when `--scope-only` is set AND `<name>` is the bare positional): if the argument-filter result is **non-empty AND** every match is in the dropped scope, abort with the specific conflict message. (Empty result falls through to the generic "Available skills" hint at "Bare positional resolution" below — the empty case means `<name>` doesn't exist in EITHER scope.)
-- `--scope-only=personal`, matches only in project → `Skill <name> not found in personal scope (exists in project: drop --scope-only or use --scope-only=project).`
-- `--scope-only=project`, matches only in personal → `Skill <name> not found in project scope (exists in personal: drop --scope-only or use --scope-only=personal).`
-
-**Apply `--scope-only` filter** to the argument-filter result:
-- `--scope-only=personal`: drop project candidates.
-- `--scope-only=project`: drop personal candidates.
-- Neither flag: keep both.
-
-**Bare positional resolution** (final, after both filters): 0 matches → abort with the "Available skills: personal=<list> project=<list>" hint from the sanitization rule. 1 match → audit it. ≥ 2 matches → audit ALL surviving matches. The common case is exactly 2 (one personal + one project, possible only when neither `--scope-only` is set), but the parent-walk can also surface multiple project roots with the same skill name (e.g., `repo/.claude/skills/<name>` AND `repo/packages/frontend/.claude/skills/<name>` from a session started under `frontend`). The shadow-detection finding (lead-side, see "After all tracks complete" below) emits one `scope-resolution` finding per basename appearing in BOTH personal and project scopes; project-internal duplicates (same name across multiple walked project roots) are audited but not synthetically flagged — Claude Code's exact collision-resolution behavior for multiple walked project roots is runtime-dependent and outside `/jr-skill-audit`'s scope to specify, and the user can manually deduplicate if needed.
-
-**Gitignore exclusion (mandatory, per scope)**: After enumeration, drop any skill whose directory is gitignored — those skills are externally maintained (e.g., installed via `npx skills`), not owned by this repo, so findings on them are not actionable here and a local fix would be clobbered on the next update. Apply per-scope independently:
-- **Personal scope**: one batched call `git -C "$personalRoot" check-ignore <basename>/SKILL.md ...` — every path it prints is ignored; remove from the target set. Exit 128 (`$personalRoot` not a git repo) → skip personal gitignore filtering only.
-- **Project scope**: per project root R (each `<walked-dir>/.claude/skills`), one batched call `git -C "$R" check-ignore <basename>/SKILL.md ...`. The enclosing repo's `.gitignore` is consulted automatically via git's normal walk. Exit 128 → skip filtering for that root only.
-
-**Bare positional** + gitignored: if the single named skill is gitignored in its only resolving scope, abort with `<name> is gitignored in <scope> (externally maintained) — /jr-skill-audit audits repo-owned skills only.` **`--scope` / no-filter**: exclude silently, but list the excluded skill names (with `[personal]` / `[project]` tags) in the Phase 1 discovery summary so the scope reduction is visible.
+**Personal/project scope** (when `--plugin` is NOT set): follow the discovery procedure in `${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md` — read into lead context at Phase 1 Track A under the non-`--plugin` conditional (hard-fail + non-empty + smoke-parse anchors `Scope roots` AND `Gitignore exclusion`; abort `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if absent/empty/invalid; the complementary conditional to `plugin-scope.md`). It computes the personal + project scope roots (`realpath` probe, parent-walk with the under-`personalRoot` / equals-`personalRoot` skip conditions), enumerates and dedupes SKILL.md candidates tagged `scope=personal|project`, applies the argument-set filter then the `--scope-only` filter (with the cross-scope conflict probe in between), resolves the bare positional (0 → "Available skills" abort; 1 → audit; ≥ 2 → audit all), and drops gitignored (externally-maintained) skills per scope — returning the surviving target set. The bare-positional-gitignored abort and the silent `--scope`/no-filter exclusion-with-listing both live in that protocol.
 
 For each surviving target, read the `SKILL.md` plus enumerate `<skill>/scripts/*.sh` and `<skill>/templates/*` as supplementary inputs (existence + executable bit only — content reads only when a reviewer cites them). For plugin scope these paths are under the resolved `~/.claude/plugins/marketplaces/<mp>/<source>/`.
 
@@ -264,7 +240,7 @@ Each reviewer receives ONLY the references it needs (mirrors the principle "skil
 | `token-efficiency-reviewer` | `skills-doc` Skill content lifecycle section + 500-line Tip. |
 | `shared-drift-reviewer` | The full canonical `shared/*.md` set (already in lead context from Track A). NO Track C refs. |
 | `feature-adoption-reviewer` | `skills-doc` (Frontmatter reference + Substitutions tables) + `claude-code-changelog` (head ~30 versions). |
-| `safety-protocols-reviewer` | `shared/untrusted-input-defense.md` + `shared/gitignore-enforcement.md` (both already in lead context from Phase 1 Track A reads, plus the latter loaded specifically for this dimension). NO Track C refs. |
+| `safety-protocols-reviewer` | `shared/untrusted-input-defense.md` + `shared/gitignore-enforcement.md` + `shared/secret-scan-protocols.md` (all already in lead context from Phase 1 Track A reads; the latter two loaded specifically for this dimension so it can flag missing gitignore-enforcement applications and verify secret-scan tier semantics). NO Track C refs. |
 | `model-routing-reviewer` | NO Track C refs — reasons over the audited skill's own phase descriptions + frontmatter `model`/`effort` fields (already in the full `SKILL.md` content every reviewer receives per Phase 2). |
 
 ### Dimension table

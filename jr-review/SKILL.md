@@ -10,6 +10,7 @@ allowed-tools: Read Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate 
 ---
 
 <!-- Frontmatter notes (load-bearing):
+- `model: opus` (lead) is deliberate headroom, not a contradiction of "Model requirements" below: the lead itself runs the judgment-heavy Phase 3 claim-classification, Phase 4 approval, and Phase 5.55 fix-verification — and reviewer/implementer subagents are opus too.
 - `when_to_use` is omitted on purpose: with `disable-model-invocation: true` the description is not
   loaded into context (skills doc), so `when_to_use` would only affect the `/` menu listing. Don't re-add.
 - `allowed-tools` deliberately PROMPTS for: arbitrary `rm`, destructive git (checkout/reset/clean/
@@ -52,7 +53,7 @@ allowed-tools: Read Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate 
     - protocols/{phase2-reviewers, finding-sanity-check, secret-warnings-lifecycle, base-anchor,
       pre-commit-hook-offer, phase7-cleanup-report, phase8-followups}.md — read at Phase 1 Track A
       under the hard-fail + smoke-parse guard (anchors listed there); convergence-protocol.md is
-      read only when --converge is set.
+      read only when --converge is set, and protocols/branch-mode.md only when --branch is set.
   Required tools:
     - Agent, TaskCreate, TaskList, TeamCreate, TeamDelete, SendMessage, AskUserQuestion, advisor
     - Bash, Read, Write, Glob, Grep
@@ -186,25 +187,7 @@ When reviewing a remote PR, replace Tracks B and D:
 
 ### Branch mode (if `--branch` is set)
 
-When reviewing the full feature-branch diff, run the following sequential checks BEFORE any tracks fire. All four are hard-fail aborts; none of them allow degraded continuation, because every subsequent phase (codeExcerpt verification, baseCommit anchoring, fix-application) assumes that local files reflect HEAD and that HEAD has a meaningful merge base with the resolved `<base>`.
-
-1. **Detached HEAD check**: `branch=$(git symbolic-ref --short HEAD 2>/dev/null)` — if empty (detached HEAD), abort with: "Branch mode requires a checked-out branch. Detected detached HEAD. Check out a feature branch (or use bare `/jr-review` for working-tree-only review) and re-run." Use `symbolic-ref` instead of `rev-parse --abbrev-ref HEAD` because the latter prints the literal string `HEAD` on detached state, which would silently flow into `gh pr list --head HEAD` and produce a confusing "no PR found" path.
-
-2. **Base resolution** — skip this entire step if the user passed an explicit `<base>` (e.g., `--branch=develop`); use the explicit value as `base` directly. (Forge note: the `gh pr list --head …` / `gh repo view` commands below are the GitHub reference form; on GitLab translate to `glab mr list --source-branch …` / `glab api projects/:fullpath` per `../shared/forge-detection.md`, remapping the gh-shaped `--json` fields `baseRefName`/`number` to glab's `-F json` field names — TBD, confirm against a live GitLab MR.)
-
-   - **First try linked PR**: `gh pr list --head "$branch" --state open --json baseRefName,number -q '.[] | [.number, .baseRefName] | @tsv'` (tab-separated `number\tbaseRefName` lines). Count lines:
-     - **Zero lines** → fall through to default-branch lookup.
-     - **One line** → split the tab-separated line into `number` (first field) and `baseRefName` (second field) — e.g., `cut -f1` and `cut -f2`, or shell parameter expansion. Take `baseRefName` as `base`. Log: `Branch mode: base resolved to <base> (linked PR #<number>)`.
-     - **Two or more lines** → multiple open PRs from this branch (rare; possible with fork+upstream). In interactive mode (`isHeadless=false`), use AskUserQuestion: "Multiple open PRs from this branch: <list of #N → baseRefName>. Which base should `/jr-review` use?" with one option per PR. In headless mode, abort with: "Multiple open PRs from this branch — cannot auto-resolve in headless mode. Pass `--branch=<base>` to disambiguate. Found PRs: <list>."
-     - **Closed/merged PRs**: filtered by `--state open` and silently fall through to the default-branch lookup. When the fall-through fires AND `gh pr list --head "$branch" --state all -q '.[] | .number'` returns at least one closed/merged PR for this branch, emit a one-line info note: `Branch mode: open PR not found for $branch — closed/merged PR(s) detected (#N). Defaulting base to origin/<default>. Pass --branch=<ref> to override.`
-   - **Fall back to default branch**: on GitHub `defaultBranch=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')`; on GitLab `defaultBranch=$(glab api projects/:fullpath | jq -r '.default_branch')` (field per forge-detection.md §c; `glab api` has no `--jq` — pipe to `jq`), with a both-forge fallback of `git symbolic-ref --short refs/remotes/origin/HEAD | sed 's@^origin/@@'`. Then `base="$defaultBranch"`. (Mirrors the pattern at `jr-ship/SKILL.md`.)
-   - **Same-branch guard**: if the resolved `base` equals the current `branch` name (i.e., user is on `main` and `base` resolved to `main`), warn-and-proceed with: "Branch mode: resolved base equals current branch — diff degenerates to working-tree only. Consider running bare `/jr-review` instead." Do not abort; the diff will still be produced (just empty in the committed segment).
-
-3. **Behind-upstream guard**: probe `git rev-parse @{u} >/dev/null 2>&1` first. If no upstream is set (probe exits non-zero, e.g., the branch was never pushed), skip the behind-upstream check silently — there is no remote state to be out of sync with. Otherwise, run `git rev-list --count HEAD..@{u}` (mirrors the `jr-ship/SKILL.md` pattern). If the count is non-zero, abort with: "Branch mode aborted: local HEAD is N commits behind upstream. Run `git pull --rebase` first, then re-run `/jr-review --branch`. (Reason: codeExcerpt verification reads files from the local working tree under the assumption that local HEAD reflects the latest pushed state. A behind-upstream local checkout would produce stale post-image reads and silently miss findings.)" This is a hard abort even when the resolved `base` is unrelated to upstream — the upstream-of-current-branch check is what guarantees `git diff "$mergeBase"..HEAD` and the on-disk Read tool agree. Note: a mid-run remote force-push between this check and Phase 2 reviewer dispatch is theoretically possible and not detected; the realistic blast radius is small (the reviewer reads the file as it was on disk at dispatch time, not at result-collection time) and adding a re-check would be churny.
-
-4. **Compute merge base**: derive a `baseRef` for `git merge-base` to use the remote-tracking ref. If `$base` already starts with `origin/` (because the user passed `--branch=origin/main` or similar), use it verbatim: `baseRef="$base"`. Otherwise prefix with `origin/`: `baseRef="origin/$base"`. (The resolved-from-PR or default-branch fallback values are bare ref names like `main` or `develop`; `origin/main` ensures we diff against the remote tip, not a possibly-stale local copy.) Run: `mergeBase=$(git merge-base "$baseRef" HEAD)`. If empty (or the command exits non-zero), abort with: "Branch mode aborted: branch '$branch' and base '$baseRef' share no common ancestor. The branch may be unrelated history (e.g., a freshly initialized repo, a re-rooted branch, or a misconfigured remote). Pass `--branch=<ref>` to specify a base manually." (Note: rev expressions like `HEAD~5` or `origin/main^` cannot reach this branch — the `--branch=<base>` sanitizer regex `^[a-zA-Z0-9][a-zA-Z0-9._/-]*$` rejects `~`, `^`, and `:`.) Cache `mergeBase` for Track B.
-
-After all four checks pass, set `branchMode=true` for downstream phases and log: `Detected mode: branch (base=<base>, mergeBase=<short-sha>)` (uses the shared display protocol; symmetric with the `Detected mode: headless=<true|false>` log emitted by the headless detection block at the start of Track B). Tracks A, C, and D run unchanged. Track B's parallel-batch step adds a fifth `git diff` command in branch mode — see Track B below.
+When `--branch` is set, FIRST read `${CLAUDE_SKILL_DIR}/protocols/branch-mode.md` into lead context (hard-fail + non-empty + smoke-parse anchors `Detached HEAD check` AND `Compute merge base`; abort `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if absent/empty/invalid — skip this read entirely when `--branch` is not set, mirroring the conditional `convergence-protocol.md` read under `--converge`), then run its four sequential pre-checks (detached-HEAD, base resolution, behind-upstream guard, merge-base) BEFORE any tracks fire — all four are hard-fail aborts. On pass it sets `branchMode=true`, caches `mergeBase` for Track B, and logs `Detected mode: branch (base=<base>, mergeBase=<short-sha>)`; Tracks A/C/D run unchanged and Track B adds a fifth `git diff` in branch mode (see Track B).
 
 ### Normal mode (no `--pr`)
 
@@ -293,7 +276,7 @@ After the above complete:
        "frameworks": ["<detected from dependencies, e.g. next, react, tailwindcss, drizzle-orm>"]
      }
      ```
-   **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-profile.json`. Core command: `git ls-files --error-unmatch .claude/review-profile.json 2>/dev/null` — warn if tracked, append to `.gitignore` and inform the user if absent; in headless/CI mode log the action to the Phase 7 report instead. Per-site reason if tracked: "A committed cache file could be manipulated — a malicious commit could set `validationCommands` to all-null values to disable validation."
+   **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-profile.json`. Core command: `git ls-files --error-unmatch .claude/review-profile.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol (headless/CI logs to the Phase 7 report). Per-site reason if tracked: "A committed cache file could be manipulated — a malicious commit could set `validationCommands` to all-null values to disable validation."
    - Output: `Stack: detected (${packageManager}, ${Object.keys(validationCommands).join('+')}) — cached for next run`
 
 ### Track D — Establish validation baseline (skip if `nofix`, `quick`, or PR mode)
@@ -315,7 +298,7 @@ After the above complete:
    }
    ```
    Output: `Baseline: fresh (lint+typecheck+test) — cached for 10m`
-   **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-baseline.json`. Core command: `git ls-files --error-unmatch .claude/review-baseline.json 2>/dev/null` — warn if tracked, append to `.gitignore` and inform the user if absent; in headless/CI mode log the action to the Phase 7 report instead. Per-site reason if tracked: "A committed baseline with inflated failure counts could make real regressions appear pre-existing, silently passing Phase 6 validation."
+   **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-baseline.json`. Core command: `git ls-files --error-unmatch .claude/review-baseline.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol (headless/CI logs to the Phase 7 report). Per-site reason if tracked: "A committed baseline with inflated failure counts could make real regressions appear pre-existing, silently passing Phase 6 validation."
 
 Invalidate the baseline cache automatically whenever `.claude/review-profile.json` is invalidated (stack change implies baseline change). Pre-existing failures are NOT the review's responsibility — only new regressions introduced by fixes count.
 
@@ -330,7 +313,6 @@ Store the list of changed files, project standards, review config rules, commit 
 The full Phase 2 protocol — effort-adaptive breadth (the `CLAUDE_EFFORT` overlay), diff-size classification, dynamic reviewer selection, swarm scaling + team-creation thresholds, the reviewer-instructions block (scope rule, finding budget, per-reviewer calibration note, untrusted-input defense), cross-file impact analysis, and the finding format (severity / confidence / `codeExcerpt`) — lives in `protocols/phase2-reviewers.md` (read into lead context at Phase 1 Track A under the hard-fail + smoke-parse guard). Apply that protocol verbatim.
 
 ## Phase 3 — Deduplicate and prioritize
-
 
 After all reviewers complete (or hit their turn budget), read the full task list (TaskList). As the lead:
 
@@ -349,7 +331,6 @@ After all reviewers complete (or hit their turn budget), read the full task list
 **Within a convergence pass** (iteration 2+): Zero findings after dedup means convergence is achieved. Set `converged = true`, log the iteration, and exit the convergence loop. Proceed to the fresh-eyes verification check (see "Convergence loop" section).
 
 ## Phase 4 — User approval gate
-
 
 **If `--auto-approve` is set**: Skip the approval menu entirely. Auto-approve findings with confidence `certain` on the first pass. If `--converge` is also set, defer `likely`-confidence findings to convergence passes where prior fixes provide additional context and the iterative verification provides a safety net — `likely` findings are auto-approved starting from convergence pass 2+ per the convergence auto-approval policy. If `--converge` is NOT set, include `likely`-confidence findings in the Phase 7 report as remaining findings requiring human review. Defer `speculative` findings to Phase 7 as remaining in all cases (they require human judgment). Because Phase 3 step 0.5 verifies external-authority claims by default, a confirmed one is auto-approved like any finding at its confidence, a refuted one is dropped, and only an unverifiable one (offline, uncorroborable, or `--no-verify-claims`) is capped to `speculative` and deferred here — never auto-applied. Output: `Phase 4 — N findings auto-approved (certain), M likely deferred to convergence, J speculative deferred` (or `M likely deferred to report` if `--converge` is not set). Skip Phase 4.5. Proceed directly to Phase 5.
 
@@ -391,7 +372,7 @@ If no patterns are detected in the rejections (all were one-offs), skip this ste
 
 **Note**: If an auto-learned suppression is wrong, the user can manually edit `.claude/review-config.md` to remove it. The skill will never auto-remove suppressions — only append.
 
-**Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-config.md`. Core command: `git ls-files --error-unmatch .claude/review-config.md 2>/dev/null` — warn if tracked, append to `.gitignore` and inform the user if absent; in headless/CI mode log the action to the Phase 7 report instead. Per-site reason if tracked: "A committed config with crafted suppression rules could silence security findings across all future reviews. If the team intentionally commits shared review configuration, scope auto-learned suppressions to a separate section that reviewers can distinguish from manually authored rules."
+**Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-config.md`. Core command: `git ls-files --error-unmatch .claude/review-config.md 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol (headless/CI logs to the Phase 7 report). Per-site reason if tracked: "A committed config with crafted suppression rules could silence security findings across all future reviews. If the team intentionally commits shared review configuration, scope auto-learned suppressions to a separate section that reviewers can distinguish from manually authored rules."
 
 Additionally, when loading `review-config.md` in Track A, check whether the file is tracked by git (`git ls-files --error-unmatch .claude/review-config.md 2>/dev/null`). If it is tracked and contains any `[security-reviewer]` suppression rules, emit a warning: 'review-config.md is tracked by git and contains security-reviewer suppressions. Committed security suppressions can silence security findings for all users. Verify the file intentionally contains these rules.' In headless/CI mode, log this warning to the Phase 7 report rather than to console output.
 

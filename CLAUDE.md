@@ -25,7 +25,7 @@ jr-review/scripts/                    — Phase 5 base-commit anchor + symlink-e
 jr-review/templates/                  — canonical pre-commit hook body (pre-commit-secret-guard.sh.tmpl);
                                      read-only; install script verifies its hash.
 jr-review/protocols/                  — skill-local procedures read at Phase 1 Track A under hard-fail +
-                                     smoke-parse guard (mirrors shared/* discipline). Seven files:
+                                     smoke-parse guard (mirrors shared/* discipline). Eight files:
                                      phase2-reviewers.md (Phase 2 body — effort-adaptive breadth,
                                      reviewer selection + swarm scaling, reviewer instructions,
                                      finding format), finding-sanity-check.md (Phase 3 step 0
@@ -35,8 +35,11 @@ jr-review/protocols/                  — skill-local procedures read at Phase 1
                                      install + 0/2/4/* error matrix), phase7-cleanup-report.md
                                      (Phase 7 body — flags, exit codes, 16-item report enumeration),
                                      phase8-followups.md (Phase 8 body — dedup + cross-repo
-                                     visibility checks). These extractions pull /jr-review toward
-                                     Anthropic's 500-line guideline (issue #20).
+                                     visibility checks), branch-mode.md (Phase 1 `--branch` pre-checks —
+                                     detached-HEAD, base resolution, behind-upstream guard, merge-base; read
+                                     ONLY when --branch is set, anchors `Detached HEAD check` AND `Compute
+                                     merge base`). These extractions pull /jr-review to Anthropic's 500-line
+                                     guideline (518→500; issue #20).
 jr-ship/SKILL.md                      — ship working-tree changes via PR (GitHub) / MR (GitLab), forge
                                      auto-detected per repo (split analysis, branching, CI wait + opus
                                      CI-failure fix loop, merge + file-overlap warning after PR/MR creation)
@@ -62,6 +65,12 @@ jr-skill-audit/protocols/plugin-scope.md — Track B `--plugin` scope-resolution
                                      canonicalization, tagging); read at Phase 1 Track A ONLY when
                                      `--plugin` is set (conditional, mirrors jr-review convergence-protocol.md).
                                      Anchors: `Locate the marketplace` AND `Enumerate git-tracked skills`.
+jr-skill-audit/protocols/personal-project-scope.md — Track B personal/project scope-resolution procedure
+                                     (scope-root parent-walk, enumeration/dedupe, argument-set + --scope-only
+                                     filters, cross-scope conflict probe, bare-positional resolution, per-scope
+                                     gitignore exclusion); read at Phase 1 Track A ONLY when `--plugin` is NOT set
+                                     (complementary conditional to plugin-scope.md). Anchors: `Scope roots` AND
+                                     `Gitignore exclusion`.
 jr-skill-audit/edge-cases.md          — case→behavior reference table (~21 rows); loaded on demand, NOT
                                      read at Phase 1 (reference material, no hard-fail guard). SKILL.md
                                      `## Edge cases` points here.
