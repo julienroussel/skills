@@ -1,6 +1,6 @@
 # Shared Cache Schema Validation
 
-**Canonical source** for the schema-validation rules applied before trusting `.claude/review-profile.json` and `.claude/review-baseline.json` cached values. `/jr-audit` and `/jr-review` co-own these caches; both apply this protocol at every cache-read site.
+**Canonical source** for the schema-validation rules applied before trusting `.claude/review-profile.json` and `.claude/review-baseline.json` cached values; applied at every cache-read site by the skills that co-own these caches. Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## review-profile.json (stack detection cache)
 
@@ -15,6 +15,29 @@ Before using any cached field, verify ALL of:
 
 The cache-write step also enforces the `.gitignore` check for `.claude/review-profile.json` per `gitignore-enforcement.md` to prevent committed cache manipulation.
 
+**Canonical write shape** (the structure `/jr-review` Track C and `/jr-audit` write — referenced from both, not duplicated inline):
+
+```json
+{
+  "version": 1,
+  "generatedAt": "<ISO timestamp>",
+  "sourceTimestamps": {
+    "package.json": "<mtime or null>",
+    "tsconfig.json": "<mtime or null>",
+    "Makefile": "<mtime or null>"
+  },
+  "packageManager": "<bun|pnpm|yarn|npm>",
+  "lockFile": "<filename or null>",
+  "validationCommands": {
+    "lint": "<command or null>",
+    "typecheck": "<command or null>",
+    "test": "<command or null>",
+    "format": "<command or null>"
+  },
+  "frameworks": ["<detected from dependencies, e.g. next, react, tailwindcss, drizzle-orm>"]
+}
+```
+
 ## review-baseline.json (validation baseline cache)
 
 Before using cached baseline results, verify:
@@ -24,6 +47,20 @@ Before using cached baseline results, verify:
 - **(c) timestamp sanity**: `generatedAt` is a valid ISO 8601 timestamp not in the future.
 
 If any check fails, treat the cache as stale and re-run the validation commands.
+
+**Canonical write shape** (referenced from `/jr-review` Track D, not duplicated inline):
+
+```json
+{
+  "generatedAt": "<ISO timestamp>",
+  "ttlMinutes": 10,
+  "results": {
+    "lint": { "exitCode": 0, "issueCount": 3 },
+    "typecheck": { "exitCode": 0, "errorCount": 0 },
+    "test": { "exitCode": 0, "passCount": 42, "failCount": 0, "summary": "<first 5 lines of output>" }
+  }
+}
+```
 
 ## Binary availability probe (review-profile.json only)
 

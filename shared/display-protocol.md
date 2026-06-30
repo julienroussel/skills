@@ -1,6 +1,6 @@
 # Display Protocol
 
-**Canonical source** for the console-output rules common to `/jr-audit` and `/jr-review`. Both skills read this file at Phase 1 Track A and apply the rules below across every phase. Update here to update both skills.
+**Canonical source** for the console-output rules (phase headers, timeline, silent-reviewers, compact tables, redaction). Read at Phase 1 and applied across every phase. Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 The rules below are skill-agnostic. **Phase 4 finding-approval displays are skill-specific** (e.g., `/jr-review`'s approve-all/critical+high/individual menu vs `/jr-audit`'s tiered Tier 1/2/3 progressive disclosure) and stay inline in each skill. **Convergence display variants** also stay in the owning skill since the iteration shape differs.
 

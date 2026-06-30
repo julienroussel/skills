@@ -1,6 +1,6 @@
 # Untrusted Input Defense
 
-**Canonical source** for the instruction duplicated across every subagent prompt in `/jr-audit`, `/jr-review`, and `/jr-ship`'s Agent-based split analysis. Update here to update all sites.
+**Canonical source** for the prompt-injection defense instruction duplicated into every subagent prompt (and applied lead-side where a skill has no subagents). Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## The instruction (verbatim for subagent prompts)
 

@@ -1,9 +1,10 @@
 # Claim Verification (Anti-Hallucination Doctrine)
 
 **Canonical source** for how a skill establishes that a finding/claim is *true* before it surfaces or acts
-on it. Read at Phase 1 Track A by `/jr-audit`, `/jr-review`, `/jr-skill-audit` and passed to their reviewers as
-context. Cross-referenced (not Track-A-read) by `/jr-ship`, `/jr-tackle`, `/jr-doctor`. Update here to update all
-consumers.
+on it. Read at Phase 1 (Track A or single-track) and passed to reviewers/translators as context (or applied
+lead-side). Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each
+skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section;
+per-skill relationships to the doctrine are in the "Applicability" table below.
 
 ## Purpose — the gap this closes
 
@@ -138,6 +139,8 @@ finding-approval tiers, and the advisor pre-dispatch/pre-merge gates all already
 | `/jr-skill-audit` | Reference Tier-2 implementation — its refs-cache + Phase 3 source-citation validation already enforce this doctrine; Track-A read for the shared smoke-parse. |
 | `/jr-ship` | No findings, but its CI-fix diagnosis can rest on external facts — those must be grounded/confirmed via an authoritative source (the source-fetch discipline above) before the existing user confirm-gate, not asserted from memory. |
 | `/jr-tackle` | Ad-hoc work that makes external claims — its rigor protocol applies the source-fetch discipline above. |
+| `/jr-i18n` | Full consumer — Track-A read; per-locale findings classified at Phase 3 (mechanical → `certain`, locale-rule → fetch-verified via `gh api`, naturalness → human-gated `speculative`); the no-auto-write property + Phase 4 gate satisfy the no-consequential-action-without-a-checked-fact rule. |
+| `/jr-mermaid` | Lead-applied — "the generated diagram is valid Mermaid" is the checkable claim, verified at Phase 4 (mmdc render or structural self-check); no reviewers, no fetch. |
 | `/jr-doctor` | Read-only, factual-local-only checks (no external-authority claims); in-scope-but-exempt. Group D smoke-parses this file like every other `shared/*.md`. |
 | `/codebase-memory`, `/find-skills` | Outputs are tool-returned data (graph edges / registry metadata), not model-synthesized claims, so the doctrine does not govern their *outputs* — but any interpretive recommendation they layer on top does. |
 

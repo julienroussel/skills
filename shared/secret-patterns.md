@@ -1,6 +1,6 @@
 # Shared Secret-Pattern Catalog
 
-**Canonical source** for the regex union and per-pattern demotion criteria used by `/jr-review` Phase 1 Track B step 7, `/jr-audit` Phase 1 step 6.5, and the post-implementation re-scans in `/jr-review` Phase 5.6/6 + Convergence Phase 5.6 + Fresh-eyes. The pre-commit hook installed by `/jr-review` reads `.claude/secret-hook-patterns.txt` (not this file directly) — this file is the human-maintained source of truth that `/jr-review`'s install path materializes.
+**Canonical source** for the regex union and per-pattern demotion criteria, applied at every secret pre-scan and post-implementation re-scan site of its consumers. The pre-commit hook a consumer installs reads `.claude/secret-hook-patterns.txt` (not this file directly) — this file is the human-maintained source of truth that the install path materializes. Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## Portability and evaluation-time safeguards
 

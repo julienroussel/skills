@@ -1,6 +1,6 @@
 # Shared Secret-Scan Protocols
 
-**Canonical source** for the secret-scan behavioral rules common to `/jr-audit` and `/jr-review` (and consumed by the pre-commit hook installed by `/jr-review`). Both skills read this file at Phase 1 Track A. Update here to update both skills.
+**Canonical source** for the secret-scan behavioral rules (and the rules consumed by the pre-commit hook some skills install). Read at Phase 1 (Track A or inline). Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 `/jr-review` consumes ALL sections (it has full headless/CI support and post-implementation re-scan flows). `/jr-audit` consumes the **Advisory-tier classification** section only — at the time of writing `/jr-audit` is interactive-only and does not run a CI/headless secret-halt protocol or User-continue path.
 
@@ -72,7 +72,7 @@ Otherwise (when `$baseCommit` exists and changes were reverted), log with `[SECR
 
 ### Team cleanup
 
-If a team was created in Phase 2, call `TeamDelete` to clean up agents — do NOT wait for shutdown confirmations. Phase 7 will exit non-zero per its exit-code rules.
+If teammates were spawned in Phase 2, send each a `shutdown_request` via SendMessage to release them — do NOT wait for confirmations. The session's implicit team needs no teardown (`TeamDelete` was removed in 2.1.178). Phase 7 will exit non-zero per its exit-code rules.
 
 ### Setting `abortMode=true`
 

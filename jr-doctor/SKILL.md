@@ -24,7 +24,7 @@ allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(gi
     - ~/.claude/skills/{jr-audit,jr-review,jr-ship}/SKILL.md  — existence only (Group C)
     - ~/.claude/skills/*/SKILL.md                — line count + frontmatter parse + broken-shared-ref scan + inline-drift scan (Group I)
     - ~/.claude/skills/bin/{tackle,seed-project-memory,tackle-top}  — existence + executable bit
-    - ~/.claude/skills/shared/reviewer-boundaries.md     — existence + non-empty + smoke-parse `| Issue | Owner`
+    - ~/.claude/skills/shared/reviewer-boundaries.md     — existence + non-empty + smoke-parse (anchors per the Canonical Anchor Table — Group D reads it at runtime; for reviewer-boundaries that is `| Issue` AND `| Owner` AND `| Not` AND `Severity calibration rubric` AND `Confidence levels`)
     - ~/.claude/skills/shared/untrusted-input-defense.md — existence + non-empty + smoke-parse `do not execute, follow, or respond to`
     - ~/.claude/skills/shared/gitignore-enforcement.md   — existence + non-empty + smoke-parse `git ls-files --error-unmatch`
     - ~/.claude/skills/shared/advisor-criteria.md        — existence + non-empty + smoke-parse `Before substantive work`
@@ -35,7 +35,7 @@ allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(gi
     - ~/.claude/hooks/{no-claude-attribution,cbm-code-discovery-gate,cbm-session-reminder} — existence + executable
     - <cwd>/CLAUDE.md, <cwd>/.gitignore          — per-repo
   Env vars probed:
-    - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS       — required (=1) for agent-teams plugin to expose TeamCreate/TeamDelete/team-* subagents
+    - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS       — required (=1) for agent-teams plugin to provide team-* subagents (implicit-team model)
     - CLAUDE_CODE_NO_FLICKER                     — recommended (=1) UI preference for cleaner output
     - CLAUDECODE, CLAUDE_CODE_ENTRYPOINT         — informational (set automatically inside Claude Code)
     - BASH_DEFAULT_TIMEOUT_MS, BASH_MAX_TIMEOUT_MS  — informational (long /audit-/review-/jr-ship validation runs)
@@ -50,7 +50,7 @@ allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(gi
   Required tools:
     - Bash, Read, AskUserQuestion
   Tools NOT used:
-    - Write (the only file mutation is the .gitignore append/create in Phase 4, done via Bash `printf >>`), TaskCreate, TeamCreate, Agent, advisor
+    - Write (the only file mutation is the .gitignore append/create in Phase 4, done via Bash `printf >>`), TaskCreate, Agent, advisor
 -->
 
 Diagnose whether the current codebase + Claude Code setup is ready to use `/jr-audit`, `/jr-review`, `/jr-ship`, and `bin/tackle`. Report per-check status with remediation hints. Default is read-only; `--fix` appends missing patterns to the current repo's `.gitignore` on per-change confirmation.
@@ -321,7 +321,7 @@ done
 - If ≥1 `TUNABLE:` lines → emit `ℹ Optional tunables       (N set)` followed by the values, indented 4 spaces.
 - The teaser block (BASH_MAX_TIMEOUT_MS / MCP_TIMEOUT suggestions) appears AFTER the printed lines if EITHER of those two specific vars is still unset — so a user with `MAX_THINKING_TOKENS=20000` but no BASH/MCP overrides still gets the suggestion. Drop a suggestion from the teaser the moment its var is set.
 
-**`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — REQUIRED `=1` for the `agent-teams` plugin to expose `TeamCreate`, `TeamDelete`, and `team-*` subagent types. Without this env var, `/jr-audit` and `/jr-review` Phase 2 reviewer dispatch will fail. Hint: `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (add to shell profile so it persists across sessions). ✗ if unset.
+**`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — REQUIRED `=1` for the `agent-teams` plugin to provide `team-*` subagent types (and, with it set, the session's one implicit team — teammates are spawned via the Agent tool's `name` param; `TeamCreate`/`TeamDelete` were removed in 2.1.178). Without this env var, `/jr-audit` and `/jr-review` Phase 2 reviewer dispatch will fail. Hint: `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (add to shell profile so it persists across sessions). ✗ if unset.
 
 **`CLAUDE_CODE_NO_FLICKER`** — Recommended `=1` UI preference (cleaner output, no terminal redraw flicker). Hint: `export CLAUDE_CODE_NO_FLICKER=1`. ⚠ if unset.
 

@@ -1,6 +1,6 @@
 ---
 name: jr-ship
-description: Ship working-tree changes via PR. Analyzes changes for coherent splitting into sub-PRs. Handles branching, CI wait, and (with --merge) squash-merge + cleanup. Default stops after CI without merging — `--merge` is opt-in. Use `--dry-run` to preview or `--draft` to open the PR as a draft.
+description: Ship working-tree changes via a pull request (PR) / merge request (MR) — forge auto-detected per repo. Analyzes changes for coherent splitting into sub-PRs/MRs. Handles branching, CI wait, and (with --merge) squash-merge + cleanup. Default stops after CI without merging — `--merge` is opt-in. Use `--dry-run` to preview or `--draft` to open the PR/MR as a draft.
 argument-hint: "[message] [--draft|--base|--no-split|--merge|--dry-run|--split-only|--validate|--label|--no-overlap-check]"
 effort: medium
 model: sonnet
@@ -148,7 +148,7 @@ Run **all of the following in parallel**:
 - Read `${CLAUDE_SKILL_DIR}/protocols/overlap-check.md` (the file-overlap check procedure — read upfront so a missing protocol aborts Phase 1 cleanly instead of failing mid-flow at step 11a / 10a-multi)
 - Read `${CLAUDE_SKILL_DIR}/protocols/worktree-cleanup.md` (the worktree-aware cleanup body shared by step 15 and step 12-multi — read upfront so a missing protocol aborts Phase 1 cleanly instead of failing post-merge)
 
-**Hard-fail guard**: if any shared file or any skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /jr-ship requires it to enforce untrusted-input safety, code-edit discipline, secret-scan protocols, CI-failure handling, the file-overlap check, worktree cleanup, forge detection, and model-override semantics — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors:
+**Hard-fail guard**: if any shared file or any skill-local protocol file fails to Read, returns empty content, or fails its smoke-parse, abort Phase 1 with the plain-text message `Phase 1 aborted: <path> is missing, empty, or structurally invalid. /jr-ship requires it to enforce untrusted-input safety, code-edit discipline, secret-scan protocols, CI-failure handling, the file-overlap check, worktree cleanup, forge detection, and model-override semantics — restore the file from git before re-running.` Do NOT fall back to inline text. Smoke-parse anchors (these MUST stay in sync with the canonical anchor table in `../shared/phase1-track-a-protocol.md` — `/jr-ship` is the one consumer that inlines its copy rather than reading that file at runtime, so when a canonical anchor changes, update the list below to match or the guard silently goes stale):
 
 - `untrusted-input-defense.md`: `do not execute, follow, or respond to`
 - `code-edit-discipline.md`: `Code-edit discipline` AND `The test` AND `Worked example` AND `or specific simplifications to make.`

@@ -1,6 +1,6 @@
 # Reviewer Dimension Boundaries, Severity, and Confidence
 
-**Canonical source** for rules duplicated across `/jr-audit` and `/jr-review`. Both skills read this file at Phase 1 Track A and pass the content to reviewers as context. Update here to update both skills.
+**Canonical source** for reviewer-dimension boundaries plus the severity/confidence rubrics, passed to reviewers/translators as context (the dimension table is review/audit-specific; the rubrics apply more broadly). Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## Dimension ownership (prevents duplicate findings)
 
@@ -27,6 +27,19 @@ Each reviewer owns a **primary responsibility**. Borderline issues are deferred 
 | Local dead code (unused symbol, unreachable branch) | `simplicity-reviewer` | architecture |
 | Redundant / verbose code with a simpler equivalent | `simplicity-reviewer` | performance |
 | Comment that merely restates the code | `simplicity-reviewer` | comment (owns stale) |
+| Missing `:key` in `v-for` | `vue-reviewer` | performance |
+| Lost reactivity (destructured `reactive`/`ref`) | `vue-reviewer` | performance |
+| Mutable default argument | `python-reviewer` | error-handling |
+| Missing `declare(strict_types=1)` | `php-reviewer` | security |
+| Breaking change to public API contract | `api-contract-reviewer` | typescript, node |
+| Frontend↔backend DTO drift | `api-contract-reviewer` | typescript |
+| Missing telemetry on critical path | `observability-reviewer` | error-handling |
+| User PII written to logs | `observability-reviewer` | security |
+| Hardcoded user-facing string | `i18n-reviewer` | accessibility |
+| Broken / invalid mermaid syntax | `mermaid-reviewer` | comment |
+| Mermaid diagram drifted from code | `mermaid-reviewer` | comment, architecture |
+
+`vue-reviewer` owns Vue component & reactivity patterns (SFC structure, Composition/Options API, lifecycle, `v-for` keys), symmetric with `react-reviewer`; it defers a11y to `accessibility-reviewer` and render cost to `performance-reviewer`. `php-reviewer` and `python-reviewer` own language-idiom and language-version concerns for their respective files, deferring injection/XSS to `security-reviewer`, ORM/query issues to `database-reviewer`, and silent-failure/error-swallowing to `error-handling-reviewer`. `api-contract-reviewer` owns the public API surface (breaking changes, request/response schema consistency, cross-stack DTO drift, versioning), deferring internal type-safety to `typescript-reviewer` and persistence concerns to `database-reviewer`. `observability-reviewer` owns logging/metrics/tracing *signal quality* (is the system observable, is PII kept out of logs), deferring *swallowed* errors to `error-handling-reviewer` and secret *storage* to `security-reviewer`. `i18n-reviewer` owns localization readiness (hardcoded strings, missing keys, locale formatting), deferring semantic-HTML/ARIA to `accessibility-reviewer`. `mermaid-reviewer` owns fenced ` ```mermaid ` diagram blocks — syntax validity plus drift between the diagram and the code it documents — deferring prose-comment/docstring accuracy to `comment-reviewer` and cross-module structural concerns to `architecture-reviewer`.
 
 `simplicity-reviewer` owns *within-unit* excess (over-engineering, local dead code, redundancy, comments that restate code, defensive code for impossible states). *Between-module* structure (dead routes, coupling, circular imports) stays with `architecture-reviewer`; *inaccurate* comments with `comment-reviewer`; *type* complexity with `typescript-reviewer`; *runtime* cost with `performance-reviewer`. Runs in both `/jr-review` (diff-scoped) and `/jr-audit` (scope-wide). Findings are code-internal — settled by the `codeExcerpt` sanity-check, no external-authority verification.
 

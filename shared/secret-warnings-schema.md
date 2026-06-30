@@ -1,6 +1,6 @@
 # `secret-warnings.json` Schema
 
-**Canonical source** for the schema, validation rules, and atomic-write requirements of `.claude/secret-warnings.json` (and per-session variants `.claude/secret-warnings-*.json`). `/jr-review` reads this file at Phase 1 Track A and applies the rules at every read/write site. `/jr-ship` will consume the same schema once it implements the cross-skill enforcement contract (currently NOT IMPLEMENTED — see "Cross-skill contract status" in `/jr-review`).
+**Canonical source** for the schema, validation rules, and atomic-write requirements of `.claude/secret-warnings.json` (and per-session variants `.claude/secret-warnings-*.json`), applied at every read/write site. The cross-skill enforcement contract is currently NOT IMPLEMENTED (see "Cross-skill contract status" in `/jr-review`). Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## Top-level schema
 
