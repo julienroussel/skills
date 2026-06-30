@@ -194,7 +194,7 @@ Skills that grant `allowed-tools` pre-authorize the listed tools without per-cal
    -->
    ```
    This is documentation for future-you: a year from now, you'll wonder why some destructive op isn't pre-authorized. The note explains the omission was intentional.
-4. **Auto-authorize agent-management + scoped writes.** `AskUserQuestion`, `Agent`, `advisor`, `TaskCreate`, `TaskList`, `TeamCreate`, `TeamDelete`, `SendMessage`, `Write(.claude/**)`, `Edit(.claude/**)`, `Write(.gitignore)`, `Edit(.gitignore)` are needed by every documented phase; absent these the skill stalls on permission prompts.
+4. **Auto-authorize agent-management + scoped writes.** `AskUserQuestion`, `Agent`, `advisor`, `TaskCreate`, `TaskList`, `SendMessage`, `Write(.claude/**)`, `Edit(.claude/**)`, `Write(.gitignore)`, `Edit(.gitignore)` are needed by every documented phase; absent these the skill stalls on permission prompts. (Teammates are spawned via the Agent tool's `name` param — the session's one implicit team; `TeamCreate`/`TeamDelete` were removed in 2.1.178.)
 
 ---
 

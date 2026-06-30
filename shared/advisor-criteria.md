@@ -1,6 +1,6 @@
 # Advisor Call Criteria
 
-**Canonical source** for *when* and *how* a skill should call `advisor()`. Currently consumed by `/jr-skill-audit`'s `advisor-coverage-reviewer` to evaluate other skills' coverage. The criteria here are extracted from Anthropic's published advisor tool guidance (see "Source" below) so they apply portably to any user's machine — they are **not** taken from any individual user's personal `CLAUDE.md`.
+**Canonical source** for *when* and *how* a skill should call `advisor()`. The criteria here are extracted from Anthropic's published advisor tool guidance (see "Source" below) so they apply portably to any user's machine — they are **not** taken from any individual user's personal `CLAUDE.md`. Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## Source
 

@@ -14,7 +14,7 @@ user-invocable: true
 - "in plan mode" in the body is declarative text only — a skill body cannot engage
   Claude Code's harness plan mode (user action only: Shift+Tab or
   --permission-mode plan). The body declares an explicit scope split: tackle
-  makes file edits; /jr-ship owns all git mutations (add/commit/push/PR/merge).
+  makes file edits; /jr-ship owns all git mutations (add/commit/push/PR/MR/merge).
   No upfront AskUserQuestion gate — bin/tackle launches fresh sessions where
   "Enabled plan mode" never appears in context, so an auto-detect-and-nudge
   gate would fire on every PR/issue invocation. The "Ask clarifications early"

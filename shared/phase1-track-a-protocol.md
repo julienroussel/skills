@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Every consumer of the `shared/*.md` protocol files (`/jr-audit`, `/jr-review`, `/jr-skill-audit` at Phase 1 Track A; `/jr-ship` reads its subset inline at Phase 1 rather than via a labeled Track A) reads its declared subset as its first act and enforces a hard guard: if any required shared file is missing, empty, or fails a structural smoke-parse, Phase 1 aborts immediately. The guard exists because the inline duplicates at former call-sites were intentionally removed to eliminate drift — silently degrading coverage when a shared file is unavailable is worse than aborting. `/jr-doctor` Group D applies the same algorithm against every file in the table below for drift reporting (`/jr-doctor` reports rather than aborts).
+Every consumer of the `shared/*.md` protocol files (`/jr-audit`, `/jr-review`, `/jr-skill-audit`, `/jr-i18n` at Phase 1 Track A; `/jr-mermaid` at its single-track Phase 1; `/jr-ship` reads its subset inline at Phase 1 rather than via a labeled Track A) reads its declared subset as its first act and enforces a hard guard: if any required shared file is missing, empty, or fails a structural smoke-parse, Phase 1 aborts immediately. The guard exists because the inline duplicates at former call-sites were intentionally removed to eliminate drift — silently degrading coverage when a shared file is unavailable is worse than aborting. `/jr-doctor` Group D applies the same algorithm against every file in the table below for drift reporting (`/jr-doctor` reports rather than aborts).
 
 This file is the single source of truth for the algorithm and the smoke-parse anchor table. Consumers keep their own read lists (a subset of the rows below) and own their abort message wording.
 
 ## Algorithm
 
-For each consumer at Phase 1 (Track A in `/jr-audit`, `/jr-review`, `/jr-skill-audit`; inline in `/jr-ship`) and `/jr-doctor` Group D for drift reporting:
+For each consumer at Phase 1 (Track A in `/jr-audit`, `/jr-review`, `/jr-skill-audit`, `/jr-i18n`; single-track in `/jr-mermaid`; inline in `/jr-ship`) and `/jr-doctor` Group D for drift reporting:
 
 1. Issue all Reads in parallel via multiple Read tool calls in a single message. The read list is each consumer's declared subset of the rows in the Canonical Anchor Table below; consumers also Read this very file (`phase1-track-a-protocol.md`) as part of the parallel batch.
 
@@ -46,7 +46,7 @@ For each consumer at Phase 1 (Track A in `/jr-audit`, `/jr-review`, `/jr-skill-a
 Abort message wording is **not canonical** — each consumer owns its own. The intent is for the consumer's abort message to carry consumer-specific diagnostic context (which guarantees that consumer's Phase 1 was about to enforce), and the divergence is intentional:
 
 - `/jr-audit` and `/jr-review` emit inline prose listing the specific guarantees their Phase 1 was about to enforce (reviewer boundaries, untrusted-input safety, .gitignore checks, etc.) along with the failing file path.
-- `/jr-skill-audit` emits the canonical `[ABORT — SHARED FILE MISSING]` marker via `abortReason=shared-file-missing` (see `abort-markers.md`).
+- the other consumers (Track-A or single-track) emit the canonical `[ABORT — SHARED FILE MISSING]` marker via `abortReason=shared-file-missing` (see `abort-markers.md`).
 - `/jr-doctor` does NOT abort. Group D reports each failure as a `/jr-doctor` finding and surfaces a hint to restore the file from git.
 
 If you are adding a new consumer, choose one of these two abort renderings; do not invent a third.

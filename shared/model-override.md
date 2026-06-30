@@ -1,6 +1,6 @@
 # Model Override (`--model=<tier>`)
 
-**Canonical source** for the per-run subagent model-override flag supported by `/jr-audit`, `/jr-review`, `/jr-ship`, and `/jr-skill-audit`. Each consumer reads this file at Phase 1 (Track A or inline) and applies the rules below at every Agent-spawn call site. Update here to update all consumers.
+**Canonical source** for the per-run subagent model-override flag (`--model=<tier>`). Each consumer reads this file at Phase 1 (Track A or inline) and applies the rules below at every Agent-spawn call site. Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## Flag and sanitization
 

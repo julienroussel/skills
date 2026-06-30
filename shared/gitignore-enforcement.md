@@ -1,6 +1,6 @@
 # `.gitignore` Enforcement for Cache and Audit-Trail Files
 
-**Canonical source** for the write-safety protocol applied at every cache-write and audit-trail-write site in `/jr-audit` and `/jr-review`. Update here to update all sites.
+**Canonical source** for the write-safety protocol applied at every cache-write and audit-trail-write site (and read as review reference where a skill audits other skills' write-safety). Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## The protocol (applied before every matching write)
 

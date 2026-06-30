@@ -1,6 +1,6 @@
 # `.claude/audit-history.json` Schema
 
-**Canonical source** for the cross-skill schema of `.claude/audit-history.json` — the registry shared between `/jr-audit` and `/jr-review` for cross-run rejection-rate tracking, reviewer-FP calibration, and global-memory promotion suppression. Both skills read this file at Phase 1 Track A (with schema-derivations described in each skill's own Phase 1) and append to it at Phase 7. Update here to update both skills.
+**Canonical source** for the cross-skill schema of `.claude/audit-history.json` — the registry for cross-run rejection-rate tracking, reviewer-FP calibration, and global-memory promotion suppression. Consumers read it at Phase 1 Track A (schema-derivations described in each skill's own Phase 1) and append at Phase 7. Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
 ## Top-level structure
 

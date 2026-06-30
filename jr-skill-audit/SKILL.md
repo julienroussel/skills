@@ -6,17 +6,18 @@ effort: high
 model: opus
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList TeamCreate TeamDelete SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
+allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
+disallowed-tools: Edit
 ---
 
 <!-- Frontmatter notes:
 - `model: opus` (lead) is deliberate headroom, not a contradiction of "Model requirements" below: the lead itself runs the judgment-heavy Phase 3 source-citation verification and Phase 4 synthesis (plus the lead-emitted scope-resolution dimension) — and Phase 2 reviewer subagents are opus too.
-- `Write` is scoped to `~/.claude/skills/jr-skill-audit/cache/**` — the refs.json cache is the skill's ONLY write target (it is findings-only and never modifies skill files). Do not broaden the grant; any new write site must extend the path scope explicitly.
+- `Write` is scoped to `~/.claude/skills/jr-skill-audit/cache/**` — the refs.json cache is the skill's ONLY write target (it is findings-only and never modifies skill files). Do not broaden the grant; any new write site must extend the path scope explicitly. NOTE — the literal `~/.claude/skills/jr-skill-audit/cache/**` is intentional and is NOT switched to `${CLAUDE_SKILL_DIR}/cache/**` to match the body's substitution: the skills doc documents `${CLAUDE_SKILL_DIR}` only for bash-injection use and states allowed-tools substitution support ONLY for `${CLAUDE_PROJECT_DIR}` (v2.1.196+). `${CLAUDE_SKILL_DIR}` in `allowed-tools` is undocumented, so a literal `${CLAUDE_SKILL_DIR}` here would risk a never-matching grant (every cache write would then prompt). The hardcoded path is correct for the personal install (the skill's by-design home); it only diverges from the body under a project/plugin install, where the write degrades to a per-call prompt rather than failing. Revisit if/when Anthropic documents `${CLAUDE_SKILL_DIR}` substitution in allowed-tools.
 -->
 
 <!-- Dependencies:
   Required plugins:
-    - agent-teams@claude-code-workflows        — team-reviewer agents (Phase 2), TeamCreate/TeamDelete (Phase 2/7)
+    - agent-teams@claude-code-workflows        — team-reviewer agents (Phase 2), spawned via Agent name param (implicit team since 2.1.178)
   Required CLI:
     - gh                                        — Phase 1 Track C: `gh api repos/anthropics/claude-code/contents/CHANGELOG.md`
                                                   for changelog content (gh handles GitHub auth + redirects;
@@ -62,7 +63,7 @@ allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Glob Grep We
   Files written:
     - ${CLAUDE_SKILL_DIR}/cache/refs.json       — Track C live-references cache (timestamp + URL → content map)
   Required tools:
-    - Agent, TaskCreate, TaskList, TeamCreate, TeamDelete, SendMessage, AskUserQuestion, advisor
+    - Agent, TaskCreate, TaskList, SendMessage, AskUserQuestion, advisor
     - Bash, Read, WebFetch, Glob, Grep, Write
 -->
 
@@ -199,33 +200,7 @@ If a skill exceeds **2,000 lines**, warn before dispatch: huge skills cost revie
 
 When the Track-B grouping above yields a basename present in both scopes, the lead synthesizes the finding directly — no Phase 2 reviewer agent is involved. The finding routes through Phase 3 (sanity-check + dedup) and Phase 4 ([Clarify] flow) like any other finding.
 
-Finding shape:
-
-```
-file:                  <personal SKILL.md path>            # anchor for codeExcerpt
-line:                  <line of `name:` in personal frontmatter; line 1 if absent>
-                       # Phase 3 step 1 clamps line-1 to [1, file-end], so line=1
-                       # (the opening `---`) is a safe fallback when `name:` is missing.
-dimension:             scope-resolution                     # lead-emitted, NOT in --only= enum
-severity:              medium
-confidence:            certain
-title:                 Skill <name> exists in both personal and project scopes
-description:           Personal: <personal path>. Project: <project path>. At runtime,
-                       personal overrides project (per
-                       https://code.claude.com/docs/en/skills#where-skills-live) —
-                       the project version is hidden when invoked in this directory.
-recommendation:        If intentional, document the override in the project SKILL.md.
-                       If unintentional, remove the duplicate.
-codeExcerpt:           3 verbatim lines centered on `line` — i.e., [line-1, line, line+1],
-                       clamped to [1, file-end]. Matches Phase 3 step 1's read window.
-source:                https://code.claude.com/docs/en/skills:#where-skills-live
-scope:                 personal                             # dominant scope at runtime
-clarify:               true
-clarificationQuestion: Is the project version of <name> an intentional per-repo
-                       override? If yes, drop this finding.
-```
-
-Why this shape: anchoring on the personal skill keeps Phase 3 sanity-check single-file (no multi-file logic needed); `source` URL is a `cache/refs.json` key so Phase 3 step 2 validation passes; `clarify: true` prevents re-fire on intentional overrides (mirrors `model-routing-reviewer`); `scope: personal` (the runtime winner) keeps Phase 7's "By scope" rollup from double-counting.
+**Finding shape + rationale**: read `${CLAUDE_SKILL_DIR}/protocols/shadow-detection.md` on demand (only when a cross-scope collision is detected — it is reference material, NOT a Phase 1 Track A hard-fail read, mirroring `edge-cases.md`). It carries the exact `scope-resolution` finding shape (anchor field, `clarify: true`, `source` as a `cache/refs.json` key, `scope: personal` as the runtime winner) and the design rationale.
 
 ## Phase 2 — Spawn reviewer swarm
 

@@ -29,7 +29,7 @@ case $ec in
     [ -z "$abortReason" ] && abortReason="anchor-error"
     cat "$anchorErr" >&2   # surface the human [REVERT BLOCKED — *] marker
     rm -f "$anchorErr"
-    # Caller calls TeamDelete (no wait) if a team was created in Phase 2,
+    # Caller sends a shutdown_request (no wait) to any teammates spawned in Phase 2,
     # then transfers control to Phase 7 in abort mode. Phase 7 runs steps 1, 2, 4,
     # and 6 only; step 3 is skipped so secret-warnings.json audit trail persists.
     ;;
