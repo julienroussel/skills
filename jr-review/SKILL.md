@@ -3,14 +3,18 @@ name: jr-review
 description: Multi-agent PR/MR review swarm (local). Spawns specialized reviewers, deduplicates findings, gets approval, auto-fixes, and validates. Scales dynamically based on diff size. For cloud-based parallel review of very large diffs, see `/ultrareview` (Claude Code v2.1.111+). Prioritizes thoroughness over speed; use `quick` or `nofix` for fast paths, or `--auto-approve` for unattended/CI runs.
 argument-hint: "[nofix|full|quick|--converge[=N]|--auto-approve|--no-verify-claims|--refresh-stack|--refresh-baseline|--only=dims|--scope=path|--pr=N|--branch[=<base>]] [max-retries]"
 effort: high
-model: opus
+model: sonnet
 disable-model-invocation: true
 user-invocable: true
 allowed-tools: Read Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList SendMessage Write(.claude/**) Edit(.claude/**) Write(.gitignore) Edit(.gitignore) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git ls-files *) Bash(git rev-parse *) Bash(git symbolic-ref *) Bash(git rev-list *) Bash(git merge-base *) Bash(git show *) Bash(git diff-tree *) Bash(git cat-file *) Bash(git config --get *) Bash(gh pr view *) Bash(gh pr diff *) Bash(gh pr list *) Bash(gh issue list *) Bash(gh repo view *) Bash(gh api *) Bash(gh auth status *) Bash(glab mr view *) Bash(glab mr diff *) Bash(glab mr list *) Bash(glab issue list *) Bash(glab repo view *) Bash(glab api *) Bash(glab auth status *) Bash(grep *) Bash(wc *) Bash(test *) Bash([ *) Bash(stat *) Bash(find . *) Bash(jq *) Bash(perl *) Bash(printf *) Bash(date *) Bash(mktemp *) Bash(comm *) Bash(sort *) Bash(awk *) Bash(cut *) Bash(head *) Bash(tail *) Bash(xargs *) Bash(command -v *) Bash(shasum *) Bash(echo *) Bash(mv *) Bash(mkdir -p *)
 ---
 
 <!-- Frontmatter notes (load-bearing):
-- `model: opus` (lead) is deliberate headroom, not a contradiction of "Model requirements" below: the lead itself runs the judgment-heavy Phase 3 claim-classification, Phase 4 approval, and Phase 5.55 fix-verification — and reviewer/implementer subagents are opus too.
+- `model: sonnet` (lead): Phase 3 claim-classification is rule-driven (keyword-scan external-authority
+  detection, verbatim citation matching), and Phase 4 approval / Phase 5.55 fix-verification are
+  structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work
+  (bug-hunting, fix implementation, simplification, security fresh-eyes) is delegated to opus
+  subagents. Mirrors `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern.
 - `when_to_use` is omitted on purpose: with `disable-model-invocation: true` the description is not
   loaded into context (skills doc), so `when_to_use` would only affect the `/` menu listing. Don't re-add.
 - `allowed-tools` deliberately PROMPTS for: arbitrary `rm`, destructive git (checkout/reset/clean/
