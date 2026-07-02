@@ -3,7 +3,7 @@ name: jr-i18n
 description: Native-translator review of a project's translation catalogs. For each target locale a dedicated language-expert subagent ultrathinks whether the strings are accurate and read as proper real-world usage, alongside mechanical catalog-consistency checks (missing keys, placeholder parity). Reports findings + suggested corrected text with file:line citations. Findings-only — never writes catalog files.
 argument-hint: "[path] [--locale=<codes>] [--source-locale=<code>] [--auto-approve] [--model=<tier>]"
 effort: high
-model: opus
+model: sonnet
 disable-model-invocation: true
 user-invocable: true
 allowed-tools: Read Glob Grep AskUserQuestion Agent advisor TaskCreate TaskList TaskGet SendMessage Bash(grep *) Bash(find . *) Bash(jq *) Bash(wc *) Bash(ls *) Bash(test *) Bash(cat *) Bash(head *) Bash(sort *) Bash(cut *) Bash(basename *) Bash(dirname *) Bash(gh api repos/* *) Bash(base64 *)
@@ -11,9 +11,11 @@ disallowed-tools: Write Edit WebFetch
 ---
 
 <!-- Frontmatter notes (load-bearing):
-- `model: opus` (lead) is deliberate: the lead runs the judgment-heavy Phase 3 claim
-  classification + Tier-2 verification and Phase 4 synthesis; the per-locale translator
-  subagents are opus too (native-fluency reasoning is the whole value).
+- `model: sonnet` (lead): Phase 3 claim classification + Tier-2 verification and Phase 4
+  synthesis are structured orchestration, not open-ended agentic coding — the genuinely
+  judgment-heavy work (native-fluency translation review) is delegated to the opus
+  per-locale translator subagents, which is the whole value of the skill. Mirrors
+  `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern.
 - `allowed-tools` grants NO Write/Edit and no repo-mutating Bash, and `disallowed-tools`
   blocks `Write`/`Edit`/`WebFetch` outright. The distinction is load-bearing: an
   `allowed-tools` omission alone only *prompts* for a tool (it stays in the pool) —

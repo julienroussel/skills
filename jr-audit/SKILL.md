@@ -3,14 +3,18 @@ name: jr-audit
 description: Full codebase audit using specialized expert agents. Scales dynamically with preflight estimation, validation baselines, and audit history. Supports scoping, filtering, and auto-fix. Prioritizes thoroughness over speed; use `quick` or `nofix` for fast paths.
 argument-hint: "[path] [nofix|full|quick|--refresh-stack|--refresh-baseline|--converge[=N]|--no-verify-claims] [--only=dims] [--exclude=glob]"
 effort: high
-model: opus
+model: sonnet
 disable-model-invocation: true
 user-invocable: true
 allowed-tools: Read Write(.claude/**) Edit(.claude/**) Write(.gitignore) Edit(.gitignore) Glob Grep Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git ls-files *) Bash(git rev-parse *) Bash(git diff-tree *) Bash(git show *) Bash(git config --get *) Bash(git clean -fd *) Bash(git -c core.symlinks=false checkout *) Bash(git reset *) Bash(gh repo view *) Bash(gh pr list *) Bash(gh pr view *) Bash(gh api *) Bash(gh auth status *) Bash(gh issue list *) Bash(gh issue create *) Bash(glab repo view *) Bash(glab mr list *) Bash(glab mr view *) Bash(glab api *) Bash(glab auth status *) Bash(glab issue list *) Bash(glab issue create *) Bash(jq *) Bash(wc *) Bash(grep *) Bash(stat *) Bash(test *) Bash(mkdir -p *) Bash(rm -f .claude/*) Bash(rm -f -- *) Bash(mv .claude/*) Bash(find . *) Bash(cat *) Bash(head *) Bash(tail *) Bash(comm *) Bash(sort *) Bash(printf *) Bash(date *) Bash(mktemp *) Bash(flock *) Bash(shasum *) Bash(sed *) Bash(tr *) Bash(awk *) Bash(xargs *) Bash(base64 *) Bash([ *) Bash(echo *) WebFetch AskUserQuestion Agent advisor TaskCreate TaskList SendMessage
 ---
 
 <!-- Frontmatter notes (load-bearing):
-- `model: opus` (lead) is deliberate headroom, not a contradiction of "Model requirements" below: the lead itself runs the judgment-heavy Phase 3 claim-classification and Phase 4 synthesis — and reviewer/implementer subagents are opus too.
+- `model: sonnet` (lead): the lead's Phase 3 claim-classification and dedup are rule-driven
+  (keyword-scan external-authority detection, verbatim citation matching, pattern clustering) —
+  structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work
+  (bug-hunting, fix implementation) is delegated to opus reviewer/implementer subagents. Mirrors
+  `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern.
 - `allowed-tools` deliberately omits: blanket `git checkout *`, `git reset *` outside the canonical
   revert sequence (uses pinned `git -c core.symlinks=false checkout *`), `git stash *`, `git clean *`
   outside `git clean -fd *`, blanket `rm -rf *`, blanket `mv *`, and Write/Edit outside `.claude/**`

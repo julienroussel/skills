@@ -3,7 +3,7 @@ name: jr-skill-audit
 description: Audit Claude Code skill files (SKILL.md) for 2026-feature alignment, advisor coverage, frontmatter validity, token efficiency, shared-file drift, safety-protocol consistency, and model-tier routing. Reviewers cite live Anthropic docs + changelog (fetched at runtime, cached) so findings are grounded, not hallucinated. Reports a prioritized improvements list with file:line citations. Findings-only — never modifies skill files.
 argument-hint: "[skill-name] [--scope=<glob>] [--scope-only=<level>] [--plugin=<name>] [--only=<dims>] [--auto-approve] [--refresh-refs]"
 effort: high
-model: opus
+model: sonnet
 disable-model-invocation: true
 user-invocable: true
 allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
@@ -11,7 +11,11 @@ disallowed-tools: Edit
 ---
 
 <!-- Frontmatter notes:
-- `model: opus` (lead) is deliberate headroom, not a contradiction of "Model requirements" below: the lead itself runs the judgment-heavy Phase 3 source-citation verification and Phase 4 synthesis (plus the lead-emitted scope-resolution dimension) — and Phase 2 reviewer subagents are opus too.
+- `model: sonnet` (lead): Phase 3 source-citation verification is a mechanical match against the
+  Track C refs cache, and Phase 4 synthesis (plus the lead-emitted scope-resolution dimension) is
+  structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work (spec
+  review across the 7 reviewer dimensions) is delegated to opus subagents. Mirrors `/jr-ship`'s
+  validated lead-sonnet + opus-delegated-judgment pattern.
 - `Write` is scoped to `~/.claude/skills/jr-skill-audit/cache/**` — the refs.json cache is the skill's ONLY write target (it is findings-only and never modifies skill files). Do not broaden the grant; any new write site must extend the path scope explicitly. NOTE — the literal `~/.claude/skills/jr-skill-audit/cache/**` is intentional and is NOT switched to `${CLAUDE_SKILL_DIR}/cache/**` to match the body's substitution: the skills doc documents `${CLAUDE_SKILL_DIR}` only for bash-injection use and states allowed-tools substitution support ONLY for `${CLAUDE_PROJECT_DIR}` (v2.1.196+). `${CLAUDE_SKILL_DIR}` in `allowed-tools` is undocumented, so a literal `${CLAUDE_SKILL_DIR}` here would risk a never-matching grant (every cache write would then prompt). The hardcoded path is correct for the personal install (the skill's by-design home); it only diverges from the body under a project/plugin install, where the write degrades to a per-call prompt rather than failing. Revisit if/when Anthropic documents `${CLAUDE_SKILL_DIR}` substitution in allowed-tools.
 -->
 
