@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# jr-rollup — aggregate per-app .claude/health.json snapshots (written by /jr-audit)
+# into one estate health view. Read-only: never runs an audit.
+#
+# Companion CLI for the /jr-rollup skill (see ~/.claude/skills/jr-rollup/SKILL.md).
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+jr-rollup — cross-app health rollup from /jr-audit snapshots
+
+USAGE
+  jr-rollup [ROOT] [--json]
+  jr-rollup APP_DIR [APP_DIR ...] [--json]
+  jr-rollup --help
+
+Reads <app>/.claude/health.json for each discovered app and prints an estate
+table (worst-first) plus a portfolio summary. Read-only; never triggers an audit.
+
+DISCOVERY (when no explicit app dirs are given; ROOT defaults to CWD)
+  1. git submodules listed in ROOT/.gitmodules, else the UNION of:
+  2. any dir already holding a health snapshot (<dir>/.claude/health.json, name-agnostic), plus
+  3. standard component dirs with a manifest — container subdirs (apps|packages|services|libs/*)
+     AND standard top-level dirs (e2e, docs, web, api, mobile, backend, frontend, server, client,
+     gateway, admin, dashboard, infra, infrastructure, devops, ops, functions, lib, cli, worker(s),
+     tools, scripts, app), plus ROOT itself if it is a component; else
+  4. ROOT itself (single-app repo)
+
+OPTIONS
+  --json   Emit the sorted records as JSON instead of the text table.
+  --help   Show this help.
+
+REQUIRES  jq, git, column
+EOF
+}
+
+die() { printf 'jr-rollup: %s\n' "$1" >&2; exit "${2:-1}"; }
+for dep in jq git column; do command -v "$dep" >/dev/null 2>&1 || die "missing dependency '$dep'" 2; done
+
+# a dir is a "component" if it has a recognised manifest or an existing health snapshot
+has_component() {
+  local d="$1"
+  [ -f "$d/package.json" ]  || [ -f "$d/composer.json" ] || [ -f "$d/pyproject.toml" ] || \
+  [ -f "$d/go.mod" ]        || [ -f "$d/Cargo.toml" ]    || [ -f "$d/pom.xml" ]        || \
+  [ -f "$d/build.gradle" ]  || [ -f "$d/.claude/health.json" ]
+}
+
+JSON=0
+declare -a POS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --help|-h) usage; exit 0 ;;
+    --json)    JSON=1 ;;
+    --)        shift; while [ $# -gt 0 ]; do POS+=("$1"); shift; done; break ;;
+    -*)        die "unknown flag: $1" 2 ;;
+    *)         POS+=("$1") ;;
+  esac
+  shift
+done
+
+# --- discover apps (bash 3.2-compatible: no associative arrays) ---
+cand=""                              # newline-delimited candidate dirs
+addc() { cand="${cand}${1%/}"$'\n'; }
+ROOT="$(pwd)"
+
+if [ "${#POS[@]}" -gt 0 ]; then
+  for a in "${POS[@]}"; do addc "$a"; done
+else
+  if [ -f "$ROOT/.gitmodules" ]; then
+    while IFS= read -r p; do [ -n "$p" ] && addc "$ROOT/$p"; done \
+      < <(git -C "$ROOT" config -f .gitmodules --get-regexp 'submodule\..*\.path$' 2>/dev/null | sed -E 's/^[^[:space:]]+[[:space:]]+//')
+  fi
+  if [ -z "$cand" ]; then            # no submodules → union of snapshot dirs + standard component dirs
+    # (2) name-agnostic: any dir that already has a health snapshot (catches e2e/docs/anything audited)
+    while IFS= read -r hj; do [ -n "$hj" ] && addc "$(dirname "$(dirname "$hj")")"; done \
+      < <(find "$ROOT" -maxdepth 4 -type f -path '*/.claude/health.json' \
+            -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/vendor/*' 2>/dev/null)
+    # (3) standard component dirs with a manifest (so never-audited components still surface)
+    for d in "$ROOT"/apps/*/ "$ROOT"/packages/*/ "$ROOT"/services/*/ "$ROOT"/libs/*/; do
+      [ -d "$d" ] && has_component "${d%/}" && addc "$d"
+    done
+    for n in e2e docs web api mobile backend frontend server client gateway admin dashboard \
+             infra infrastructure devops ops functions lib cli worker workers tools scripts app; do
+      d="$ROOT/$n"; [ -d "$d" ] && has_component "$d" && addc "$d"
+    done
+    has_component "$ROOT" && addc "$ROOT"
+  fi
+fi
+
+# dedup, preserving first occurrence (jq re-sorts the final output anyway)
+declare -a APPS=()
+while IFS= read -r d; do [ -n "$d" ] && APPS+=("$d"); done < <(printf '%s' "$cand" | awk 'NF && !seen[$0]++')
+[ "${#APPS[@]}" -eq 0 ] && APPS=("$ROOT")
+
+# --- gather one record per app ---
+records_nd=""
+for app in "${APPS[@]}"; do
+  name="$(basename "$app")"
+  hj="$app/.claude/health.json"
+  cur="$(git -C "$app" rev-parse --short HEAD 2>/dev/null || true)"
+  status=""; reason=""
+  if [ ! -f "$hj" ]; then
+    status="never-audited"
+  elif ! jq -e . "$hj" >/dev/null 2>&1; then
+    status="invalid"; reason="bad-json"
+  elif ! jq -e '.schemaVersion==1' "$hj" >/dev/null 2>&1; then
+    status="invalid"; reason="bad-schema"
+  else
+    scommit="$(jq -r '.commit // ""' "$hj")"
+    status="fresh"
+    # compare on a common 7-char prefix: both SHAs are `--short`, whose auto-abbrev
+    # length can drift as the repo grows, which would spuriously read as "stale".
+    [ -n "$scommit" ] && [ -n "$cur" ] && [ "${scommit:0:7}" != "${cur:0:7}" ] && status="stale"
+  fi
+  if [ "$status" = "fresh" ] || [ "$status" = "stale" ]; then
+    rec="$(jq -c --arg n "$name" --arg p "$app" --arg st "$status" --arg c "$cur" \
+      '{name:$n,path:$p,status:$st,reason:null,healthScore:.healthScore,counts:.counts,standardisation:.standardisation,commit:.commit,currentHead:(if $c=="" then null else $c end),date:.date,scope:.scope}' "$hj")"
+  else
+    rec="$(jq -nc --arg n "$name" --arg p "$app" --arg st "$status" --arg rs "$reason" --arg c "$cur" \
+      '{name:$n,path:$p,status:$st,reason:(if $rs=="" then null else $rs end),healthScore:null,counts:null,standardisation:null,commit:null,currentHead:(if $c=="" then null else $c end),date:null,scope:null}')"
+  fi
+  records_nd+="$rec"$'\n'
+done
+
+SORTED="$(printf '%s' "$records_nd" | jq -s -c '
+  def rank: if .status=="invalid" then 3 elif .status=="never-audited" then 2 else 0 end;
+  sort_by(rank, (.healthScore // 9999), -((.counts.critical) // 0))
+')"
+
+if [ "$JSON" -eq 1 ]; then
+  printf '%s\n' "$SORTED" | jq '.'
+  exit 0
+fi
+
+{
+  printf 'APP\tSCORE\tCRIT\tHIGH\tMED\tOFF-TGT\tAUDITED\tSTATUS\n'
+  jq -r '.[] |
+    [ .name,
+      (if .healthScore==null then "-" else (.healthScore|tostring) end),
+      ((.counts.critical // "-")|tostring),
+      ((.counts.high // "-")|tostring),
+      ((.counts.medium // "-")|tostring),
+      (if .standardisation==null then "-" else "\(.standardisation.offTarget)/\(.standardisation.components)" end),
+      (if .date==null then "-" else (.date|split("T")[0]) end),
+      (.status + (if .reason then "(\(.reason))" else "" end))
+    ] | @tsv' <<<"$SORTED"
+} | LC_ALL=C tr -d '\000-\010\013-\037\177' | column -t -s "$(printf '\t')"
+
+echo
+jq -r '
+  (map(select(.status!="never-audited" and .status!="invalid"))) as $aud
+  # $scored = audited apps with a real numeric score. Guards the band/criticals/worst
+  # lines: a schema-valid snapshot with healthScore:null would otherwise sort below
+  # every number (jq: null < 41) and be mis-counted as RED / reported as "Worst".
+  | ($aud | map(select(.healthScore!=null))) as $scored
+  | "Estate: \(length) apps · \($aud|length) audited · \(map(select(.status=="never-audited"))|length) never-audited · \(map(select(.status=="invalid"))|length) invalid",
+    "Bands:  RED <41: \($scored|map(select(.healthScore<41))|length)   AMBER 41-70: \($scored|map(select(.healthScore>=41 and .healthScore<=70))|length)   GREEN >70: \($scored|map(select(.healthScore>70))|length)",
+    "Remaining criticals across estate: \($scored|map(.counts.critical // 0)|add // 0)" + (($scored|map(select((.counts.critical // 0)>0))|length) as $ca | if $ca>0 then " (in \($ca) app(s))" else "" end),
+    "Stale (code moved since audit): \(map(select(.status=="stale"))|length)",
+    (($scored|min_by(.healthScore)) as $w | if $w then "Worst: \($w.name) (\($w.healthScore))" else "" end)
+' <<<"$SORTED" | LC_ALL=C tr -d '\000-\010\013-\037\177'

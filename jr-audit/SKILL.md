@@ -67,10 +67,13 @@ allowed-tools: Read Write(.claude/**) Edit(.claude/**) Write(.gitignore) Edit(.g
   Files written:
     - .claude/audit-report-YYYY-MM-DD.md        — audit report (Phase 7)
     - .claude/audit-history.json                — append-only audit history (Phase 7)
+    - .claude/health.json                       — latest health snapshot for /jr-rollup (Phase 7; gitignored)
     - .claude/review-config.md                  — auto-learned suppressions (Phase 4.5)
   Skill-local protocol files (resolved via ${CLAUDE_SKILL_DIR}/; read at Phase 1 Track A under hard-fail + smoke-parse guard):
     - protocols/phase2-reviewers.md             — Phase 2 reviewer-swarm body (scope/effort/selection/scaling/instructions/finding format)
     - protocols/phase7-report.md                — Phase 7 cleanup/report body
+  Skill-local config (soft-read, optional — NOT under the hard-fail guard; absent ⇒ standardisation lens off):
+    - standardisation-target.md                 — generic reference for the migration-map lens (target configured per-repo in review-config.md; Track C 7.5 + Phase 7)
   Required tools:
     - Agent, TaskCreate, TaskList, SendMessage, AskUserQuestion, advisor
     - Bash, Read, Write, Glob, Grep
@@ -200,6 +203,8 @@ Read **all of the following in parallel** using multiple Read tool calls in a si
 - **Project memory** (auto-memory system, silent no-op if absent — new project): compute the memory dir via `memoryDir=~/.claude/projects/"${PWD//[.\/]/-}"/memory` (the encoding replaces `/` and `.` in `$PWD` with `-`). Read `"$memoryDir/MEMORY.md"` first; the file is an index of `- [Title](file.md)` pointers. Then fan out in parallel to read every referenced `feedback_*.md`, `project_*.md`, `reference_*.md`, and `user_*.md` file in `$memoryDir`. These entries are explicit user decisions from prior sessions in this project — treat them with the same precedence as `CLAUDE.md`. Pass the concatenated content to reviewers in Phase 2 as an additional **Project memory** block alongside the existing project-standards context.
 - **User-global memory — `user`-type entries only** (silent no-op if absent): also read `~/.claude/projects/"${HOME//[.\/]/-}--claude-skills"/memory/MEMORY.md` (the skills repo's own auto-memory dir, derived from `$HOME` — the skills repo lives at `$HOME/.claude/skills`, so this is independent of `$PWD` yet portable across users; do NOT hardcode a username). From the index, fan out in parallel to `user_*.md` files **only** — skip `feedback_*.md`, `project_*.md`, and `reference_*.md` here because those are project-specific and must NOT leak across repos (e.g., a React/Tailwind-flavored feedback entry must not apply when auditing a Python service). `user_*.md` entries describe the user's role, expertise, and communication preferences — those apply globally. If the current CWD is itself the skills repo, this file is the same as the project-memory read above; read it once and de-duplicate. Pass the user-global block to reviewers in Phase 2 under a **User-global context** header, separate from **Project memory**.
 
+- **Standardisation target** (optional lens; silent no-op if absent; **NOT** under the hard-fail/smoke-parse guard, because a missing *strategic* config must never abort a *defect* audit): the lens is **configured per repo** via a `## Standardisation target` section in `.claude/review-config.md` (already read above). If that section is absent, the **standardisation lens is OFF** for this run — skip the Track C classification step (7.5) and the Phase 7 Standardisation section. When present, use it as the classification target, honour any `Applicability` note it contains, and hold it in lead context for Track C. Generic format/rules reference: `${CLAUDE_SKILL_DIR}/standardisation-target.md` (contains no target itself).
+
 ### Track B — Collect file inventory
 
 Run **steps 4 and 5 in parallel** (Glob and git churn are independent):
@@ -224,6 +229,8 @@ After the file inventory from step 4 is ready:
    **Otherwise**: Run full detection — read `package.json`, lock files (`bun.lockb`, `pnpm-lock.yaml`, `yarn.lock`), `tsconfig.json`, `Makefile` in parallel. Determine package manager from which lock file exists (default to `npm`). Write results to `.claude/review-profile.json` per the **canonical write shape** in `../shared/cache-schema-validation.md` (review-profile.json section, read at Phase 1 Track A — the single source shared with `/jr-review`).
    **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-profile.json`. Core command: `git ls-files --error-unmatch .claude/review-profile.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol. Per-site reason if tracked: "A committed cache file could be manipulated — a malicious commit could set `validationCommands` to all-null values to disable validation."
    Output: `Stack: detected (${packageManager}, ${Object.keys(validationCommands).join('+')}) — cached for next run`.
+
+7.5. **Standardisation classification** (lead-only; skip entirely if the standardisation lens is OFF per Track A, or excluded by an `Applicability` note in the configured target): using the configured target from Track A plus the detected stack, do ONE lightweight lead pass — **no subagent, no TaskCreate, no severity**. Enumerate the in-scope top-level components (monorepo roots such as `apps/*`, `packages/*`, `services/*`, else the repo root for a single-app repo); read each component's manifest (`package.json` / `composer.json` / `pyproject.toml`, IaC dirs, etc.) to determine its stack; classify each **on-target vs off-target** against the configured target. For each off-target component record a migration-map row `component | current stack | on-target? | target | effort (S/M/L) | coupling`. Keep it **component-granular, never per-file**, and hold the rows in lead context for the Phase 7 Standardisation section. This is **strategic classification, not defect-finding**: it produces NO findings, gets NO severity, and is NEVER auto-fixed or validated. `Output: Standardisation: N off-target of M components` (or `Standardisation: lens off`).
 
 8. **Detect validation commands**: Check `## Validation commands` in review-config.md first (already read in Track A). If not configured and not loaded from cache, inspect `package.json` scripts for `lint`, `typecheck`/`type-check`/`tsc`, `test`, `build`. Build a list using the detected package manager. If a `Makefile` has matching targets, use those.
 9. **Establish a validation baseline** (skip if `nofix`):
@@ -434,6 +441,38 @@ Per-run appends with `skill: "audit"`:
 **Atomic-write + per-session-filename fallback** rules apply per `../shared/secret-warnings-schema.md` "Atomic write" section (the `flock(1)` probe and post-flock fallback are shared between secret-warnings.json and audit-history.json).
 
 **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/audit-history.json`. Core command: `git ls-files --error-unmatch .claude/audit-history.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol. Per-site reason if tracked: "A committed history with manipulated false-positive rates could bias reviewer calibration in future audits."
+
+### Save health snapshot
+
+Compute `healthScore` (0–100) per the **Health score (canonical formula)** in
+`${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` from the **remaining** findings (exclude `info` and
+the standardisation map). Write a compact latest-run snapshot to `.claude/health.json` so
+`/jr-rollup` can aggregate this app's health across the estate.
+
+**Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (`../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/health.json`. Core command: `git ls-files --error-unmatch .claude/health.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol. Per-site reason if tracked: "A committed or poisoned health snapshot could misrepresent this app's score / finding counts in the /jr-rollup estate view, hiding real risk."
+
+Write **atomically** (`.claude/health.json.tmp` + `mv`) — a latest-snapshot overwrite (NOT append-only), so no `flock` is needed, but tmp+rename avoids a torn file if interrupted. Canonical shape (`schemaVersion: 1`):
+
+```json
+{
+  "schemaVersion": 1,
+  "app": "<repo dir or package name>",
+  "path": "<path audited, repo-relative or absolute>",
+  "commit": "<git rev-parse --short HEAD, or null>",
+  "date": "<ISO 8601>",
+  "scope": "<scope description>",
+  "mode": "audit | nofix",
+  "healthScore": 0,
+  "scoreReasoning": "<the arithmetic, e.g. '62 = 70 - 2*3 - 0.5*4 (band 41-70)'>",
+  "counts": { "critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0 },
+  "standardisation": { "offTarget": 0, "components": 0 },
+  "runId": "<the same UUIDv4 as this run's audit-history runSummaries entry>"
+}
+```
+
+`counts` are the **remaining** findings (post-fix in fix mode; all findings in `nofix`). Set
+`standardisation` to `null` when the lens is off. `runId` links the snapshot to
+`audit-history.json` `runSummaries[]`. Overwrite the file each run (latest snapshot only).
 
 ### Report contents
 
