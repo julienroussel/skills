@@ -248,7 +248,7 @@ git -C "$REPO_ROOT" remote -v | grep -qE 'github\.com|gitlab\.com'              
 ```bash
 git -C "$REPO_ROOT" ls-files -- \
   .claude/review-profile.json .claude/review-baseline.json .claude/review-config.md \
-  .claude/audit-history.json .claude/secret-warnings.json
+  .claude/audit-history.json .claude/health.json .claude/secret-warnings.json
 git -C "$REPO_ROOT" ls-files -- '.claude/audit-report-*.md'
 git -C "$REPO_ROOT" ls-files -- '.claude/secret-warnings-*.json'
 git -C "$REPO_ROOT" ls-files -- '.claude/worktrees/'
@@ -265,6 +265,7 @@ If `IS_TACKLE_WORKTREE=yes`: suppress the `.claude/worktrees/` warning (worktree
 .claude/review-baseline.json
 .claude/review-config.md
 .claude/audit-history.json
+.claude/health.json
 .claude/audit-report-*.md
 .claude/secret-warnings.json
 .claude/secret-warnings-*.json
@@ -419,6 +420,7 @@ Phase 4 — Fix pass
     + .claude/review-baseline.json
     + .claude/review-config.md
     + .claude/audit-history.json
+    + .claude/health.json
     + .claude/audit-report-*.md
     + .claude/secret-warnings*.json
     + .claude/secret-hook-patterns.txt

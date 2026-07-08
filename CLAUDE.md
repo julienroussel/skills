@@ -9,12 +9,24 @@ A collection of personal Claude Code skills (slash commands) — `/jr-audit`, `/
 ## Repo structure
 
 ```
-jr-audit/SKILL.md                     — full codebase audit swarm (--converge for re-audit loops)
+jr-audit/SKILL.md                     — full codebase audit swarm (--converge for re-audit loops); also emits
+                                     a 0–100 health score + verdict/hidden-bombs/strengths/roadmap report
+                                     sections, an opt-in standardisation migration-map lens (Track C 7.5),
+                                     and a .claude/health.json snapshot consumed by /jr-rollup
 jr-audit/protocols/                   — skill-local procedures read at Phase 1 Track A under hard-fail +
                                      smoke-parse guard: phase2-reviewers.md (Phase 2 reviewer-swarm body —
                                      scope/effort/selection/scaling/reviewer instructions/finding format;
                                      anchors: `### Classify scope size` AND `### Finding format`),
                                      phase7-report.md (Phase 7 cleanup/report body; anchor `False positive rates`).
+jr-audit/standardisation-target.md    — generic reference for /jr-audit's optional migration-map lens;
+                                     contains NO target itself. The lens is opt-in per repo via a
+                                     `## Standardisation target` in that repo's .claude/review-config.md
+                                     (absent ⇒ lens off); classified lead-only in Track C step 7.5, printed
+                                     in Phase 7. Soft-read pattern mirrors jr-skill-audit/edge-cases.md.
+jr-rollup/SKILL.md                    — cross-app health rollup: thin skill over bin/jr-rollup that reads
+                                     every app's .claude/health.json (from /jr-audit) into a worst-first
+                                     estate table + portfolio summary, then flags what to prioritise.
+                                     Read-only; never audits. effort:low, model:sonnet.
 jr-review/SKILL.md                    — multi-agent PR/MR review swarm (--converge for re-review loops)
 jr-review/convergence-protocol.md     — skill-local convergence loop body (state tracking, file tracking,
                                      convergence Phases 2-6, fresh-eyes pass); NOT in shared/ because
@@ -203,6 +215,14 @@ bin/seed-project-memory            — one-shot helper to draft a project_<name>
                                      derivable from the live repo — stack, git log, and CLAUDE.md are
                                      read fresh every run, so duplicating them would just decay).
                                      Opens $EDITOR, then writes to ~/.claude/projects/<encoded-cwd>/memory/
+bin/jr-rollup                      — deterministic cross-app health aggregator behind /jr-rollup (also
+                                     runnable directly). Generic discovery: git submodules, else any dir with a
+                                     .claude/health.json (name-agnostic) + standard component dirs
+                                     (apps|packages|services|libs/* and top-level e2e/docs/web/api/…), else the
+                                     repo root. Reads each <app>/.claude/health.json, prints a worst-first estate
+                                     table + portfolio summary (bands, total remaining criticals, stale/
+                                     never-audited/invalid(bad-json|bad-schema)). --json for machine output.
+                                     bash 3.2-compatible. Read-only; never audits. Needs jq/git/column.
 bin/tackle-top                     — rank a repo's open issues (GitHub or GitLab — forge auto-detected) via headless `claude -p` (haiku,
                                      `--json-schema` constrained), then spawn N WezTerm tabs each
                                      running `tackle <N>` in the target repo. Interactive selection by
@@ -218,7 +238,7 @@ Files in `shared/` are referenced by `/jr-audit`, `/jr-review`, `/jr-skill-audit
 Usage pattern per file:
 - `reviewer-boundaries.md` — passed verbatim into every reviewer subagent prompt.
 - `untrusted-input-defense.md` — passed verbatim into every reviewer, implementer, simplification, convergence, and fresh-eyes subagent prompt.
-- `gitignore-enforcement.md` — the lead agent applies the protocol at each `.claude/*` write site (cache files, audit reports, suppressions). Call-sites keep the `git ls-files --error-unmatch <path>` command and a per-site "Why" reason inline for reliability; the prose expansion of warn/append behavior lives in the shared file only.
+- `gitignore-enforcement.md` — the lead agent applies the protocol at each `.claude/*` write site (cache files, audit reports, suppressions, health snapshots). Call-sites keep the `git ls-files --error-unmatch <path>` command and a per-site "Why" reason inline for reliability; the prose expansion of warn/append behavior lives in the shared file only.
 - `display-protocol.md` — the lead agent applies the rules (phase headers, timeline, silent-reviewers, compact tables, redaction) at every console-output site. Skill-specific Phase 4 finding-approval menus and convergence-display variants stay inline in the owning skill.
 - `secret-scan-protocols.md` — referenced at every `isHeadless` evaluation, secret-halt invocation, user-continue site, and advisory-tier classification site. Pattern-specific demotion criteria for `SK`/`sk-`/`dapi` stay inline in `/jr-review` Phase 1 Track B step 7 (scope-specific to diff-mode reviewing).
 - `audit-history-schema.md` — referenced at Phase 1 Track A reads (rejection-rate calibration, suppression checks) and Phase 7 step 5 appends. Both `/jr-audit` and `/jr-review` MUST read and write the same schema.
