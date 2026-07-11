@@ -72,7 +72,7 @@ auth status | `gh auth status` | `glab auth status` | exit-code check
 default branch | `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | `glab api projects/:fullpath \| jq -r .default_branch` | field TBD; `glab api` has NO `--jq` (pipe to jq); both fall back to `git symbolic-ref --short refs/remotes/origin/HEAD`
 repo visibility | `gh repo view --json visibility` | `glab api projects/:fullpath \| jq -r .visibility` | field TBD
 create PR/MR | `gh pr create --title T --body B [--label L] [--assignee @me] [--draft]` | `glab mr create -t T -d B [-l L] [-a @me] [--draft] [-b BASE] [--remove-source-branch] -y` | flags verified
-view PR/MR | `gh pr view N --json <fields>` | `glab mr view N -F json --jq <remap>` | fields TBD
+view PR/MR | `gh pr view N --json <fields>` | `glab mr view N -F json --jq <remap>` | fields verified §c (`--pr` subset)
 list PR/MR | `gh pr list --head BR --state open --json <fields>` | `glab mr list --source-branch BR -F json` | fields TBD; `--head`→`--source-branch`
 diff | `gh pr diff N --no-color` | `glab mr diff N --color=never` | `--color=never` (glab defaults to `--color=auto`) is the `--no-color` equivalent — without it, piped output may be colorized
 merge | `gh pr merge N --squash --delete-branch` | `glab mr merge N --squash --remove-source-branch --auto-merge=false -y` | **`--auto-merge=false` is REQUIRED** — glab enables merge-when-pipeline-succeeds by default, so without it the MR does NOT merge immediately like `gh pr merge` does (flags --help-verified)
@@ -82,7 +82,7 @@ issues list | `gh issue list --state open --json <fields>` | `glab issue list -O
 issue create | `gh issue create --title T --body B [--label L]` | `glab issue create -t T -d B [-l L] [-y]` | flags verified
 **CI watch** | `gh pr checks N --watch --fail-fast` | `glab ci status --live -b BR` | **ADAPTATION, not a rename** — see (e). `-F json` is incompatible with `--live` (parse text status, or do a separate non-live call for JSON)
 **CI failed logs** | `gh run list …` + `gh run view ID --log-failed` | `glab ci status` + `glab ci trace`/`glab ci get` | **ADAPTATION** — multi-job
-**user-repo raw file @ref** | `gh api "repos/{owner}/{repo}/contents/{path}?ref={sha}" -H 'Accept: application/vnd.github.raw'` | `glab api "projects/:fullpath/repository/files/{url-encoded-path}/raw?ref={sha}"` | **STRUCTURAL** — path URL-encoded, no raw header; TBD
+**user-repo raw file @ref** | `gh api "repos/{owner}/{repo}/contents/{path}?ref={sha}" -H 'Accept: application/vnd.github.raw'` | `glab api "projects/{url-encoded-project}/repository/files/{url-encoded-path}/raw?ref={sha}"` | **STRUCTURAL** — project path AND file path URL-encoded (`jq -sRr @uri`), no raw header; ✅ verified 2026-07-10 (explicit encoded project, subgroup + nested path OK)
 generic api | `gh api <path>` | `glab api <path>` | `repos/{owner}/{repo}/…` → `projects/:fullpath/…`; MRs/issues keyed by `iid`
 
 **Two separate verification problems — do NOT conflate them** (conflating them is what let a `--jq`
@@ -104,28 +104,29 @@ flag bug hide in the "can't verify yet" bucket):
 
 ---
 
-## (c) JSON-field mapping table — **Milestone-2 deliverable, do NOT assert from memory**
+## (c) JSON-field mapping table (`--pr` subset verified 2026-07-10; the rest still Milestone-2, do NOT assert from memory)
 
 `gh --json` emits gh's own camelCase (`headRefName`, `isDraft`) — NOT raw GitHub API fields. `glab
--F json` likewise emits its own struct, which **cannot be verified from a GitHub-only repo**. Confirm
-every cell in the glab column against `glab mr view|list|issue view -F json` on a **real gitlab.com
-MR/issue** before relying on it. Listed below are exactly the gh fields the call-sites consume.
+-F json` emits the raw GitLab REST object, which **cannot be verified from a GitHub-only repo**. The
+rows the `/jr-review --pr` path consumes are now **confirmed against a live gitlab.com MR**
+(`ecorobotix/maya/web!4151`, 2026-07-10); every remaining `_?_`/TBD cell must still be confirmed
+against a real MR/issue before use. Listed below are exactly the gh fields the call-sites consume.
 
 Purpose | gh field | glab field | Status
 ---|---|---|---
-head branch | `headRefName` | _?_ | TBD
-head commit SHA | `headRefOid` | _?_ | TBD
-base repo owner / name | `baseRepository.owner.login` / `.name` | _?_ | TBD
-draft state | `isDraft` | _?_ | TBD
-review decision | `reviewDecision` | _?_ (GitLab approvals — likely derived, no 1:1) | TBD
-merge state | `mergeStateStatus` | _?_ (GitLab `detailed_merge_status`?) | TBD
-default branch | `defaultBranchRef.name` | _?_ (`default_branch`?) | TBD
-visibility | `visibility` | _?_ | TBD
-changed files | `files[].path` | _?_ | TBD
-number / iid | `number` | _?_ (`iid`?) | TBD
-title / body | `title` / `body` | _?_ | TBD
-updated time | `updatedAt` | _?_ | TBD
-CI run id / result | `databaseId` / `conclusion` | _?_ | TBD
+head branch | `headRefName` | `.source_branch` | ✅ verified 2026-07-10 (MR !4151)
+head commit SHA | `headRefOid` | `.sha` (== `.diff_refs.head_sha`) | ✅ verified 2026-07-10 (MR !4151)
+base repo owner / name | `baseRepository.owner.login` / `.name` | not consumed for `--pr` (route from `TARGET_PROJECT`; `.project_id` / `.references.full` exist if needed) | n/a
+draft state | `isDraft` | `.draft` (or `.work_in_progress`) | ✅ verified 2026-07-10 (MR !4151)
+review decision | `reviewDecision` | _?_ (GitLab approvals — likely derived, no 1:1) | TBD (unconsumed)
+merge state | `mergeStateStatus` | _?_ (GitLab `detailed_merge_status`?) | TBD (unconsumed)
+default branch | `defaultBranchRef.name` | _?_ (`default_branch`?) | TBD (branch-mode)
+visibility | `visibility` | `.visibility` (on the project object, per §b; not live-probed) | TBD
+changed files | `files[].path` | `GET …/merge_requests/:iid/diffs` → `.[].new_path` (NOT in `mr view`; also `.old_path` / `.deleted_file` / `.renamed_file`) | ✅ verified 2026-07-10 (MR !4151, 95 files)
+number / iid | `number` | `.iid` | ✅ verified 2026-07-10 (MR !4151)
+title / body | `title` / `body` | `.title` / `.description` | ✅ verified 2026-07-10 (MR !4151)
+updated time | `updatedAt` | `.updated_at` | TBD (unconsumed)
+CI run id / result | `databaseId` / `conclusion` | _?_ | TBD (unconsumed)
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: jr-audit
 description: Full codebase audit using specialized expert agents. Scales dynamically with preflight estimation, validation baselines, and audit history. Supports scoping, filtering, and auto-fix. Prioritizes thoroughness over speed; use `quick` or `nofix` for fast paths.
-argument-hint: "[path] [nofix|full|quick|--refresh-stack|--refresh-baseline|--converge[=N]|--no-verify-claims] [--only=dims] [--exclude=glob]"
+argument-hint: "[path] [nofix|full|quick|--refresh-stack|--refresh-baseline|--converge[=N]|--no-verify-claims] [--only=dims] [--exclude=glob] [--out=file]"
 effort: high
 model: sonnet
 disable-model-invocation: true
@@ -20,6 +20,10 @@ allowed-tools: Read Write(.claude/**) Edit(.claude/**) Write(.gitignore) Edit(.g
   outside `git clean -fd *`, blanket `rm -rf *`, blanket `mv *`, and Write/Edit outside `.claude/**`
   and `.gitignore`. The Phase 5 base-anchor revert sequence (clean → rm-f → checkout → reset)
   uses these scoped forms; broader destructive ops should remain a per-call decision.
+- The `--out=<path>` flag (Phase 1) may target a report destination OUTSIDE `.claude/`. The skill
+  intentionally does NOT widen the Write scope above to accommodate it: an out-of-`.claude` write
+  relies on the user's own `permissions.allow` settings rule (prompt-free / headless-safe) or falls
+  through to Claude Code's per-call Write prompt (interactive), mirroring `/jr-mermaid`'s design.
 - `allowed-tools` grants `Bash(rm -f -- *)` UNSCOPED (alongside the scoped `Bash(rm -f .claude/*)`):
   the Combined revert sequence must delete untracked files absent at the base commit — including
   gitignored ones that `git clean -fd` skips — and an implementer with strict file ownership over a
@@ -94,10 +98,11 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--only=<dimensions>` — Run only the specified reviewer dimensions (comma-separated). All others are skipped. Example: `--only=security,typescript`, `--only=testing`, `--only=simplicity`.
 - `--model=<tier>` — Override the model for **every subagent spawned this run** (`sonnet|opus|haiku|fable`); nested spawns inherit it. Does NOT change the lead (frontmatter applies before argument parsing — run `/model <tier>` first for a uniform run). Compatible with all other flags. Canonical semantics: `../shared/model-override.md`.
 - `--exclude=<glob>` — (Repeatable) Remove files matching the glob from audit scope. Example: `--exclude=src/generated/**`, `--exclude=**/*.stories.tsx`.
+- `--out=<path>` — Write the human-readable audit report to `<path>` instead of the default `.claude/audit-report-YYYY-MM-DD.md`. Accepts an absolute path, a `~/`-relative path, or a repo-relative path, and may point outside the repo. Used verbatim as a file path, preserving your filename and date (no date-stamping); a target naming an existing directory or ending in `/` receives the default `audit-report-YYYY-MM-DD.md` inside it. Writing outside `.claude/` is not pre-authorised by the skill; it relies on your own `permissions.allow` settings rule (prompt-free) or Claude Code's per-call Write prompt. Redirects only the `.md` report; `.claude/health.json` and `.claude/audit-history.json` are unaffected. Compatible with all modes.
 - Any bare path prefix — Limits audit to files under that path. Example: `src/hooks/`.
 - Any bare number — Max validation retries (default: 3). Example: `5`.
 
-Examples: `/jr-audit`, `/jr-audit nofix`, `/jr-audit src/api/`, `/jr-audit --only=security,node-api`, `/jr-audit quick --exclude=e2e/**`, `/jr-audit src/ nofix --only=typescript,testing 5`, `/jr-audit --refresh-baseline`
+Examples: `/jr-audit`, `/jr-audit nofix`, `/jr-audit src/api/`, `/jr-audit --only=security,node-api`, `/jr-audit quick --exclude=e2e/**`, `/jr-audit src/ nofix --only=typescript,testing 5`, `/jr-audit --refresh-baseline`, `/jr-audit nofix --out=~/void/audit/web.md`
 
 If both a scope path and `--exclude` are provided, first filter to the path prefix, then remove excluded patterns.
 
@@ -118,6 +123,7 @@ If both a scope path and `--exclude` are provided, first filter to the path pref
 - `--only=<dimensions>`: Trim leading and trailing whitespace from each comma-separated value before validation. Ignore empty entries resulting from consecutive commas. Validate that each remaining value matches one of the recognized built-in dimension names: `security`, `typescript`, `react`, `vue`, `node`, `php`, `python`, `api-contract`, `database`, `performance`, `testing`, `accessibility`, `i18n`, `infra`, `error-handling`, `observability`, `mermaid`, `css`, `dependency`, `architecture`, `comment`, `simplicity` OR is defined as a custom reviewer dimension in `.claude/review-config.md` (if loaded in Track A). Reject values that match neither a built-in nor a custom dimension with: 'Unrecognized dimension: "<value>". Valid built-in dimensions: security, typescript, react, vue, node, php, python, api-contract, database, performance, testing, accessibility, i18n, infra, error-handling, observability, mermaid, css, dependency, architecture, comment, simplicity. Custom dimensions can be defined in .claude/review-config.md.'
   Note: `/jr-audit` supports additional dimensions (`css`, `dependency`, `architecture`, `comment`) beyond those available in `/jr-review`. These dimensions are specific to audit's broader scope.
 - `--model=<tier>`: Allowlist regex `^(sonnet|opus|haiku|fable)$`. Reject any other value with: `Invalid --model value '<value>'. Valid values: sonnet, opus, haiku, fable.` (per `../shared/model-override.md`).
+- `--out=<path>`: A SEPARATE, more permissive ruleset than the scope-path validator above (which rejects absolute paths, `~`, `..`, and dot/hyphen-prefixed segments). Because the resolved directory is passed to `mkdir -p`, reject values containing control characters (NUL, newline, carriage return) or any shell/glob-active character (a backtick, or any of `$ \ " ' ; | & < > ( ) { } * ? [ ] !`), with the error `Invalid --out path: unsupported character.`; every other character (letters, digits, `/ . - _ ~ + , @ =`, space) is a literal path character. Then expand a LEADING `~` or `~/` to `$HOME` by string-prefix replacement (never by passing the raw value through an unquoted shell), and resolve a non-absolute result against `$PWD`. `..` is permitted (the destination is user-chosen by design). Double-quote the resolved path in the `mkdir -p` and any shell context; hand the resolved absolute path to the Write tool (which runs no shell).
 
 ### Model requirements
 
@@ -424,9 +430,15 @@ Apply the canonical line-by-line console-output redaction rule from `../shared/d
 
 ### Save report
 
-**Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/audit-report-YYYY-MM-DD.md` (with the concrete date). Core command: `git ls-files --error-unmatch ".claude/audit-report-YYYY-MM-DD.md" 2>/dev/null` — warn if tracked; if the glob `.claude/audit-report-*.md` is not in `.gitignore` (`git check-ignore -q` returns non-zero), append the glob and inform the user. Per-site reason if tracked: "Audit reports contain finding descriptions, code excerpts, and potentially redacted secret locations — these should not be committed to the repository."
+The human-readable report goes to `.claude/audit-report-YYYY-MM-DD.md` by default, or to the `--out=<path>` target when that flag was set (resolved and sanitised per Phase 1 "Parameter sanitization"). Only this `.md` report is redirected by `--out`; `.claude/health.json` (Save health snapshot) and `.claude/audit-history.json` (Save audit history) are always written under `.claude/`.
 
-Write audit report to `.claude/audit-report-YYYY-MM-DD.md`.
+**Default (no `--out`)** (unchanged behaviour). **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/audit-report-YYYY-MM-DD.md` (with the concrete date). Core command: `git ls-files --error-unmatch ".claude/audit-report-YYYY-MM-DD.md" 2>/dev/null` — warn if tracked; if the glob `.claude/audit-report-*.md` is not in `.gitignore` (`git check-ignore -q` returns non-zero), append the glob and inform the user. Per-site reason if tracked: "Audit reports contain finding descriptions, code excerpts, and potentially redacted secret locations — these should not be committed to the repository." Then write the audit report to `.claude/audit-report-YYYY-MM-DD.md`.
+
+**When `--out=<path>` is set**: let `$OUT` be the sanitised absolute target; if `$OUT` names an existing directory or ends with `/`, append the default `audit-report-YYYY-MM-DD.md` inside it. Run `mkdir -p "$(dirname "$OUT")"` (grant `Bash(mkdir -p *)`), then resolve the repo root with `git rev-parse --show-toplevel` and branch:
+- **`$OUT` inside the repo tree**: apply the same `.gitignore`-enforcement protocol as the default case, but against `$OUT`. Run `git ls-files --error-unmatch "$OUT" 2>/dev/null` and warn if tracked (same secret-leak reason); if `git check-ignore -q "$OUT"` returns non-zero, inform the user and offer to add the path to `.gitignore`.
+- **`$OUT` outside the repo tree** (e.g. `~/void/...`): skip `.gitignore`-enforcement (the file is not committable from this repo). Emit one advisory line: the report contains finding descriptions, code excerpts, and potentially redacted secret locations, is being written to `$OUT` outside the repository, and (if `$OUT` lies inside a different git repository) will NOT be gitignore-protected there.
+
+Then write the audit report to `$OUT` verbatim (overwrite if it exists). Phase 7 report item 18 ("Report file") prints the actual saved path.
 
 ### Save audit history
 
