@@ -48,10 +48,10 @@ Only spawn reviewers relevant to the files in scope. Do NOT spawn reviewers with
 
 ### Scale the swarm
 
-All sizes spawn reviewers the same way — via the Agent tool with a distinct `name` per reviewer (the session's one implicit team since 2.1.178; there is no `TeamCreate` step, and `team_name` is accepted but ignored). Scope size governs only the reviewer **count**, `max_turns`, and whether spawning is batched:
-- **Small scope**: Pick the **top 3 most relevant** dimensions. Set `max_turns: 12`.
-- **Medium scope**: Pick the **top 5–6 most relevant** dimensions. Set `max_turns: 18`.
-- **Large scope**: Spawn **all relevant dimensions** (cap at 8). Set `max_turns: 20`. Use batched spawning: Wave 1 (core reviewers), Wave 2 (conditional/custom) after 3+ Wave 1 reviewers complete.
+All sizes spawn reviewers the same way — via the Agent tool with a distinct `name` per reviewer (the session's one implicit team since 2.1.178; there is no `TeamCreate` step, and `team_name` is accepted but ignored). Scope size governs only the reviewer **count** and whether spawning is batched:
+- **Small scope**: Pick the **top 3 most relevant** dimensions.
+- **Medium scope**: Pick the **top 5–6 most relevant** dimensions.
+- **Large scope**: Spawn **all relevant dimensions** (cap at 8). Use batched spawning: Wave 1 (core reviewers), Wave 2 (conditional/custom) after 3+ Wave 1 reviewers complete.
 
 "Most relevant" = (1) how many in-scope files fall in that dimension, (2) always prioritize `security-reviewer` and `typescript-reviewer`.
 

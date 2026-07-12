@@ -332,7 +332,7 @@ Additionally, when loading `review-config.md` in Track A, check whether the file
 
 **Base commit anchor**: Before spawning implementers, record the current commit hash: `baseCommit=$(git rev-parse HEAD)`. Validate that the captured hash matches the format `^[0-9a-f]{40}$|^[0-9a-f]{64}$` (SHA-1 or SHA-256). If not, abort with an error: 'Failed to capture a valid commit hash — cannot proceed with implementation.' Also capture the current untracked file list as the pre-Phase-5 baseline: `untrackedBaseline=$(git ls-files --others --exclude-standard)` and `untrackedBaselineAll=$(git ls-files --others)`. Also capture the pre-Phase-5 symlink baseline: `symlinkBaseline=$(find . -type l -print0 2>/dev/null)`. These baselines are referenced by Phase 5.6 for revert operations.
 
-Spawn **all implementer agents in parallel** using multiple Agent tool calls in a single message. Use `subagent_type: "agent-teams:team-implementer"`. If a team was created in Phase 2 (medium/large scopes), set `team_name: "audit-swarm"`. For small scopes (no team), omit `team_name`. Each implementer receives:
+Spawn **all implementer agents in parallel** using multiple Agent tool calls in a single message. Use `subagent_type: "agent-teams:team-implementer"` and give each a distinct `name` (the session's one implicit team). The `team_name` param is accepted but ignored since 2.1.178, so the medium/large-vs-small distinction now governs only how many implementers you spawn, not any team-creation step. Each implementer receives:
 
 - Approved tasks scoped to specific files (strict file ownership — no two implementers touch the same file), including each finding's confidence level
 - The original file context
@@ -347,7 +347,7 @@ An implementer may mark a finding as **contested** if the fix would introduce wo
 
 If root-cause clusters exist, dispatch in two waves: **Wave 1** — root-cause fixes (all in parallel), then **validate Wave 1** (run validation commands — if regressions, fix before proceeding), then **Wave 2** — dependent fixes (all in parallel). Within each wave, all implementers must be spawned in a single message.
 
-Aim for 2–4 implementers per wave. Set `max_turns: 25`.
+Aim for 2–4 implementers per wave.
 
 **Display**: Compact implementer summary. Update timeline.
 
@@ -413,7 +413,7 @@ The full convergence-loop protocol — initialization, NUL-safe file tracking, t
 
 **Declare-done advisor check (gated)**: Before rendering the report, call `advisor()` once (no parameters — the full transcript is auto-forwarded) **if** the run is non-trivial: `findingCount >= 5 OR dimensionCount >= 3 OR rejectionCount >= 1 OR any fix was applied in Phase 5/6 OR abortMode=true`. Per `../shared/advisor-criteria.md`, declaring done on multi-phase work warrants a second opinion; the gate skips trivially-clean small runs (the "Unconditional advisor on every run" anti-pattern). The deliverable is durable by this point — fixes are committed to the working tree and the report is about to render — so an interruption mid-call loses nothing. If the advisor concurs, proceed silently. If it raises a concrete concern (e.g., a fix that doesn't match its finding, a missed regression, a contested finding that should have blocked), surface it in the report under an `ADVISOR NOTES` line. The Phase 5 pre-dispatch advisor covers the substantive-edit boundary; this one covers the run as a whole.
 
-1. If teammates were spawned in Phase 2/5, send **all shutdown requests in parallel** (multiple SendMessage calls with `type: "shutdown_request"` in a single message) to release them. Wait up to 30 seconds for confirmations — proceed even if some agents don't respond; the session's implicit team needs no teardown (`TeamDelete` was removed in 2.1.178). Skip if no teammates were spawned.
+1. **Teammate teardown (none needed)**: Reviewer/implementer subagents are task-scoped under the implicit-team model. They finish their assigned work and end their own turns, so there is no persistent team to release and no `shutdown_request` to originate (that SendMessage protocol is legacy since 2.1.178; `TeamDelete` was removed in the same release). Proceed to the next step.
 2. Run the following **in parallel**: `git diff --stat` (if fixes were applied), write the audit report file, and update audit history.
 
 ### Abort-mode reporting (mandatory, runs before report contents)
