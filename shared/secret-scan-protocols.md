@@ -72,7 +72,7 @@ Otherwise (when `$baseCommit` exists and changes were reverted), log with `[SECR
 
 ### Team cleanup
 
-If teammates were spawned in Phase 2, send each a `shutdown_request` via SendMessage to release them — do NOT wait for confirmations. The session's implicit team needs no teardown (`TeamDelete` was removed in 2.1.178). Phase 7 will exit non-zero per its exit-code rules.
+No teardown is needed. Reviewer/implementer subagents spawned in Phase 2 are task-scoped under the implicit-team model. They end their own turns, so there is no persistent team to release and no `shutdown_request` to originate (that SendMessage protocol is legacy since 2.1.178; `TeamDelete` was removed in the same release). Phase 7 will exit non-zero per its exit-code rules.
 
 ### Setting `abortMode=true`
 

@@ -37,7 +37,7 @@ If `FLOCK_AVAILABLE=false`, append to the Phase 7 report a banner: `To avoid per
 
 ## Steps
 
-1. If teammates were spawned, send **all shutdown requests in parallel** (multiple SendMessage calls with `type: "shutdown_request"` in a single message) to release them. Wait up to 30 seconds for confirmations — proceed even if some agents don't respond; the session's implicit team needs no teardown (`TeamDelete` was removed in 2.1.178). (Skip if no teammates were spawned for small diffs.)
+1. **Teammate teardown (none needed)**: Reviewer/implementer subagents are task-scoped under the implicit-team model. They finish their assigned work and end their own turns, so there is no persistent team to release and no `shutdown_request` to originate (that SendMessage protocol is legacy since 2.1.178; `TeamDelete` was removed in the same release). Proceed to the next step.
 2. If fixes were applied (not `nofix` mode), run `git diff --stat` to show a summary of all files the review swarm touched.
 3. If any `.claude/secret-warnings*.json` files exist, prune resolved entries per `secret-warnings-lifecycle.md` (the canonical procedure for the five sub-steps a–e: schema validation + corrupt-file backup, file-existence check + missingRunCount lifecycle + acknowledge override prompt, whole-file pattern rescan + `"other"` full-scan fallback + pattern-type non-absorption rules, atomic write-back, empty-array cleanup with hook-still-installed warning).
 

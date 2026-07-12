@@ -43,15 +43,15 @@ After all reviewers finish, output a single summary table instead of per-reviewe
 ```
 Phase 2 complete — 4 reviewers finished in 18s, 12 raw findings
 
-  Reviewer            Findings  Turns  Status
+  Reviewer            Findings  Status
   ─────────────────────────────────────────────
-  typescript              5      12/15  ✓
-  node-api                3       8/15  ✓
-  security                2       9/15  ✓
-  testing                 2       7/15  ✓
+  typescript              5      ✓
+  node-api                3      ✓
+  security                2      ✓
+  testing                 2      ✓
 ```
 
-Use `✓` for completed, `⏱` for timed out (hit `max_turns` without finishing all files — their findings are still included). While reviewers are running, output at most one interim update per 30 seconds: `Phase 2 — Reviewing... 2/4 complete, ~7 findings so far (12s)`.
+Use `✓` for completed, `⏱` for a reviewer that ended before finishing all its files (partial findings still included). While reviewers are running, output at most one interim update per 30 seconds: `Phase 2 — Reviewing... 2/4 complete, ~7 findings so far (12s)`.
 
 ## Phase 5/6 compact display
 

@@ -9,7 +9,7 @@ The core of `/jr-i18n`: the **lead** spawns **one subagent per target locale** (
 reviewer dimension can't do this — `agent-teams:team-reviewer` has no `Agent` tool,
 so the fan-out must be lead-orchestrated). Spawn in parallel (one message, multiple
 Agent calls) with `subagent_type: "agent-teams:team-reviewer"`, `model: "opus"` (or
-the `--model` override per `../../shared/model-override.md`), `max_turns: 12`. For
+the `--model` override per `../../shared/model-override.md`). For
 many locales (> 6), batch in waves. Each subagent reports via TaskCreate only —
 silent agents, noisy lead (`../../shared/display-protocol.md`).
 
