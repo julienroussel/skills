@@ -268,6 +268,8 @@ After all reviewers complete (or time out), read the full task list (TaskList). 
 2. **Root-cause clustering**: Group findings with a shared root cause. Annotate blast radius (how many files/consumers affected).
 3. **Drop low-value items**: Delete `low` severity tasks unless trivially fixable. **Exception**: never drop a finding whose lowered confidence is solely a step-0.5 unverified-external cap — its original severity governs visibility, so a `high`-severity unverified deprecation stays in its tier tagged `[unverified — needs confirmation]`.
 4. **Prioritize**: Sort by severity → confidence → security-sensitive file → churn rank.
+4.4. **Re-apply the severity rubric (lead, not reviewer)**: Before ids are minted, independently re-check every `critical` and `high` against the rubric in `../shared/reviewer-boundaries.md`. A reviewer's severity label is a **hint, not the gate**, for the same reason its `claimType` is (step 0.5) and its `codeExcerpt` is (step 0): the model that mis-rates a finding is the same one that would self-report the rating as sound. Test each `critical` against the rubric's actual criteria (production crash, data loss, security vulnerability, auth bypass, injection); if it meets none, demote it. Then check the set for **internal consistency**: if a finding rated `critical` has a less dangerous failure mode than one you left at `high`, the ranking is wrong. This matters beyond tidiness because severity drives the health-score band (a single `critical` caps the score at 40), so one inherited mis-rating rewrites the report's headline. Log any change as `[SEVERITY CORRECTED — <id or file:line>: <from> → <to>, <reason>]` and surface it in the Phase 7 report.
+4.5. **Assign finding ids**: Mint a stable, report-local id for every surviving finding: a short dimension prefix plus an ordinal (`S1`, `E7`, `T12`, `I15`, `A11Y-3`). Assign them **here**, not in Phase 2, because reviewers run in parallel and cannot coordinate an id space, and because step 1 merges findings across dimensions (a merged finding takes exactly ONE id, not one per contributing reviewer) while steps 0, 0.5 and 3 delete findings (a reviewer-minted id space would arrive full of holes and orphans). Ids are local to this run's report and are not stable across runs. Every later reference depends on them: the Phase 7 "Hidden bombs" line, the Phase 7 remediation roadmap, and the Phase 7 findings register all cite `id`, so a finding without one cannot be referenced anywhere.
 5. **Assign file ownership**: Group tasks by file for implementer dispatch.
 
 **Display**: Compact summary: `28 raw → 18 deduplicated (5 merged, 5 dropped), 3 root-cause clusters`. Update timeline.
@@ -426,7 +428,11 @@ Anti-patterns to avoid (mirrors `abort-markers.md`'s "Anti-patterns" section): d
 
 ### Report redaction
 
-Apply the canonical line-by-line console-output redaction rule from `../shared/display-protocol.md` ("Console output redaction" section) using the canonical pattern catalog in `../shared/secret-patterns.md`. Both files are already loaded at Phase 1 Track A; do NOT re-fetch them here.
+Apply the canonical line-by-line redaction rule from `../shared/display-protocol.md` ("Console output redaction" section — despite the name it covers **written report bodies as well as the console**, per that section's "Written artifacts" rule) using the canonical pattern catalog in `../shared/secret-patterns.md`. Both files are already loaded at Phase 1 Track A; do NOT re-fetch them here. This applies to the report file's contents, not merely to what is printed.
+
+Redaction replaces matched **secret values** only. File paths, line numbers, and pattern types are NOT redacted — they are the actionable content of the finding, and a finding that cannot be located is not a finding.
+
+After the report is written, apply the **Post-write redaction verification (mandatory)** procedure in `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` — it is a hard gate on emitting the report path as a deliverable, and it can halt the run with `[REPORT REDACTION FAILED]`.
 
 ### Save report
 

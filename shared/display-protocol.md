@@ -77,4 +77,6 @@ Phase 6 — Validating...
 
 **Headless/CI mode**: Where the skill supports headless/CI mode (currently `/jr-review` only — `/jr-audit` is interactive-only as of this writing), apply the redaction universally to ALL console output, not just content derived from reviewed files. Build logs in CI may be publicly accessible. Skills that add headless support later MUST adopt this universal-redaction rule.
 
-Phase 7's report redaction remains the final safety net, but earlier redaction prevents secrets from appearing in real-time console output.
+**Written artifacts, not just the console**: the same line-by-line rule applies verbatim to the **body of any report file a skill writes** (e.g. `/jr-audit`'s Phase 7 audit report), not only to text printed to the terminal. Redacting the console while writing the value to a file is the worse of the two leaks — the file persists, gets copied out of the repo, and is mailed or pasted into tickets. Read every rule on this page as covering both surfaces.
+
+Earlier redaction prevents secrets from appearing in real-time console output; a skill's post-write verification of its own report (where implemented) is the final safety net, not the first one.
