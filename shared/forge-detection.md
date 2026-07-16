@@ -109,22 +109,22 @@ flag bug hide in the "can't verify yet" bucket):
 `gh --json` emits gh's own camelCase (`headRefName`, `isDraft`) — NOT raw GitHub API fields. `glab
 -F json` emits the raw GitLab REST object, which **cannot be verified from a GitHub-only repo**. The
 rows the `/jr-review --pr` path consumes are now **confirmed against a live gitlab.com MR**
-(`ecorobotix/maya/web!4151`, 2026-07-10); every remaining `_?_`/TBD cell must still be confirmed
+(2026-07-10); every remaining `_?_`/TBD cell must still be confirmed
 against a real MR/issue before use. Listed below are exactly the gh fields the call-sites consume.
 
 Purpose | gh field | glab field | Status
 ---|---|---|---
-head branch | `headRefName` | `.source_branch` | ✅ verified 2026-07-10 (MR !4151)
-head commit SHA | `headRefOid` | `.sha` (== `.diff_refs.head_sha`) | ✅ verified 2026-07-10 (MR !4151)
+head branch | `headRefName` | `.source_branch` | ✅ verified 2026-07-10
+head commit SHA | `headRefOid` | `.sha` (== `.diff_refs.head_sha`) | ✅ verified 2026-07-10
 base repo owner / name | `baseRepository.owner.login` / `.name` | not consumed for `--pr` (route from `TARGET_PROJECT`; `.project_id` / `.references.full` exist if needed) | n/a
-draft state | `isDraft` | `.draft` (or `.work_in_progress`) | ✅ verified 2026-07-10 (MR !4151)
+draft state | `isDraft` | `.draft` (or `.work_in_progress`) | ✅ verified 2026-07-10
 review decision | `reviewDecision` | _?_ (GitLab approvals — likely derived, no 1:1) | TBD (unconsumed)
 merge state | `mergeStateStatus` | _?_ (GitLab `detailed_merge_status`?) | TBD (unconsumed)
 default branch | `defaultBranchRef.name` | _?_ (`default_branch`?) | TBD (branch-mode)
 visibility | `visibility` | `.visibility` (on the project object, per §b; not live-probed) | TBD
-changed files | `files[].path` | `GET …/merge_requests/:iid/diffs` → `.[].new_path` (NOT in `mr view`; also `.old_path` / `.deleted_file` / `.renamed_file`) | ✅ verified 2026-07-10 (MR !4151, 95 files)
-number / iid | `number` | `.iid` | ✅ verified 2026-07-10 (MR !4151)
-title / body | `title` / `body` | `.title` / `.description` | ✅ verified 2026-07-10 (MR !4151)
+changed files | `files[].path` | `GET …/merge_requests/:iid/diffs` → `.[].new_path` (NOT in `mr view`; also `.old_path` / `.deleted_file` / `.renamed_file`) | ✅ verified 2026-07-10 (95-file MR)
+number / iid | `number` | `.iid` | ✅ verified 2026-07-10
+title / body | `title` / `body` | `.title` / `.description` | ✅ verified 2026-07-10
 updated time | `updatedAt` | `.updated_at` | TBD (unconsumed)
 CI run id / result | `databaseId` / `conclusion` | _?_ | TBD (unconsumed)
 

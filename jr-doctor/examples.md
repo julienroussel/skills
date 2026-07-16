@@ -8,7 +8,7 @@ Reference output for the report shapes /jr-doctor emits. The full-pass mock and 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  /jr-doctor — Claude Code Setup Health Check
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-/jr-doctor at /Users/jroussel/.claude/skills
+/jr-doctor at ~/.claude/skills
 Mode: report-only          Repo: ~/.claude/skills (in-repo, has-remote)
 
 Global setup
