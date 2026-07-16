@@ -36,6 +36,7 @@ Some markers are rendered by their owning protocol independently of `abortReason
 - `[AUDIT TRAIL REJECTED — PATH VALIDATION]` — Phase 5.6 schema-validation block / User-continue path behavior 2; emitted when a writer's `file` value fails shared path validation.
 - `[SECRET-WARNINGS BACKUP FAILED]` — Phase 5.6 / Phase 7 step 3(a); emitted when the corrupt-file backup `mv`/`cp` itself fails (disk full, permission error, filename collision).
 - `[AUDIT-HISTORY BACKUP FAILED]` — `shared/audit-history-schema.md` quarantine protocol (Read-side integrity check); emitted when the corrupt-file backup `mv` itself fails (disk full, permission error, filename collision). Direct analogue of `[SECRET-WARNINGS BACKUP FAILED]`. Halts the run with non-zero exit.
+- `[REPORT REDACTION FAILED]` — `/jr-audit` Phase 7 "Post-write redaction verification"; emitted when the post-write scan of the saved report still matches a catalogued secret pattern and the value cannot be redacted without destroying the finding. The report is NOT emitted as a deliverable. Halts the run with non-zero exit. Distinct from the `[SECRET DETECTED — *]` markers, which concern secrets in the **reviewed codebase**; this one concerns a secret the audit itself wrote into **its own output**.
 
 ## Exit-code contribution
 
