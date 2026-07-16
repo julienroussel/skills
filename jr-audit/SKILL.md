@@ -102,7 +102,7 @@ Parse arguments as space-separated tokens. Recognized flags:
 - Any bare path prefix — Limits audit to files under that path. Example: `src/hooks/`.
 - Any bare number — Max validation retries (default: 3). Example: `5`.
 
-Examples: `/jr-audit`, `/jr-audit nofix`, `/jr-audit src/api/`, `/jr-audit --only=security,node-api`, `/jr-audit quick --exclude=e2e/**`, `/jr-audit src/ nofix --only=typescript,testing 5`, `/jr-audit --refresh-baseline`, `/jr-audit nofix --out=~/void/audit/web.md`
+Examples: `/jr-audit`, `/jr-audit nofix`, `/jr-audit src/api/`, `/jr-audit --only=security,node-api`, `/jr-audit quick --exclude=e2e/**`, `/jr-audit src/ nofix --only=typescript,testing 5`, `/jr-audit --refresh-baseline`, `/jr-audit nofix --out=~/reports/audit/web.md`
 
 If both a scope path and `--exclude` are provided, first filter to the path prefix, then remove excluded patterns.
 
@@ -442,7 +442,7 @@ The human-readable report goes to `.claude/audit-report-YYYY-MM-DD.md` by defaul
 
 **When `--out=<path>` is set**: let `$OUT` be the sanitised absolute target; if `$OUT` names an existing directory or ends with `/`, append the default `audit-report-YYYY-MM-DD.md` inside it. Run `mkdir -p "$(dirname "$OUT")"` (grant `Bash(mkdir -p *)`), then resolve the repo root with `git rev-parse --show-toplevel` and branch:
 - **`$OUT` inside the repo tree**: apply the same `.gitignore`-enforcement protocol as the default case, but against `$OUT`. Run `git ls-files --error-unmatch "$OUT" 2>/dev/null` and warn if tracked (same secret-leak reason); if `git check-ignore -q "$OUT"` returns non-zero, inform the user and offer to add the path to `.gitignore`.
-- **`$OUT` outside the repo tree** (e.g. `~/void/...`): skip `.gitignore`-enforcement (the file is not committable from this repo). Emit one advisory line: the report contains finding descriptions, code excerpts, and potentially redacted secret locations, is being written to `$OUT` outside the repository, and (if `$OUT` lies inside a different git repository) will NOT be gitignore-protected there.
+- **`$OUT` outside the repo tree** (e.g. `~/reports/...`): skip `.gitignore`-enforcement (the file is not committable from this repo). Emit one advisory line: the report contains finding descriptions, code excerpts, and potentially redacted secret locations, is being written to `$OUT` outside the repository, and (if `$OUT` lies inside a different git repository) will NOT be gitignore-protected there.
 
 Then write the audit report to `$OUT` verbatim (overwrite if it exists). Phase 7 report item 18 ("Report file") prints the actual saved path.
 

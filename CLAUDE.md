@@ -6,6 +6,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collection of personal Claude Code skills (slash commands) — `/jr-audit`, `/jr-review`, `/jr-ship`, plus the diagnostic `/jr-doctor` and the meta-audit `/jr-skill-audit` — and companion shell CLIs that partner with those skills. Each skill is a `SKILL.md` file in its own directory; companion CLIs live under `bin/`. There is no application code, no build system, no tests — just markdown skill definitions and shell scripts.
 
+## Always redact — never name a private identifier
+
+These skills must be generic: they run in anyone's repo, so a name that means something only to their author is a bug. This repo is also public (`gh repo view --json visibility`), which makes the same mistake a leak. **Never write a private identifier into any file here** — skill bodies, shared protocols, edge-case tables, examples, sample console output, `bin/` scripts, commit messages, issue bodies.
+
+| Never write | Write instead |
+|---|---|
+| A username, or an absolute path under a home dir | `~/…`, or derive it: `${HOME}`, `${PWD}`, `${CLAUDE_SKILL_DIR}`. (This repo's own public clone URL in `README.md` is fine — the owner handle is inherently public.) |
+| A real private repo/project name as an example | a neutral placeholder repo/path, or `<repo>` |
+| An employer, org, customer, or internal hostname | nothing — cut it; say what kind of thing it was only if the claim needs it |
+| A private MR/issue/PR ref | its *date* alone (see below) |
+
+**Redaction does not override "cite your sources" — it changes what the citation carries.** When a claim's evidence is a private artifact, keep the claim and its **date** and cut the identity outright: `confirmed against a live gitlab.com MR (2026-07-10)`, `Empirically observed (2026-07-16): …`. The date is the whole citation — it lets a reader judge staleness, which is the job the identity was not doing anyway.
+
+**Do not leave a redaction artifact.** Swapping a name for a vague gesture ("a private ETL repo", "a private gitlab.com MR") is the worst outcome: untraceable, so it is not a citation; still pointing at something private, so it is not generic; and often redundant with the sentence around it.
+
+Conversely, don't date-stamp a fact that is trivially re-checkable and non-volatile (the repo's own visibility); a stale stamp on a live fact reads as authoritative and misleads. A date earns its place when the fact drifts **and** a reader must judge staleness — not as a badge on every assertion.
+
+Sweep for the *class*, not the instance — usernames appear under several spellings, so grep home-dir paths, org names, and private hostnames together rather than one known string. Enforced by review, not by a hook: it is on the author.
+
 ## Repo structure
 
 ```
@@ -85,8 +104,8 @@ jr-skill-audit/protocols/plugin-scope.md — Track B `--plugin` scope-resolution
                                      `--plugin` is set (conditional, mirrors jr-review convergence-protocol.md).
                                      Anchors: `Locate the marketplace` AND `Enumerate git-tracked skills`.
 jr-skill-audit/protocols/personal-project-scope.md — Track B personal/project scope-resolution procedure
-                                     (scope-root parent-walk, enumeration/dedupe, argument-set + --scope-only
-                                     filters, cross-scope conflict probe, bare-positional resolution, per-scope
+                                     (scope-root parent-walk, auto-scope default, enumeration/dedupe, argument-set +
+                                     scope filters, cross-scope conflict probe, bare-positional resolution, per-scope
                                      gitignore exclusion); read at Phase 1 Track A ONLY when `--plugin` is NOT set
                                      (complementary conditional to plugin-scope.md). Anchors: `Scope roots` AND
                                      `Gitignore exclusion`.
@@ -300,7 +319,7 @@ Optional: `pr-review-toolkit@claude-plugins-official` (silent-failure-hunter, ty
 
 ## Key design decisions
 
-- `/jr-skill-audit` is the *opinionated* meta-audit counterpart to `/jr-doctor`'s narrow factual checks (Group I). `/jr-doctor` answers "is this skill objectively broken?" via yes/no file reads; `/jr-skill-audit` answers "what could be better?" via 7 reviewer dimensions (frontmatter, advisor-coverage, token-efficiency, shared-drift, feature-adoption, safety-protocols, model-routing) plus a lead-synthesized `scope-resolution` dimension that fires on personal/project shadow collisions. Reviewers cite **live Anthropic documentation** — the skills doc and the claude-code CHANGELOG are fetched at Phase 1 Track C and cached at `jr-skill-audit/cache/refs.json` (7-day TTL, `--refresh-refs` to force, stale-cache fallback when offline). Phase 3 sanity-check validates every finding's `source` citation against the cache so reviewers can't hallucinate features. Phase 4 has a [Clarify] sub-flow for `clarify: true` findings — judgment-call recommendations are surfaced via `AskUserQuestion` so the user resolves workflow-dependent calls in-line rather than at the end. Findings-only in v1 — no auto-fix, no Phase 5/6. Skill files are markdown specifications without a test harness. Scope: personal `~/.claude/skills/*/SKILL.md` + project `<walked-dir>/.claude/skills/*/SKILL.md` (walks from CWD up to repo root, matching Claude Code runtime semantics), excluding gitignored / externally-maintained skills like `find-skills/` — Phase 1 Track B drops them. Narrow with `--scope-only=personal|project`. Same-name collisions across scopes emit a `medium`/`clarify:true` `scope-resolution` finding (lead-synthesized, not a reviewer dimension). Plugin skills out of scope (tracked in issue #18).
+- `/jr-skill-audit` is the *opinionated* meta-audit counterpart to `/jr-doctor`'s narrow factual checks (Group I). `/jr-doctor` answers "is this skill objectively broken?" via yes/no file reads; `/jr-skill-audit` answers "what could be better?" via 7 reviewer dimensions (frontmatter, advisor-coverage, token-efficiency, shared-drift, feature-adoption, safety-protocols, model-routing) plus a lead-synthesized `scope-resolution` dimension that fires on personal/project shadow collisions. Reviewers cite **live Anthropic documentation** — the skills doc and the claude-code CHANGELOG are fetched at Phase 1 Track C and cached at `jr-skill-audit/cache/refs.json` (7-day TTL, `--refresh-refs` to force, stale-cache fallback when offline). Phase 3 sanity-check validates every finding's `source` citation against the cache so reviewers can't hallucinate features. Phase 4 has a [Clarify] sub-flow for `clarify: true` findings — judgment-call recommendations are surfaced via `AskUserQuestion` so the user resolves workflow-dependent calls in-line rather than at the end. Findings-only in v1 — no auto-fix, no Phase 5/6. Skill files are markdown specifications without a test harness. Scope: personal `~/.claude/skills/*/SKILL.md` + project `<walked-dir>/.claude/skills/*/SKILL.md` (walks from CWD up to repo root, matching Claude Code runtime semantics), excluding gitignored / externally-maintained skills like `find-skills/` — Phase 1 Track B drops them. **Auto-scope default**: an unfiltered run from a git repo other than the skills repo, when that repo has its own skills, audits project ALONE — only project scope depends on `$PWD`. Personal is still enumerated, so shadow detection fires. Overrides, the auto-narrow fallback, and edge cases: `jr-skill-audit/protocols/personal-project-scope.md` (canonical). Same-name collisions across scopes emit a `medium`/`clarify:true` `scope-resolution` finding (lead-synthesized, not a reviewer dimension). Plugin skills out of scope (tracked in issue #18).
 - `/jr-audit` and `/jr-review` share the same cache files and stack detection logic (Track C). Changes to one skill's caching format must be mirrored in the other.
 - Both `/jr-audit` and `/jr-review` support `--converge[=N]`: a re-review loop that wraps Phases 2–6 in a repeatable cycle with auto-approval. Both default effort-adaptively from `CLAUDE_EFFORT` (`low`/`medium` → 2, `high` → 3, `xhigh`/`max` → 5). `/jr-review` caps at 10 and runs a fresh-eyes security pass after convergence. `/jr-audit` caps at 5 — lower because the per-iteration blast radius is higher.
 - `/jr-review` supports `--branch[=<base>]` for reviewing the full feature-branch diff (committed-on-branch + working tree) as one scope — closes the gap between bare `/jr-review` (working tree only, misses committed work) and `--pr=N` (remote read-only, misses unpushed/uncommitted work). Default `<base>` resolves via `gh pr list --head` (linked PR) or falls back to `origin/<default-branch>` via `gh repo view`. Aborts if local HEAD is behind upstream — local files must reflect HEAD for codeExcerpt verification to be safe. Mutually exclusive with `--pr`. Implementer + validation run normally (fixes apply locally); Phase 8 creates standalone issues, NOT a PR comment.
