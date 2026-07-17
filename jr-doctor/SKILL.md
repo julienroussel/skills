@@ -35,7 +35,7 @@ allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(gi
     - ~/.claude/hooks/{no-claude-attribution,cbm-code-discovery-gate,cbm-session-reminder} — existence + executable
     - <cwd>/CLAUDE.md, <cwd>/.gitignore          — per-repo
   Env vars probed:
-    - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS       — required (=1) for agent-teams plugin to provide team-* subagents (implicit-team model)
+    - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS       — required (=1) for agent-teams plugin to provide team-* subagent types
     - CLAUDE_CODE_NO_FLICKER                     — recommended (=1) UI preference for cleaner output
     - CLAUDECODE, CLAUDE_CODE_ENTRYPOINT         — informational (set automatically inside Claude Code)
     - BASH_DEFAULT_TIMEOUT_MS, BASH_MAX_TIMEOUT_MS  — informational (long /audit-/review-/jr-ship validation runs)
@@ -322,7 +322,7 @@ done
 - If ≥1 `TUNABLE:` lines → emit `ℹ Optional tunables       (N set)` followed by the values, indented 4 spaces.
 - The teaser block (BASH_MAX_TIMEOUT_MS / MCP_TIMEOUT suggestions) appears AFTER the printed lines if EITHER of those two specific vars is still unset — so a user with `MAX_THINKING_TOKENS=20000` but no BASH/MCP overrides still gets the suggestion. Drop a suggestion from the teaser the moment its var is set.
 
-**`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — REQUIRED `=1` for the `agent-teams` plugin to provide `team-*` subagent types (and, with it set, the session's one implicit team — teammates are spawned via the Agent tool's `name` param; `TeamCreate`/`TeamDelete` were removed in 2.1.178). Without this env var, `/jr-audit` and `/jr-review` Phase 2 reviewer dispatch will fail. Hint: `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (add to shell profile so it persists across sessions). ✗ if unset.
+**`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — REQUIRED `=1` for the `agent-teams` plugin to provide `team-*` subagent types (`TeamCreate`/`TeamDelete` were removed in 2.1.178; work-producing subagents are spawned **without `name:`** per `~/.claude/skills/shared/subagent-reporting.md` "Spawn rule" — do not describe them as named teammates, which is the model that lost findings silently in issue #70). Without this env var, `/jr-audit` and `/jr-review` Phase 2 reviewer dispatch will fail. Hint: `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (add to shell profile so it persists across sessions). ✗ if unset.
 
 **`CLAUDE_CODE_NO_FLICKER`** — Recommended `=1` UI preference (cleaner output, no terminal redraw flicker). Hint: `export CLAUDE_CODE_NO_FLICKER=1`. ⚠ if unset.
 

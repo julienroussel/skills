@@ -194,7 +194,8 @@ Skills that grant `allowed-tools` pre-authorize the listed tools without per-cal
    -->
    ```
    This is documentation for future-you: a year from now, you'll wonder why some destructive op isn't pre-authorized. The note explains the omission was intentional.
-4. **Auto-authorize agent-management + scoped writes.** `AskUserQuestion`, `Agent`, `advisor`, `TaskCreate`, `TaskList`, `SendMessage`, `Write(.claude/**)`, `Edit(.claude/**)`, `Write(.gitignore)`, `Edit(.gitignore)` are needed by every documented phase; absent these the skill stalls on permission prompts. (Teammates are spawned via the Agent tool's `name` param — the session's one implicit team; `TeamCreate`/`TeamDelete` were removed in 2.1.178.)
+4. **Auto-authorize agent-management + scoped writes.** `AskUserQuestion`, `Agent`, `advisor`, `Write(.claude/**)`, `Edit(.claude/**)`, `Write(.gitignore)`, `Edit(.gitignore)` are needed by every documented phase; absent these the skill stalls on permission prompts. Do **not** grant `TaskCreate`/`TaskList`/`TaskGet`/`TaskUpdate`: the lead does not have them, no `agent-teams` reviewer role has `TaskCreate`, and granting them in `allowed-tools` advertises a reporting channel that silently loses findings.
+5. **Spawn work-producing subagents WITHOUT `name:`** (canonical: `shared/subagent-reporting.md`). A subagent's final response returns to the lead only when it is unnamed; `name:` makes it a persistent teammate that goes idle instead of returning, and its findings are lost with no error anywhere (issue #70). `name:` buys mid-flight addressability, which no documented phase needs. Give each spawn a distinct `description` instead — that is what the progress display renders. The lead must also **roll-call** its spawn list against the results actually returned: a subagent that returns nothing is `UNREPORTED`, never a clean dimension, and that state must be rendered, must set a non-zero exit, and must block every clean-result path. `TeamCreate`/`TeamDelete` were removed in 2.1.178 and must not be re-introduced.
 
 ---
 
@@ -222,6 +223,17 @@ Two skills exist specifically to keep this architecture from drifting:
 | `/jr-skill-audit` | Opinionated multi-dimension audit (frontmatter, advisor-coverage, token-efficiency, shared-drift, feature-adoption, safety-protocols). Cites live Anthropic docs (skills doc, CHANGELOG) at runtime | Run after structural changes to skills; `/jr-skill-audit <skill>` for one skill |
 
 **Run both of these regularly.** The architecture pays for itself only if drift gets caught early. A `shared-drift-reviewer` finding ("inline duplication of `untrusted-input-defense.md` content at `/jr-audit/SKILL.md:432`") is the canonical signal that someone forgot to reference the shared file and copy-pasted instead.
+
+### Re-verifying a harness claim
+
+Some shared files assert **harness behaviour** — which tools a role has, whether a spawn returns its result, what an env var exposes, what a CLI's JSON fields are called. These are volatile: they can change with any Claude Code or plugin release, and unlike a claim about repo content they cannot be settled by reading the repo. `shared/subagent-reporting.md` ("Verified behaviour") and `shared/forge-detection.md` (§c) both carry dated, sourced tables of this kind.
+
+When re-verifying one after an upgrade:
+
+- **Vary one parameter at a time.** The `subagent-reporting.md` matrix is a 2×2 precisely because a three-cell result would not have separated `name:` from `subagent_type`, and the wrong conclusion (blame the plugin) was the tempting one.
+- **Absence is not evidence.** A result that has not arrived within a few minutes does not mean the channel is dead — it may simply be queued past your turn boundary. Wait across a turn boundary before recording any negative verdict. Likewise, `TaskOutput` returning `No task found` is not evidence an agent is gone: it returns that for agents that are alive and answer a message minutes later.
+- **Confirm a negative before recording it.** If an agent appears not to have delivered, ask it directly whether it finished and what it produced. Both times this repo recorded a negative from silence alone, the negative was wrong.
+- **Date-stamp and name the version** (`Verified 2026-07-16 against agent-teams v1.0.3`), so a later reader can judge staleness rather than inherit a stale certainty.
 
 ---
 

@@ -29,7 +29,7 @@ These unconditional defaults are critical because multiple paths reach Phase 7 w
 
 ## Phase 7 exit-code rules
 
-Phase 7 exits with a non-zero status when any of the following occurred during the run: `abortMode=true`, `convergenceFailed=true`, any secret halt, any schema-validation backup was triggered, any `[ABORT — HEAD MOVED]` marker was rendered, `userContinueWithSecret=true` (latched by any of Phase 1 user-Continue at the interactive secret pre-scan prompt, Phase 5.6 user-Continue, Phase 6 regression-fix user-Continue, Convergence Phase 5.6 user-Continue, or Fresh-eyes fix cycle user-Continue), or any `[AUDIT TRAIL REJECTED — PATH VALIDATION]` marker was rendered.
+Phase 7 exits with a non-zero status when any of the following occurred during the run: `abortMode=true`, `convergenceFailed=true`, **`unreportedCount > 0`** (any spawned subagent returned nothing — the run did not cover what it claims; `../../shared/subagent-reporting.md`. Load-bearing under headless/CI, where the exit code is the only channel a machine reads: without it, a review whose entire swarm went silent exits 0 and CI records a green review over an unreviewed diff), any secret halt, any schema-validation backup was triggered, any `[ABORT — HEAD MOVED]` marker was rendered, `userContinueWithSecret=true` (latched by any of Phase 1 user-Continue at the interactive secret pre-scan prompt, Phase 5.6 user-Continue, Phase 6 regression-fix user-Continue, Convergence Phase 5.6 user-Continue, or Fresh-eyes fix cycle user-Continue), or any `[AUDIT TRAIL REJECTED — PATH VALIDATION]` marker was rendered.
 
 ## Per-session filename banner (flock unavailable)
 
@@ -37,7 +37,7 @@ If `FLOCK_AVAILABLE=false`, append to the Phase 7 report a banner: `To avoid per
 
 ## Steps
 
-1. **Teammate teardown (none needed)**: Reviewer/implementer subagents are task-scoped under the implicit-team model. They finish their assigned work and end their own turns, so there is no persistent team to release and no `shutdown_request` to originate (that SendMessage protocol is legacy since 2.1.178; `TeamDelete` was removed in the same release). Proceed to the next step.
+1. **Subagent teardown (none needed)**: Reviewer/implementer subagents are spawned **without `name:`** (`../../shared/subagent-reporting.md` "Spawn rule"), so they are tasks that terminate on return — not teammates. There is nothing to release and no `shutdown_request` to originate (`TeamCreate`/`TeamDelete` were removed in 2.1.178). This step is retained as a documented no-op **only** to preserve the `steps 1, 2, 4, 6 / skip 3` numbering contract that every abort-mode site references; do not renumber or delete it. Proceed to the next step.
 2. If fixes were applied (not `nofix` mode), run `git diff --stat` to show a summary of all files the review swarm touched.
 3. If any `.claude/secret-warnings*.json` files exist, prune resolved entries per `secret-warnings-lifecycle.md` (the canonical procedure for the five sub-steps a–e: schema validation + corrupt-file backup, file-existence check + missingRunCount lifecycle + acknowledge override prompt, whole-file pattern rescan + `"other"` full-scan fallback + pattern-type non-absorption rules, atomic write-back, empty-array cleanup with hook-still-installed warning).
 
@@ -80,7 +80,7 @@ Clean:     Phase 1 ✓ (3s) → Phase 2 ✓ (18s) → Phase 3 ✓ (1s) → Phase
 Converge:  Phase 1 ✓ (3s) → Pass 1 [P2-6] ✓ (45s) → Pass 2 [P2-6] ✓ (22s) → Pass 3 [P2-3] ✓ (8s) → Phase 7 ✓ (2s)  Total: 80s
 ```
 
-**Compact report** (for `quick` or `nofix` mode): Output only Mode, Reviewed (files + reviewers), Findings (summary table), User decisions. Skip Cross-file impacts, Coverage gaps, Auto-learned, Fixed, Contested, Validation, Diff summary, Skipped, and Remaining failures sections.
+**Compact report** (for `quick` or `nofix` mode): Output only Mode, Reviewed (files + reviewers), Findings (summary table), User decisions, **and Coverage-gaps item 7(b) whenever `unreportedCount > 0`**. Skip Cross-file impacts, Auto-learned, Fixed, Contested, Validation, Diff summary, Skipped, and Remaining failures sections, and skip Coverage-gaps item 7(a) (file-level gaps). Item 7(b) is the one section the compact form may never drop: `quick` mode narrows *how much* is reviewed, never whether the report admits a dimension went missing.
 
 **Full report** (default): Summarize:
 
@@ -90,7 +90,7 @@ Converge:  Phase 1 ✓ (3s) → Pass 1 [P2-6] ✓ (45s) → Pass 2 [P2-6] ✓ (2
 4. **Reviewed**: Number of files examined, list of reviewer agents and their dimension (only the ones that were spawned). If `--converge`, show per-iteration reviewer breakdown.
 5. **Findings**: Total findings per reviewer, breakdown by severity and confidence, number deduplicated/dropped. If `--converge`, show cumulative totals across all iterations. **Claim verification** (when external-authority claims were found): confirmed / refuted (`[REJECTED — CLAIM REFUTED BY SOURCE]`) / capped-to-`speculative` (`[unverified external claim]`) counts; the sources cited (verification is default-on).
 6. **Cross-file impacts**: Any consumer breakage detected outside the direct diff
-7. **Coverage gaps**: Files that reviewers failed to examine (from Phase 3 coverage check)
+7. **Coverage gaps**: (a) Files that reviewers failed to examine (from Phase 3 coverage check). (b) **Every member of the run-level `unreported` set**, each rendered by name — sourced from that set per rule 1 of `../../shared/subagent-reporting.md`, which owns that rule and the reason for it. Render each member using one of: `<dimension> returned nothing — that dimension was NOT reviewed` / `<implementer> returned nothing — its N findings were NOT attempted` / `simplification agent returned nothing — the Phase 5.5 pass did NOT run`. Keep these strings distinct — `phase8-followups.md` matches them by source. A member whose roll-call site already defines its own string (the fresh-eyes agent's `Fresh-eyes: UNREPORTED — …`, `../convergence-protocol.md`) is rendered as that site defines it; do not restate it here. **Mandatory whenever non-empty, in the compact report as well as the full one** — a run that hides an unreported dimension because it was in `quick` mode has reproduced issue #70. An empty (b) means every spawned subagent accounted for; it never means "no reviewers were spawned".
 8. **User decisions**: Number of tasks approved, rejected, aborted (convergence-pass auto-approvals counted separately)
 9. **Auto-learned**: Any new suppressions added to `.claude/review-config.md` (or "none" if no patterns detected)
 10. **Fixed**: List of improvements applied, grouped by category. If `--converge`, group fixes by iteration (or "N/A — findings-only mode" if `nofix`)

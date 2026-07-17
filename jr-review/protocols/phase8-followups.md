@@ -58,6 +58,14 @@ For each approved candidate:
 
 **In PR mode** (`--pr`): Use `gh pr comment <number>` to post a **single consolidated comment** on the PR with all findings formatted as a checklist. Do not create one comment per finding. Before posting, redact any strings matching the canonical pattern catalog from `../../shared/secret-patterns.md` from the comment body. Replace with `[REDACTED]`.
 
+**Incompleteness caveat (mandatory)**: when `unreportedCount > 0`, prepend a caveat to the comment body. **Every member of the run-level `unreported` set gets a line** — sourced from that set per rule 1 of `../../shared/subagent-reporting.md`, which owns that rule and the reason for it. Split the lines by the member's source and never collapse them — a lost implementer does not mean the dimension went unreviewed:
+- reviewer-sourced: `⚠ Incomplete review — the following dimensions returned nothing and were NOT reviewed: <names>. The findings below cover only the dimensions that reported.`
+- implementer-sourced: `⚠ N finding(s) below were assigned to a fix agent that returned nothing and were NOT attempted.`
+- simplification-sourced: `⚠ The Phase 5.5 simplification pass did NOT run — its agent returned nothing.`
+- any member fitting none of the above: one line in the same shape, naming what was lost and what consequently did not happen. The groups are a presentation aid, not a partition — never drop a member because no group claims it.
+
+Never post a findings checklist that reads as complete coverage while any dimension is `UNREPORTED` (`../../shared/subagent-reporting.md` rule 3). The caveat must travel with the artifact: the Phase 7 report is console prose the operator saw, but a PR comment is read by reviewers who never see that console, and a lost `security-reviewer` otherwise yields a checklist that looks like a finished security review and gets approved as one. This is independent of the public-repo omission path above — both can fire on the same comment, and each needs its own line. (`phase7-cleanup-report.md`'s Coverage-gaps item 7(b) renders the same set and keeps its strings distinct by the same split; match them by source.)
+
 **In normal mode**: Run `gh issue create --label review-followup` with:
 - A concise title describing the problem and desired outcome
 - A body containing: Context (which review, date), Problem description, Affected files, Suggested fix, and Priority

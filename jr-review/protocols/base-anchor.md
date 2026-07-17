@@ -29,8 +29,8 @@ case $ec in
     [ -z "$abortReason" ] && abortReason="anchor-error"
     cat "$anchorErr" >&2   # surface the human [REVERT BLOCKED — *] marker
     rm -f "$anchorErr"
-    # Caller transfers control to Phase 7 in abort mode (any Phase 2 subagents are
-    # task-scoped and end their own turns, so no shutdown_request teardown). Phase 7
+    # Caller transfers control to Phase 7 in abort mode (Phase 2 subagents are spawned
+    # without name:, so they are tasks that terminate on return; no teardown). Phase 7
     # runs steps 1, 2, 4, and 6 only; step 3 is skipped so secret-warnings.json
     # audit trail persists.
     ;;
