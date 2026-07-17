@@ -11,19 +11,21 @@ jr-rollup — cross-app health rollup from /jr-audit snapshots
 
 USAGE
   jr-rollup [ROOT] [--json]
-  jr-rollup APP_DIR [APP_DIR ...] [--json]
+  jr-rollup APP_DIR APP_DIR [APP_DIR ...] [--json]
   jr-rollup --help
 
 Reads <app>/.claude/health.json for each discovered app and prints an estate
 table (worst-first) plus a portfolio summary. Read-only; never triggers an audit.
 
-DISCOVERY (when no explicit app dirs are given; ROOT defaults to CWD)
+DISCOVERY (one positional is ROOT; none means ROOT is CWD; two or more are explicit app dirs)
   1. git submodules listed in ROOT/.gitmodules, else the UNION of:
   2. any dir already holding a health snapshot (<dir>/.claude/health.json, name-agnostic), plus
   3. standard component dirs with a manifest — container subdirs (apps|packages|services|libs/*)
      AND standard top-level dirs (e2e, docs, web, api, mobile, backend, frontend, server, client,
      gateway, admin, dashboard, infra, infrastructure, devops, ops, functions, lib, cli, worker(s),
-     tools, scripts, app), plus ROOT itself if it is a component; else
+     tools, scripts, app). Rule 3 is skipped entirely when ROOT itself holds a valid, complete
+     snapshot, whose audit already covered ROOT's whole tree; an unreadable or incomplete one
+     does not count. Plus ROOT itself if it is a component; else
   4. ROOT itself (single-app repo)
 
 OPTIONS
@@ -34,7 +36,10 @@ REQUIRES  jq, git, column
 EOF
 }
 
-die() { printf 'jr-rollup: %s\n' "$1" >&2; exit "${2:-1}"; }
+# $1 interpolates argv (paths/flags), which the caller typed themselves: they can already print
+# anything to their own terminal, so this strip only tidies accidental control bytes and is
+# deliberately NOT the snapshot sanitiser the report paths use (see CLEAN_DEF).
+die() { printf 'jr-rollup: %s\n' "$(printf '%s' "$1" | LC_ALL=C tr -d '\000-\010\013-\037\177')" >&2; exit "${2:-1}"; }
 for dep in jq git column; do command -v "$dep" >/dev/null 2>&1 || die "missing dependency '$dep'" 2; done
 
 # a dir is a "component" if it has a recognised manifest or an existing health snapshot
@@ -44,6 +49,63 @@ has_component() {
   [ -f "$d/go.mod" ]        || [ -f "$d/Cargo.toml" ]    || [ -f "$d/pom.xml" ]        || \
   [ -f "$d/build.gradle" ]  || [ -f "$d/.claude/health.json" ]
 }
+
+# --- canonical snapshot gates --------------------------------------------------------------------
+# Exactly two sites decide "has this app been audited?": the record loop (which needs to know WHICH
+# gate failed, so it applies them one at a time) and the discovery guard (which needs only the
+# verdict). Both read these definitions. A site that re-implements a subset drifts out of agreement
+# with the estate table it exists to agree with.
+#
+# Nothing stops a snapshot from holding a JSON *stream*, and `jq -e` takes its exit status from the
+# last value alone while every downstream jq acts on all of them — so a two-object file whose last
+# object is clean would pass every gate and still emit the first, unchecked, as its own app row.
+ONE_VALUE_GATE='length==1'
+# Type-check every field the consumer indexes, compares or renders, so a malformed one lands on the
+# already-safe invalid path. These snapshots are LLM-written: an unchecked field either aborts the
+# entire estate view (indexing a string) or, worse, renders GREEN in silence — jq orders strings
+# above numbers, so healthScore:"eighty" passes the >70 band test. `.unreported` is tested directly
+# rather than through `// []`, which alternates on false as well as null and would coerce
+# `unreported:false` to a clean run. Leaves are checked wherever the parent object is: a
+# schema-valid snapshot must not be able to carry a garbage `standardisation.offTarget` or `commit`
+# past a gate that vouches for `counts` in the same breath.
+SCHEMA_GATE='.schemaVersion==1
+      and (.unreported == null or ((.unreported|type)=="array" and (.unreported|all(type=="string"))))
+      and ((.healthScore|type)     as $t | $t=="null" or $t=="number")
+      and ((.counts|type)          as $t | $t=="null" or $t=="object")
+      and (.counts == null or ([.counts.critical, .counts.high, .counts.medium] | all(. == null or type=="number")))
+      and ((.standardisation|type) as $t | $t=="null" or $t=="object")
+      and (.standardisation == null or ([.standardisation.offTarget, .standardisation.components] | all(. == null or type=="number")))
+      and ((.commit|type)          as $t | $t=="null" or $t=="string")
+      and ((.date|type)            as $t | $t=="null" or $t=="string")'
+INCOMPLETE_GATE='(((.unreported // []) | length) > 0) or (.healthScore == null)'
+
+# is_audited <dir>: true only for a snapshot that passes every gate above. "Audited" has to mean
+# one thing: an unreadable, malformed or partly-silent snapshot is evidence that no audit is on
+# record for that tree, not evidence that one ran.
+is_audited() {
+  local h="$1/.claude/health.json"
+  [ -f "$h" ] || return 1
+  jq -e -s "$ONE_VALUE_GATE" "$h" >/dev/null 2>&1 || return 1
+  jq -e "$SCHEMA_GATE" "$h" >/dev/null 2>&1 || return 1
+  ! jq -e "$INCOMPLETE_GATE" "$h" >/dev/null 2>&1
+}
+
+# --- canonical output sanitiser ------------------------------------------------------------------
+# WHAT THIS DEFENDS: health.json is written by our own /jr-audit, is gitignored, and is rendered to
+# the user's own terminal. Forging a row takes a multi-hop chain (inject /jr-audit past its
+# untrusted-input defenses → hostile dimension name → snapshot → here → terminal). This is
+# defense-in-depth on a trusted-tool-written local file, not a front-line boundary.
+# IN SCOPE: characters that can forge a standalone line or move the cursor between lines: C0, DEL,
+# every C1 (incl. NEL U+0085, and CSI U+009B, which opens a control sequence with no ESC), LS/PS
+# (U+2028/9). No other layer covers these. `@tsv` escapes only \t \n \r \\; a bytewise `tr` cannot
+# see a C1 at all (each is C2 80–C2 9F in UTF-8); and jq's JSON encoder escapes C0/DEL but emits
+# C1 and LS/PS raw. That is why the sanitiser, not any of them, is the single rule.
+# OUT OF SCOPE, deliberately: BiDi overrides (U+202E), zero-width characters, homoglyphs. They
+# garble text within a line but cannot forge a standalone one. Do not re-open them as a finding.
+# `tostring` so a wrong-typed leaf renders as harmless text rather than erroring the whole view.
+# Write `\\x{…}`, not `\x{…}`: `\x` is not a jq string escape, and jq reads a lone `\u` in a
+# character class as a literal `u` (which is how an earlier pattern ate the `u` in "unscored").
+CLEAN_DEF='def clean: tostring | gsub("[\\x{0}-\\x{1f}\\x{7f}-\\x{9f}\\x{2028}\\x{2029}]";" ");'
 
 JSON=0
 declare -a POS=()
@@ -63,9 +125,25 @@ cand=""                              # newline-delimited candidate dirs
 addc() { cand="${cand}${1%/}"$'\n'; }
 ROOT="$(pwd)"
 
-if [ "${#POS[@]}" -gt 0 ]; then
-  for a in "${POS[@]}"; do addc "$a"; done
+if [ "${#POS[@]}" -gt 1 ]; then
+  # Resolve each app dir the way ROOT is resolved below, so an app's reported `path` is the same
+  # absolute identity at either arity: with one positional the dir becomes ROOT and is resolved, so
+  # leaving these relative made adding a second positional silently rename the first app. An
+  # unresolvable dir is kept as typed and lands on the never-audited row it produces today.
+  for a in "${POS[@]}"; do
+    ra="$(cd "$a" 2>/dev/null && pwd)" || ra=""
+    addc "${ra:-$a}"
+  done
 else
+  if [ "${#POS[@]}" -eq 1 ]; then
+    [ -d "${POS[0]}" ] || die "not a directory: ${POS[0]}" 2
+    # ROOT is interpolated raw ("$ROOT/$p"), unlike candidates, which addc strips. Resolve it:
+    # `.`/`..` are ordinary spellings of `jr-rollup [ROOT]` but basename them to themselves, so
+    # two spellings of one dir would otherwise produce two different estate tables. `|| die`
+    # because `set -e` exempts a failing command in a `&&`/`||` list, so a bare `cd` in the
+    # substitution would exit silently.
+    ROOT="$(cd "${POS[0]}" && pwd)" || die "cannot resolve: ${POS[0]}" 2
+  fi
   if [ -f "$ROOT/.gitmodules" ]; then
     while IFS= read -r p; do [ -n "$p" ] && addc "$ROOT/$p"; done \
       < <(git -C "$ROOT" config -f .gitmodules --get-regexp 'submodule\..*\.path$' 2>/dev/null | sed -E 's/^[^[:space:]]+[[:space:]]+//')
@@ -75,14 +153,25 @@ else
     while IFS= read -r hj; do [ -n "$hj" ] && addc "$(dirname "$(dirname "$hj")")"; done \
       < <(find "$ROOT" -maxdepth 4 -type f -path '*/.claude/health.json' \
             -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/vendor/*' 2>/dev/null)
-    # (3) standard component dirs with a manifest (so never-audited components still surface)
-    for d in "$ROOT"/apps/*/ "$ROOT"/packages/*/ "$ROOT"/services/*/ "$ROOT"/libs/*/; do
-      [ -d "$d" ] && has_component "${d%/}" && addc "$d"
-    done
-    for n in e2e docs web api mobile backend frontend server client gateway admin dashboard \
-             infra infrastructure devops ops functions lib cli worker workers tools scripts app; do
-      d="$ROOT/$n"; [ -d "$d" ] && has_component "$d" && addc "$d"
-    done
+    # (3) standard component dirs with a manifest (so never-audited components still surface).
+    # Skipped when ROOT itself is audited: that audit's scope already covered ROOT's tree, so a
+    # subdir of it is not an unaudited blind spot, and a never-audited row for one would be
+    # inferred, not observed. Without this, `jr-rollup <leaf-app>` invents a phantom row per
+    # standard-named subdir it happens to hold (lib/, scripts/, …), inflating the very estate
+    # counts this tool exists to prioritise by. Subdirs with their own snapshot still surface
+    # via (2), which is evidence-based and name-agnostic.
+    # The suppression rests on evidence that an audit ran, so it takes the same gates the table
+    # does (is_audited), not the file's mere existence: a snapshot this run is about to render as
+    # invalid cannot also be trusted to prove a blind spot away.
+    if ! is_audited "$ROOT"; then
+      for d in "$ROOT"/apps/*/ "$ROOT"/packages/*/ "$ROOT"/services/*/ "$ROOT"/libs/*/; do
+        [ -d "$d" ] && has_component "${d%/}" && addc "$d"
+      done
+      for n in e2e docs web api mobile backend frontend server client gateway admin dashboard \
+               infra infrastructure devops ops functions lib cli worker workers tools scripts app; do
+        d="$ROOT/$n"; [ -d "$d" ] && has_component "$d" && addc "$d"
+      done
+    fi
     has_component "$ROOT" && addc "$ROOT"
   fi
 fi
@@ -101,10 +190,22 @@ for app in "${APPS[@]}"; do
   status=""; reason=""
   if [ ! -f "$hj" ]; then
     status="never-audited"
-  elif ! jq -e . "$hj" >/dev/null 2>&1; then
+  elif ! jq -e -s "$ONE_VALUE_GATE" "$hj" >/dev/null 2>&1; then
     status="invalid"; reason="bad-json"
-  elif ! jq -e '.schemaVersion==1' "$hj" >/dev/null 2>&1; then
+  elif ! jq -e "$SCHEMA_GATE" "$hj" >/dev/null 2>&1; then
     status="invalid"; reason="bad-schema"
+  elif jq -e "$INCOMPLETE_GATE" "$hj" >/dev/null 2>&1; then
+    # A run whose swarm went partly silent publishes healthScore:null and names the
+    # lost subagents (jr-audit's incomplete-run gate; shared/subagent-reporting.md).
+    # Its counts cover only the dimensions that did report, so it is NOT comparable
+    # with a complete audit and must never render as "fresh" — that is the estate-wide
+    # form of the silent-loss this repo fixed in the console path (issue #70).
+    # A null score triggers this too: jr-audit's gate is the only writer of healthScore:null,
+    # so null and incomplete are equivalent and the array's emptiness must not be trusted
+    # once the score already says the run was not scored. Naming the lost subagents is real
+    # work an LLM can skip; emitting the null score is one token, so partial compliance —
+    # null score, empty array — is the likelier failure and the one that renders "fresh".
+    status="incomplete"; reason="$(jq -r 'if ((.unreported//[])|length)>0 then ((.unreported//[])|join(",")) else "unscored" end' "$hj")"
   else
     scommit="$(jq -r '.commit // ""' "$hj")"
     status="fresh"
@@ -112,50 +213,84 @@ for app in "${APPS[@]}"; do
     # length can drift as the repo grows, which would spuriously read as "stale".
     [ -n "$scommit" ] && [ -n "$cur" ] && [ "${scommit:0:7}" != "${cur:0:7}" ] && status="stale"
   fi
-  if [ "$status" = "fresh" ] || [ "$status" = "stale" ]; then
-    rec="$(jq -c --arg n "$name" --arg p "$app" --arg st "$status" --arg c "$cur" \
-      '{name:$n,path:$p,status:$st,reason:null,healthScore:.healthScore,counts:.counts,standardisation:.standardisation,commit:.commit,currentHead:(if $c=="" then null else $c end),date:.date,scope:.scope}' "$hj")"
+  if [ "$status" = "fresh" ] || [ "$status" = "stale" ] || [ "$status" = "incomplete" ]; then
+    # An incomplete run's score and counts are forced null HERE rather than trusted from the
+    # snapshot: jr-audit's gate ("never publish a numeric score for a partly-silent swarm") is
+    # prose addressed to an LLM, so this deterministic consumer must not rely on it having been
+    # obeyed.
+    rec="$(jq -c --arg n "$name" --arg p "$app" --arg st "$status" --arg rs "$reason" --arg c "$cur" \
+      '{name:$n,path:$p,status:$st,reason:(if $st=="incomplete" then $rs else null end),unreported:(.unreported // []),healthScore:(if $st=="incomplete" then null else .healthScore end),counts:(if $st=="incomplete" then null else .counts end),standardisation:.standardisation,commit:.commit,currentHead:(if $c=="" then null else $c end),date:.date,scope:.scope}' "$hj")"
   else
     rec="$(jq -nc --arg n "$name" --arg p "$app" --arg st "$status" --arg rs "$reason" --arg c "$cur" \
-      '{name:$n,path:$p,status:$st,reason:(if $rs=="" then null else $rs end),healthScore:null,counts:null,standardisation:null,commit:null,currentHead:(if $c=="" then null else $c end),date:null,scope:null}')"
+      '{name:$n,path:$p,status:$st,reason:(if $rs=="" then null else $rs end),unreported:[],healthScore:null,counts:null,standardisation:null,commit:null,currentHead:(if $c=="" then null else $c end),date:null,scope:null}')"
   fi
   records_nd+="$rec"$'\n'
 done
 
 SORTED="$(printf '%s' "$records_nd" | jq -s -c '
-  def rank: if .status=="invalid" then 3 elif .status=="never-audited" then 2 else 0 end;
+  def rank: if .status=="invalid" then 3 elif .status=="never-audited" then 2 elif .status=="incomplete" then 1 else 0 end;
   sort_by(rank, (.healthScore // 9999), -((.counts.critical) // 0))
 ')"
 
 if [ "$JSON" -eq 1 ]; then
-  printf '%s\n' "$SORTED" | jq '.'
+  # --json is sanitised too, on the same rule as the table. Being valid JSON is not the same as
+  # being safe to print: jq's encoder escapes C0 and DEL but emits every C1 (NEL, CSI) and LS/PS
+  # RAW, and a terminal acts on those wherever they sit, quoted or not. This output's own consumer
+  # is the /jr-rollup skill, which renders it straight back to a console, so a carve-out for
+  # "machine output" would just move the forged line one hop downstream.
+  printf '%s\n' "$SORTED" | jq "$CLEAN_DEF"'walk(if type=="string" then clean else . end)'
   exit 0
 fi
 
 {
   printf 'APP\tSCORE\tCRIT\tHIGH\tMED\tOFF-TGT\tAUDITED\tSTATUS\n'
-  jq -r '.[] |
-    [ .name,
-      (if .healthScore==null then "-" else (.healthScore|tostring) end),
-      ((.counts.critical // "-")|tostring),
-      ((.counts.high // "-")|tostring),
-      ((.counts.medium // "-")|tostring),
-      (if .standardisation==null then "-" else "\(.standardisation.offTarget)/\(.standardisation.components)" end),
-      (if .date==null then "-" else (.date|split("T")[0]) end),
-      (.status + (if .reason then "(\(.reason))" else "" end))
+  # Every value read from a snapshot leaf or an app path goes through `clean`, with no exception
+  # list to reason about: `@tsv` is NOT a sanitiser (it escapes only \t \n \r \\), and the gates
+  # answer a different question (is this snapshot trustworthy) from the one clean answers (can this
+  # byte forge a line). The only raw interpolation left is `.status`, which is one of five literals
+  # this script assigns itself.
+  jq -r "$CLEAN_DEF"'.[] |
+    [ (.name|clean),
+      (if .healthScore==null then "-" else (.healthScore|clean) end),
+      ((.counts.critical // "-")|clean),
+      ((.counts.high // "-")|clean),
+      ((.counts.medium // "-")|clean),
+      (if .standardisation==null then "-" else "\(.standardisation.offTarget|clean)/\(.standardisation.components|clean)" end),
+      # clean BEFORE split: `date:""` splits to [], so cleaning afterwards would render the
+      # blank cell as the literal "null".
+      (if .date==null then "-" else (.date|clean|split("T")[0]) end),
+      # Branch on `.unreported` (structural), never on `.reason` (a display string a snapshot
+      # part-controls): a snapshot naming a subagent "unscored" would otherwise render exactly
+      # like a genuinely-unscored run and suppress its own loss disclosure. A non-empty list
+      # means a loss IS known, whatever it is named, so the column says so.
+      (.status + (if .status=="incomplete"
+                  then (if (.unreported|length)>0 then "(lost:\(.unreported|join(",")|clean))" else "(unscored)" end)
+                  elif .reason then "(\(.reason|clean))" else "" end))
     ] | @tsv' <<<"$SORTED"
+  # The `tr` is a backstop for a missed sink, NOT the sanitiser: being bytewise it cannot see a C1,
+  # which is exactly how NEL and CSI reached this line for five rounds. Every field above is
+  # already cleaned, so it should now be a no-op; do not widen it, widen `clean`.
 } | LC_ALL=C tr -d '\000-\010\013-\037\177' | column -t -s "$(printf '\t')"
 
 echo
-jq -r '
-  (map(select(.status!="never-audited" and .status!="invalid"))) as $aud
+jq -r "$CLEAN_DEF"'
+  # "incomplete" is excluded from $aud: its swarm went partly silent, so counting it as
+  # audited would overstate estate coverage — the same lie in aggregate that the
+  # incomplete-run gate stops per-app (shared/subagent-reporting.md).
+  (map(select(.status!="never-audited" and .status!="invalid" and .status!="incomplete"))) as $aud
   # $scored = audited apps with a real numeric score. Guards the band/criticals/worst
   # lines: a schema-valid snapshot with healthScore:null would otherwise sort below
   # every number (jq: null < 41) and be mis-counted as RED / reported as "Worst".
   | ($aud | map(select(.healthScore!=null))) as $scored
-  | "Estate: \(length) apps · \($aud|length) audited · \(map(select(.status=="never-audited"))|length) never-audited · \(map(select(.status=="invalid"))|length) invalid",
+  | "Estate: \(length) apps · \($aud|length) audited · \(map(select(.status=="never-audited"))|length) never-audited · \(map(select(.status=="incomplete"))|length) incomplete · \(map(select(.status=="invalid"))|length) invalid",
     "Bands:  RED <41: \($scored|map(select(.healthScore<41))|length)   AMBER 41-70: \($scored|map(select(.healthScore>=41 and .healthScore<=70))|length)   GREEN >70: \($scored|map(select(.healthScore>70))|length)",
-    "Remaining criticals across estate: \($scored|map(.counts.critical // 0)|add // 0)" + (($scored|map(select((.counts.critical // 0)>0))|length) as $ca | if $ca>0 then " (in \($ca) app(s))" else "" end),
+    "Remaining criticals across estate: \($scored|map(.counts.critical // 0)|add // 0|clean)" + (($scored|map(select((.counts.critical // 0)>0))|length) as $ca | if $ca>0 then " (in \($ca) app(s))" else "" end),
     "Stale (code moved since audit): \(map(select(.status=="stale"))|length)",
-    (($scored|min_by(.healthScore)) as $w | if $w then "Worst: \($w.name) (\($w.healthScore))" else "" end)
-' <<<"$SORTED" | LC_ALL=C tr -d '\000-\010\013-\037\177'
+    # The cause sits per-record, not in the prefix: a run is genuinely unscored only when it names
+    # no loss, which is `.unreported` being empty. Branch on that structural field, not on the
+    # `reason` string a snapshot part-controls (the STATUS column above applies the same rule).
+    # `empty` (not "") because a `""` list element still prints a blank line, and no-incompletes
+    # is the normal case.
+    ((map(select(.status=="incomplete"))) as $inc | if ($inc|length)>0 then "Incomplete (NOT audited, no score): " + ($inc|map((.name|clean) + " [" + (if (.unreported|length)>0 then "subagent(s) returned nothing: " + (.unreported|join(",")|clean) else "unscored" end) + "]")|join(", ")) else empty end),
+    (($scored|min_by(.healthScore)) as $w | if $w then "Worst: \($w.name|clean) (\($w.healthScore|clean))" else empty end)
+' <<<"$SORTED" | LC_ALL=C tr -d '\000-\010\013-\037\177'   # backstop only; see the table pipe above

@@ -32,9 +32,9 @@ Skill-specific phase numbering applies (e.g., `/jr-audit` starts at Phase 0 for 
 
 ## Silent reviewers, noisy lead
 
-**Reviewer and implementer agents must not output progress text.** They create finding tasks silently via TaskCreate and report completion via SendMessage. Only the **lead agent** outputs progress to the user.
+**Reviewer and implementer agents must not output progress text.** Their console output is not visible to the user, so only the **lead agent** reports progress.
 
-Instruct every reviewer: "Do not output progress messages. Report findings only via TaskCreate. Your console output is not visible to the user."
+Never instruct a reviewer to report via `TaskCreate`: no reviewer role has that tool. How a subagent's findings reach the lead is defined by `subagent-reporting.md`, not here.
 
 ## Compact reviewer progress table (Phase 2)
 

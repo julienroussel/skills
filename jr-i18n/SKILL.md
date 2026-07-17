@@ -6,7 +6,7 @@ effort: high
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Grep AskUserQuestion Agent advisor TaskCreate TaskList TaskGet SendMessage Bash(grep *) Bash(find . *) Bash(jq *) Bash(wc *) Bash(ls *) Bash(test *) Bash(cat *) Bash(head *) Bash(sort *) Bash(cut *) Bash(basename *) Bash(dirname *) Bash(gh api repos/* *) Bash(base64 *)
+allowed-tools: Read Glob Grep AskUserQuestion Agent advisor Bash(grep *) Bash(find . *) Bash(jq *) Bash(wc *) Bash(ls *) Bash(test *) Bash(cat *) Bash(head *) Bash(sort *) Bash(cut *) Bash(basename *) Bash(dirname *) Bash(gh api repos/* *) Bash(base64 *)
 disallowed-tools: Write Edit WebFetch
 ---
 
@@ -52,8 +52,8 @@ disallowed-tools: Write Edit WebFetch
 
 <!-- Dependencies:
   Required plugins:
-    - agent-teams@claude-code-workflows   — team-reviewer subagents (Phase 2), spawned via the Agent
-                                            tool's name param (implicit team since 2.1.178; no TeamCreate/TeamDelete)
+    - agent-teams@claude-code-workflows   — team-reviewer subagents (Phase 2), spawned via the Agent tool
+                                            WITHOUT `name:` (shared/subagent-reporting.md Spawn rule; no TeamCreate/TeamDelete)
   Optional CLI:
     - gh                                  — Phase 3 Tier-2 external-authority verification (read-only
                                             `gh api` fetch of CLDR/ICU/framework docs); degrades to the
@@ -71,11 +71,14 @@ disallowed-tools: Write Edit WebFetch
                                             review-skill-specific; only the rubrics apply here)
     - shared/phase1-track-a-protocol.md   — hard-fail guard algorithm + Canonical Anchor Table (self-reference)
     - shared/model-override.md            — --model=<tier> per-run subagent override (Phase 2 spawns)
+    - shared/subagent-reporting.md        — Spawn rule (translators spawned WITHOUT `name:`, so their final
+                                            response returns to the lead); subagent-facing block verbatim; roll-call
   Skill-local protocols (read at Phase 1 Track A, anchors declared inline below):
     - jr-i18n/protocols/locale-discovery.md     — Phase 1 Track B catalog/locale discovery
     - jr-i18n/protocols/phase2-translators.md   — Phase 2 per-locale translator fan-out
-  Required tools: Agent, TaskCreate, TaskList, TaskGet, SendMessage,
-    AskUserQuestion, advisor, Read, Glob, Grep, Bash
+  Required tools: Agent, AskUserQuestion, advisor, Read, Glob, Grep, Bash
+  Tools deliberately NOT used (unavailable to the lead, or a lossy channel — see ../shared/subagent-reporting.md):
+    - TaskCreate, TaskList, TaskGet, TaskUpdate, SendMessage
 -->
 
 # /jr-i18n — native-translator review of translation catalogs
@@ -109,8 +112,9 @@ Read **all** of the following in parallel (multiple Read calls in one message):
 `../shared/claim-verification.md`, `../shared/untrusted-input-defense.md`,
 `../shared/display-protocol.md`, `../shared/abort-markers.md`,
 `../shared/reviewer-boundaries.md`, `../shared/phase1-track-a-protocol.md`,
-`../shared/model-override.md`, and the two skill-local protocols
-`protocols/locale-discovery.md` and `protocols/phase2-translators.md`.
+`../shared/model-override.md`, `../shared/subagent-reporting.md`, and the two
+skill-local protocols `protocols/locale-discovery.md` and
+`protocols/phase2-translators.md`.
 
 **Hard-fail guard**: if any file fails to Read, returns empty/whitespace-only
 content, or fails the structural smoke-parse below, abort Phase 1 immediately with
@@ -139,11 +143,21 @@ they focus on meaning. If no catalogs are found, abort per that protocol.
 Apply `protocols/phase2-translators.md`: spawn one native-translator subagent per
 target locale (parallel; batched in waves if > 6 locales), each receiving its locale's
 join table, the mechanical pre-findings, the persona + ultrathink directive, and the
-verbatim `untrusted-input-defense.md` + `claim-verification.md` context. Subagents
-report findings + `suggestedFix` via TaskCreate. The lead prints progress only.
+verbatim `untrusted-input-defense.md` + `claim-verification.md` + `subagent-reporting.md`
+(subagent-facing block) context. Spawn **without `name:`** per that file's **Spawn rule** —
+a named subagent is a teammate whose final response never reaches the lead, silently losing
+the locale. Each translator returns its findings + `suggestedFix` in its final response,
+which the lead receives in its completion notification. The lead prints progress only.
 
 ## Phase 3 — Sanity-check, classify, dedupe
 
+0.0. **Locale roll-call** (`../shared/subagent-reporting.md` "Lead-side: reviewer roll-call"):
+   reconcile the Phase 2 spawn list against the results actually returned. A locale whose
+   translator returned nothing, an empty result, or an error is `UNREPORTED` — never a clean
+   locale. Record `unreportedCount` and the locale codes for Phase 7. This runs FIRST, at
+   collection, because every later step is computed over the delivered set: without it a dead
+   `de` translator is indistinguishable from a perfect `de` catalog, and the user ships an
+   unreviewed locale believing it was checked.
 0. **codeExcerpt sanity-check**: for every finding, re-read the cited `file:line`
    (±1) and confirm the `codeExcerpt` matches verbatim. Reject mismatches with
    `[REJECTED — codeExcerpt mismatch]` (catches hallucinated keys/strings).
@@ -175,7 +189,11 @@ anything.** Under `--auto-approve`, skip the menu and list all findings in Phase
 Render findings grouped by locale: per finding, severity/confidence, `key`,
 `file:line`, source string, current translation, suggested fix, and rationale.
 Include an audit-integrity section (rejections, unverifiable locale-rule claims,
-source-locale auto-detection assumption, per-locale finding counts and overflow).
+source-locale auto-detection assumption, per-locale finding counts and overflow,
+**and any `UNREPORTED` locales from Phase 3 step 0.0, named**). An `UNREPORTED` locale is
+never rendered as clean and never omitted: say plainly that the locale was not reviewed, and
+exit non-zero. A report that lists `de` with zero findings when the `de` translator died is
+the exact failure this skill's roll-call exists to prevent.
 End with an action-items rollup the user can apply by hand. **No file writes** —
 confirm the working tree is untouched.
 

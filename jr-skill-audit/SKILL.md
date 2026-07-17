@@ -6,7 +6,7 @@ effort: high
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Glob Grep WebFetch AskUserQuestion Agent advisor TaskCreate TaskList SendMessage Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
+allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Glob Grep WebFetch AskUserQuestion Agent advisor Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
 disallowed-tools: Edit
 ---
 
@@ -21,7 +21,7 @@ disallowed-tools: Edit
 
 <!-- Dependencies:
   Required plugins:
-    - agent-teams@claude-code-workflows        — team-reviewer agents (Phase 2), spawned via Agent name param (implicit team since 2.1.178)
+    - agent-teams@claude-code-workflows        — team-reviewer agents (Phase 2), spawned via the Agent tool WITHOUT `name:` (see shared/subagent-reporting.md Spawn rule)
   Required CLI:
     - gh                                        — Phase 1 Track C: `gh api repos/anthropics/claude-code/contents/CHANGELOG.md`
                                                   for changelog content (gh handles GitHub auth + redirects;
@@ -66,11 +66,16 @@ disallowed-tools: Edit
                                                   source-validation are its reference Tier-2 implementation
     - shared/phase1-track-a-protocol.md         — hard-fail guard algorithm + Canonical Anchor Table (self-reference)
     - shared/model-override.md                  — --model=<tier> per-run subagent model override (Phase 2 spawns)
+    - shared/subagent-reporting.md              — Spawn rule (reviewers spawned WITHOUT `name:`, so their final
+                                                  response returns to the lead); subagent-facing block passed
+                                                  verbatim into every reviewer prompt; lead-side roll-call at Phase 3
   Files written:
     - ${CLAUDE_SKILL_DIR}/cache/refs.json       — Track C live-references cache (timestamp + URL → content map)
   Required tools:
-    - Agent, TaskCreate, TaskList, SendMessage, AskUserQuestion, advisor
+    - Agent, AskUserQuestion, advisor
     - Bash, Read, WebFetch, Glob, Grep, Write
+  Tools deliberately NOT used (unavailable to the lead, or a lossy channel — see ../shared/subagent-reporting.md):
+    - TaskCreate, TaskList, TaskGet, TaskUpdate, SendMessage
 -->
 
 Audit Claude Code skill files (`SKILL.md`) for quality, 2026-feature alignment, and drift against the canonical `shared/*.md` protocols. Reviewers cite **live Anthropic documentation** (skills doc, env-vars doc, release notes) fetched at runtime so findings stay current as Claude Code ships new features. **Findings-only** — never modifies skill files. Complements `/jr-doctor`'s narrow factual drift checks (Group I) with opinionated, dimension-scoped review.
@@ -136,6 +141,7 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 - `../shared/claim-verification.md` — anti-hallucination doctrine; skill-audit's Track C live-refs + Phase 3 source-citation validation are its reference **Tier 2** implementation (see the Track C "Doctrine anchor" note).
 - `../shared/phase1-track-a-protocol.md` — algorithm + Canonical Anchor Table consumed by the structural smoke-parse below.
 - `../shared/model-override.md` — `--model=<tier>` subagent model-override semantics, applied at the Phase 2 reviewer spawns.
+- `../shared/subagent-reporting.md` — the reviewer→lead channel. Its **Subagent-facing block** is passed verbatim into every reviewer prompt at Phase 2; its **roll-call** is applied by the lead at Phase 3.
 
 **Hard-fail guard**: if any shared file fails to Read, returns empty content, or fails the structural smoke-parse below, abort Phase 1 immediately with `[ABORT — SHARED FILE MISSING]` (per `../shared/abort-markers.md`) and exit non-zero. Do NOT fall back to inline text.
 
@@ -228,6 +234,10 @@ When the Track-B grouping above yields a basename present in both scopes, the le
 
 Spawn each selected reviewer dimension as a `agent-teams:team-reviewer` agent. Reviewers run **in parallel** within a single tool-use message.
 
+**Spawn rule (mandatory)**: spawn each reviewer with **no `name:`** (`../shared/subagent-reporting.md` "Spawn rule"). A named subagent is a persistent teammate whose final response never reaches the lead, silently losing its dimension; unnamed, it returns its findings in its completion notification. Give each a distinct `description` instead.
+
+**Reporting contract (mandatory, every reviewer prompt)**: include the **Subagent-facing block** of `../shared/subagent-reporting.md` verbatim. Do not paraphrase: the "if you found nothing, say so explicitly" rule is what keeps a clean dimension distinguishable from a lost one, and it is what the Phase 3 step 0.0 roll-call reads.
+
 **Per-skill dispatch metadata (lead-side, mandatory)**: when handing each reviewer its list of per-skill assignments, include `scope: personal|project|plugin` alongside the SKILL.md path so the reviewer can echo it back on every finding per requirement #7 in "Reviewer instructions" below. For `plugin` scope, also pass `pluginName`, `marketplace`, and `sourceRepo`, and prepend a one-line third-party preamble to the reviewer prompt: *"This is a THIRD-PARTY plugin skill authored by someone other than the user; findings are advisory (the user cannot directly edit it) — tag each `[third-party — verify against plugin docs]` and do not treat the user's `~/.claude/skills/shared/*.md` as canonical for it."* This is the single source of truth for the `scope` field on findings — reviewers MUST NOT infer scope from the file path (paths can be ambiguous under symlinks; the lead's tag set by Track B's enumeration is authoritative).
 
 **Effort-adaptive overlay** (read `CLAUDE_EFFORT` at runtime via Bash: `effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=high`). At `xhigh|max`, lower the Phase 7 declare-done advisor's non-triviality threshold (e.g., `findingCount >= 3` instead of `>= 5`) so deeper-effort runs are more likely to receive a second opinion. At `low|medium`, keep the standard threshold. Mirrors `/jr-review`'s pattern; requires Claude Code ≥ 2.1.133.
@@ -313,7 +323,7 @@ Per-finding requirements:
 
 ### Finding format
 
-Every reviewer finding must include:
+Every finding travels in the reviewer's final response, which the lead receives in its completion notification (`../shared/subagent-reporting.md`), and must include:
 - `file` (absolute path)
 - `line` (positive integer)
 - `dimension` (one of the 7 reviewer dimensions above; `scope-resolution` is lead-only)
@@ -330,6 +340,9 @@ Every reviewer finding must include:
 
 ## Phase 3 — Sanity-check + deduplicate + prioritize
 
+Findings arrive as the results returned in each reviewer's completion notification; there is no task list to read (`../shared/subagent-reporting.md`).
+
+0.0. **Reviewer roll-call** (canonical: `../shared/subagent-reporting.md` "Lead-side: reviewer roll-call"): reconcile the Phase 2 spawn list against the results actually returned. A reviewer that returned nothing, an empty result, or an error is `UNREPORTED` — a failure, never a clean dimension. Record `unreportedCount` and the dimension names, and render them by name in the Phase 7 **`Audit integrity`** section (NOT under an "ACTION REQUIRED" label — this skill bans that label outright; see the Naming contract in "Final report", which documents the 28-findings-un-rolled-up incident it caused). `Audit integrity` is the documented home for reviewer-quality issues, which is exactly what an unreported dimension is. This runs first because every later step (rejection rates, dedup, the report's completeness claim) is computed over the delivered set, and a silently-missing dimension would otherwise be indistinguishable from one with nothing to say. **Latch `unreportedCount` into a non-zero Phase 7 exit** (the canonical's rule 2): `Audit integrity` is a console channel a human may or may not read, whereas under headless the exit code is the only signal a machine gets, so rendering alone would leave this skill computing `UNREPORTED` and then dropping it — the exact anti-pattern the canonical names. The `Summary: N findings across M skills.` line is likewise barred from reading as a complete result while any dimension is `UNREPORTED`.
 1. **codeExcerpt sanity-check** — Read `<file>` from `line-1` to `line+1` (clamped to `[1, file-end]` for findings near file boundaries), normalize whitespace, exact match. Reject mismatches with `[REJECTED — codeExcerpt mismatch]` and increment the per-reviewer rejection counter.
 2. **Source-citation validation** — for every finding, validate the `source` field:
    - URL form (`https://...`) → strip the trailing citation-format suffix first: match `:[a-zA-Z#_][^:/]*$` (a colon followed by an identifier or `#anchor` at the end of the string, no path separator). This deliberately does NOT match `:` followed by digits (port numbers) or `:` mid-path. The remaining base URL MUST be a key in `cache/refs.json` whose `ok: true`. Mismatched URLs go to `ACTION REQUIRED` (not silent drop). Do NOT re-WebFetch — the cache is the source of truth for this run.
@@ -461,6 +474,7 @@ All N approved findings above require user action. Roll-up by tier and skill:
 
 Audit integrity (n):
   <items from Phase 3 sanity-check + reviewer-quality issues — codeExcerpt rejections, missing source citations, ≥25% reviewer rejection rate>
+  <UNREPORTED dimensions from Phase 3 step 0.0, named: "<dimension>-reviewer returned nothing — its dimension was NOT audited">
   (Empty section means the audit itself was clean — distinct from "no findings".)
 
 Summary: N findings across M skills.   Total: <elapsed>

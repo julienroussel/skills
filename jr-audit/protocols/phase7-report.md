@@ -2,22 +2,34 @@
 
 **Canonical source** for the `/jr-audit` Phase 7 final-report enumeration. `jr-audit/SKILL.md` reads this file into lead context at Phase 1 Track A (under the hard-fail + non-empty + smoke-parse guard, alongside the `shared/*.md` files) and applies it at the Phase 7 "Report contents" step. Update here to update `/jr-audit`'s report shape.
 
+## Exit-code rules
+
+Phase 7 exits with a **non-zero** status when any of the following occurred during the run:
+
+- `abortMode=true` (any `abortReason`).
+- `convergenceFailed=true` (any convergence termination path, per `../convergence-protocol.md`).
+- **`unreportedCount > 0`** — any spawned subagent returned nothing (`../../shared/subagent-reporting.md` rule 2). The run did not cover what it claims, and under headless the exit code is the only channel a machine reads.
+- `userContinueWithSecret=true` (the latched User-continue path, `../../shared/secret-scan-protocols.md`).
+- Any exit-forcing **marker** was rendered — the marker set is owned by `../../shared/abort-markers.md` ("Exit-code contribution").
+
+This list is the single source of truth for `/jr-audit`'s exit code; `abort-markers.md` owns only the marker subset. Mirrors `/jr-review`'s `protocols/phase7-cleanup-report.md` ("Phase 7 exit-code rules"), which carries the same non-marker conditions — the two skills must not drift.
+
 **Display**: Output the final progress timeline with all phases and total duration.
 
 Summarize:
 
-**Health verdict + score** (lead the report with this): a one-line overall health verdict plus the **health score** (0–100) computed per the *Health score* section at the bottom of this file, with the arithmetic shown, e.g. `62/100 — 1 high + 3 medium + 4 low remaining (band 41–70)`. Written for someone who reads only this line.
+**Health verdict + score** (lead the report with this): a one-line overall health verdict plus the **health score** (0–100) computed per the *Health score* section at the bottom of this file, with the arithmetic shown, e.g. `62/100 — 1 high + 3 medium + 4 low remaining (band 41–70)`. Written for someone who reads only this line. **When `unreportedCount > 0`, emit no number here** — print `Health: NOT SCORED — incomplete run (<names> returned nothing)` instead, matching the `healthScore: null` this run writes to `health.json`. The console must not lead with `62/100` on a run whose snapshot says `null`; that is one run publishing two contradictory verdicts, and the console is the one a human acts on.
 **Hidden bombs** (immediately after, only if any CRITICAL remains): every remaining 🔴 CRITICAL, one terse line each with `id` + `file:line`. Omit the section entirely if none remain.
 
 1. **Mode**: Scope used (full/path/quick), flags set, `nofix` if applicable
 2. **Stack detected**: Package manager, validation commands found, key frameworks
 3. **Audited**: Files in scope, exclusions applied, directory breakdown
 3.5. **Standardisation** (only if the lens is on AND off-target components exist): the technology-standardisation migration map — a table `component | current stack | on-target? | target | effort | coupling` classifying each in-scope component against the standardisation target (Track C step 7.5). **Strategic direction, NOT defects** — never severity-graded, tiered, auto-fixed, or validated. Omit when the lens is off or every component is on-target (per the non-empty rule below).
-4. **Reviewers**: Spawned/skipped/timed-out with per-reviewer finding counts
+4. **Reviewers**: Spawned/skipped/timed-out with per-reviewer finding counts, plus **every member of the run-level `unreported` set**, rendered per rule 1 of `../../shared/subagent-reporting.md` (which owns the source-it-from-the-set rule and why). This skill's per-kind strings: `<dimension> returned nothing — that dimension was NOT audited` / `<implementer> returned nothing — its N findings were NOT attempted`. Mandatory whenever non-empty. A non-empty set also forces a non-zero exit and bars both the "Clean audit" string and **any numeric health score at all** (item 1 prints `NOT SCORED`; `health.json` gets `healthScore: null`) — a score computed over a silently-lost dimension misreports the codebase, and a lost `security-reviewer` would silently lift the band.
 5. **Findings**: Total per dimension, breakdown by severity and confidence, deduplication stats, root-cause clusters with blast radius. **Claim verification** (when external-authority claims were found): confirmed / refuted (`[REJECTED — CLAIM REFUTED BY SOURCE]`) / capped-to-`speculative` (`[unverified external claim]`) counts; the sources cited (verification is default-on). Also record any `[SEVERITY CORRECTED — …]` entries from Phase 3 step 4.4. This item is **aggregates only**; the per-finding detail belongs to item 19, which is where every `id` used here resolves.
-5.5. **Strengths**: genuinely positive, evidence-backed observations derived from *this run's own signals* — dimensions that returned zero findings, a passing validation baseline, healthy test coverage, no criticals, low FP-rates. Cite the signal (e.g. `security: 0 findings across 8 auth-sensitive files`). Do NOT invent strengths or soften real findings; omit if there is nothing concrete to cite.
+5.5. **Strengths**: genuinely positive, evidence-backed observations derived from *this run's own signals* — dimensions that returned zero findings, a passing validation baseline, healthy test coverage, no criticals, low FP-rates. Cite the signal (e.g. `security: 0 findings across 8 auth-sensitive files`). Do NOT invent strengths or soften real findings; omit if there is nothing concrete to cite. **Never derive a strength from a dimension in Phase 3 step 0.0's `UNREPORTED` set** — an unreported dimension returns zero findings by definition, and its file count comes from the Phase 1 inventory, so the example above is forgeable verbatim about a dimension that never ran. Its zero is an absence of evidence (`../../shared/subagent-reporting.md` rule 3).
 6. **Hot spots**: High-churn and historically problematic files with finding density
-7. **Security-sensitive files**: Detected files and findings targeting them
+7. **Security-sensitive files**: Detected files and findings targeting them. If `security-reviewer` is `UNREPORTED`, say so here instead of printing a finding count — "8 files detected, 0 findings" about a dimension that never ran reads as a clean security result.
 8. **Cross-file consistency**: Issues found across file boundaries
 9. **User decisions**: Approved/rejected per tier, rejection reasons summary
 10. **Auto-learned**: New suppressions added (or "none")
@@ -30,7 +42,7 @@ Summarize:
 16.5. **Remediation roadmap** (the unfixed work, grouped by urgency): take the findings NOT resolved this run (in `nofix`, all of them; in fix mode, the skipped + contested + remaining-failure findings) and group them **now / next / later** by severity then fix-effort — `now` = criticals + cheap highs; `next` = remaining highs + expensive-but-important; `later` = mediums/lows. One line per item with `id` + `file:line`, using the ids minted at Phase 3 step 4.5. **"All of them" is literal**: every unresolved finding gets its own line. Collapsing a group into an id range (`T6`-`T14`) or a prose sentence ("the type-quality tail") is a spec violation, not a summary, because it silently drops findings from the only planning surface in the report. If a bucket is long, it is long. This is the read-this-to-plan-the-work section; omit only if nothing is left unfixed.
 17. **False positive rates**: Per-dimension rates. Flag dimensions above 40%
 18. **Report file**: Path to saved report
-19. **Findings register** (appendix; place after every narrative section — items 19 and 20 are the only appendices, in that order): **every** finding that survived Phase 3, one row each, grouped by dimension, keyed by the ids minted at Phase 3 step 4.5. Columns: `id | severity | confidence | file:line | what is wrong | fix`. Carry the tags inline (`[verified: <source> <date>]`, `[unverified external claim]`, `[severity corrected]`). Two reasons this section exists and cannot be folded into another: (a) it is what makes every `id` cited elsewhere in the report resolvable, since items 5 and 16.5 both reference ids but neither defines them; (b) it is the **only** place the reviewers' actual analysis survives, because item 5 keeps aggregates and item 16.5 keeps one-liners, so neither preserves severity, confidence, the failure mode, or the fix. A reader who cannot resolve an id to a `file:line` and a fix has a summary, not a report. Under `nofix` this **is** the deliverable: no fix was applied, so the register is the entire work product and the rest of the report is commentary on it. Also record, under a short "disclosed gaps" heading, any findings reviewers dropped for budget and any dimension not spawned, so truncation is never mistaken for coverage.
+19. **Findings register** (appendix; place after every narrative section — items 19 and 20 are the only appendices, in that order): **every** finding that survived Phase 3, one row each, grouped by dimension, keyed by the ids minted at Phase 3 step 4.5. Columns: `id | severity | confidence | file:line | what is wrong | fix`. Carry the tags inline (`[verified: <source> <date>]`, `[unverified external claim]`, `[severity corrected]`). Two reasons this section exists and cannot be folded into another: (a) it is what makes every `id` cited elsewhere in the report resolvable, since items 5 and 16.5 both reference ids but neither defines them; (b) it is the **only** place the reviewers' actual analysis survives, because item 5 keeps aggregates and item 16.5 keeps one-liners, so neither preserves severity, confidence, the failure mode, or the fix. A reader who cannot resolve an id to a `file:line` and a fix has a summary, not a report. Under `nofix` this **is** the deliverable: no fix was applied, so the register is the entire work product and the rest of the report is commentary on it. Also record, under a short "disclosed gaps" heading, any findings reviewers dropped for budget, any dimension not spawned, and any dimension that was spawned but is `UNREPORTED`, so truncation is never mistaken for coverage.
 
 20. **Methodology audit trail** (appendix; place after item 19): the process failures that occurred *during this audit* and how each was resolved — so the report can be weighed rather than taken on faith. One row per failure: **what went wrong**, **what would have reached the user had it not been caught**, and **the resolution**. Group by who caught it (the `advisor()` calls vs the lead), because that attribution is the section's main signal.
 
@@ -63,6 +75,11 @@ Apply the same `grep -Ei` invocation flag and per-line length cap as every other
 **`--out` interaction**: scan the **resolved `--out` target**, not the default path. An `--out` destination outside the repo gets no `.gitignore` protection (see `SKILL.md` → "Save report"), making it the highest-risk emission and the one that most needs the scan.
 
 ## Health score (canonical formula)
+
+**Precondition (mandatory): a run with `unreportedCount > 0` is NOT SCORED.** Do not compute this
+formula at all — the counts it reads cover only the dimensions that reported, so every input is
+already wrong. Emit `NOT SCORED` per item 1 and `healthScore: null` per the `health.json`
+incomplete-run gate.
 
 Computed by the lead at Phase 7 from the **remaining** findings — in `nofix` mode all findings; in
 fix mode the findings NOT successfully fixed (skipped + contested + remaining-failures). **Exclude**
