@@ -346,7 +346,7 @@ Run the bundled drift script and parse the marker lines on stdout:
 bash "${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh" 2>&1
 ```
 
-The script implements all six checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
+The script implements all seven checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness, abortReason enum drift) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
 
 #### Marker semantics
 
@@ -363,6 +363,9 @@ The script implements all six checks (line count, broken shared refs, frontmatte
 | `WARN_REFS_CACHE_MISSING` | ⚠ | `jr-skill-audit/cache/refs.json` not found. `feature-adoption-reviewer` will skip on next `/jr-skill-audit` run unless the cache is built. | Run `/jr-skill-audit --refresh-refs` once to populate the cache. |
 | `WARN_REFS_CACHE_NO_TIMESTAMP` | ⚠ | `jr-skill-audit/cache/refs.json` is present but missing the `fetchedAt` field. Likely manual edit or corruption. | Run `/jr-skill-audit --refresh-refs` to rewrite. |
 | `WARN_REFS_CACHE_STALE:<fetched>:<age_days>` | ⚠ | Cache is older than 30 days; live Anthropic docs/changelog have probably moved on. `feature-adoption-reviewer` findings will be tagged `[Source: cached YYYY-MM-DD]`. | Run `/jr-skill-audit --refresh-refs` to refresh. |
+| `FAIL_ABORT_REASON_ORPHAN:<value>:<file>:<line>` | ✗ | A skill sets `abortReason="<value>"` that is not declared in `shared/abort-markers.md`'s mapping table. At runtime it falls through the `case` to `[ABORT — UNLABELED]` — a contract violation surfaced only after the fact. | Fix the typo, or add the value's row to the mapping table (the script and table are co-authored). |
+| `FAIL_ABORT_MARKERS_TABLE_EMPTY` | ✗ | `shared/abort-markers.md` exists but its `## Reason → Marker mapping` table yielded no values — stubbed or truncated. The enum check cannot run. | Restore `shared/abort-markers.md` from git. |
+| `FAIL_ABORT_REASON_EXTRACTION_EMPTY` | ✗ | No `abortReason="..."` setter was found in any skill though the enum is in active use — the extraction regex is broken, not the repo. Emitted so a silently-matching-nothing check fails loudly instead of certifying clean. | Inspect the abortReason extraction in `scripts/skill-drift-check.sh` (check 7). |
 
 #### Display rollup
 
