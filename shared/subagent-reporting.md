@@ -36,6 +36,7 @@ This table is harness behaviour and can change across Claude Code and plugin rel
 > **Your final response IS your report.** It is returned to the lead when your turn ends; nothing else you emit reaches it. Put everything you found in it.
 >
 > - **If you found nothing, say so explicitly** (for example, "no findings for <dimension>"). Do not end your turn silently: the lead cannot tell silence apart from a clean result, so silence is reported as a failure, not as a pass.
+> - **Report the scope you actually covered, not just what you found.** Name what you checked and what you did not reach — a reviewer or translator says which files or locales it examined; an implementer that fixed the named instances says whether the same defect has other sites it did not touch. A partial pass reported as a complete one is the same silent loss as an empty return, one level up.
 > - Do NOT use `TaskCreate`: you do not have it, and calling it will fail.
 > - Do NOT use `SendMessage` to deliver findings. You have the tool, and it will report success, but no lead phase reads messages — your findings would be lost while your (empty) return still clears the roll-call, which is the worst of both. Your final response is the only channel.
 > - Do not print progress to the console. Your console output is not visible to the user.
