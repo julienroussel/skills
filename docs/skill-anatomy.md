@@ -235,6 +235,17 @@ When re-verifying one after an upgrade:
 - **Confirm a negative before recording it.** If an agent appears not to have delivered, ask it directly whether it finished and what it produced. Both times this repo recorded a negative from silence alone, the negative was wrong.
 - **Date-stamp and name the version** (`Verified 2026-07-16 against agent-teams v1.0.3`), so a later reader can judge staleness rather than inherit a stale certainty.
 
+### Adding run-scoped state
+
+A run-scoped variable (a flag or string that persists across phases within one run — `abortMode`, `abortReason`, `convergenceFailed`, `userContinueWithSecret`) is wired by prose, not by a type system, so each one is a standing drift surface: a reader with no producer, or a producer in a conditionally-read file, fails silently. When adding one:
+
+- **Name its single producer, and initialize it unconditionally.** One program-start init site per skill sets the default on **every** exit path (`jr-audit/protocols/phase7-report.md` and `jr-review/protocols/phase7-cleanup-report.md` "Run-scoped flags initialization"). Do NOT initialize it inside a conditionally-read protocol file (e.g. a `--converge`-only file): a non-converge run then reaches the reader with the variable unset, relying on unset-as-`false` rather than a declared default. That exact gap existed in `/jr-audit` for `userContinueWithSecret` until the canonical init landed.
+- **Order init before flag-conflict resolution.** If a conflict rule may latch the flag, initializing after it clobbers the legitimate setting.
+- **If it is enum-valued, register the values in `shared/abort-markers.md`.** The `abortReason` string is the worked example: every value a skill sets must be in the mapping table, and `/jr-doctor` Group I's `FAIL_ABORT_REASON_ORPHAN` check enforces this at author time (an unlisted value falls through the runtime `case` to `[ABORT — UNLABELED]`).
+- **Keep the two skills from drifting.** `/jr-audit` and `/jr-review` share exit-code and init semantics; their protocol files say "must not drift" for a reason. A flag added to one usually needs the mirror in the other (or an explicit note on why it is single-skill, as `freshEyesMandatory` is `/jr-review`-only).
+
+The rule generalizes the fix-fix-fix diagnosis (#1, #76): prose-wired state with no structural enforcement is where enumerative fixes never terminate. A single producer plus an author-time check is the structural enforcement.
+
 ---
 
 ## Anti-patterns

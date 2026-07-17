@@ -6,13 +6,10 @@ Read into lead context at Phase 1 Track A only when `--converge` is set; hard-fa
 
 ## Initialization
 
-At program start (once, before any iteration):
+At program start (once, before any iteration). The run-scoped flags `abortMode`, `abortReason`, `convergenceFailed`, and `userContinueWithSecret` are already initialized unconditionally at program start (`protocols/phase7-report.md` "Run-scoped flags initialization" — the single canonical init site); the loop adds only its **own** state below and does NOT re-initialize those flags:
 
 ```text
 iteration=1
-convergenceFailed=false
-abortMode=false
-abortReason=""
 convergenceStartTime=$(date +%s%3N)
 tmpDir=$(mktemp -d -t audit-converge.XXXXXX)
 allModifiedFiles=[]

@@ -2,6 +2,28 @@
 
 **Canonical source** for the `/jr-audit` Phase 7 final-report enumeration. `jr-audit/SKILL.md` reads this file into lead context at Phase 1 Track A (under the hard-fail + non-empty + smoke-parse guard, alongside the `shared/*.md` files) and applies it at the Phase 7 "Report contents" step. Update here to update `/jr-audit`'s report shape.
 
+## Run-scoped flags initialization (mandatory)
+
+At program start, before Phase 1:
+
+1. Parse arguments (per the "Arguments" section in `SKILL.md`).
+2. Initialize all three run-scoped boolean flags to `false` unconditionally: `abortMode=false`, `convergenceFailed=false`, `userContinueWithSecret=false`. Additionally, initialize the run-scoped string `abortReason=""` (empty string).
+3. Run flag-conflict resolution (per "Flag conflicts" in `SKILL.md`).
+4. Begin Phase 1.
+
+This is the **single** program-start initialization site — the mirror of `/jr-review`'s `protocols/phase7-cleanup-report.md` "Run-scoped flags initialization", and the reason the two skills' exit-code rules below "must not drift". It is unconditional: the exit-code rules read these flags on **every** exit path, but most paths never enter the `--converge` loop or reach an abort/user-continue site — a clean non-converge run reaches Phase 7 having touched none of them. Initializing here guarantees the exit-code gate reads a defined `false`/`""` rather than relying on unset-variable semantics.
+
+`/jr-audit` has no `freshEyesMandatory` flag (no fresh-eyes pass — see `../convergence-protocol.md`); it is `/jr-review`-only. `/jr-audit`'s flag-conflict resolution (step 3) currently sets none of these run-scoped flags, so ordering step 2 before step 3 is defensive rather than load-bearing today; keep it so a future conflict rule that latches a flag cannot be clobbered by a later default (the trap `/jr-review` documents at its init site).
+
+The `--converge` loop adds only its **own** state (`iteration`, `convergenceStartTime`, `tmpDir`, `allModifiedFiles`, `iterationLog`, `passUnreported`) on top of these — it does NOT re-initialize the flags above (`../convergence-protocol.md` "Initialization").
+
+Flag semantics:
+
+- `abortMode=false` — set to `true` by any abort path; gates the abort-mode marker render (SKILL.md Phase 7) and the exit-code rule below. `abortReason` is set alongside it.
+- `abortReason=""` — set alongside `abortMode=true` at each abort site to one of the values in `../../shared/abort-markers.md` (single source of truth for the enum). Reset to `""` only here; typically one abort site fires per run.
+- `convergenceFailed=false` — set to `true` by any `--converge` termination-without-convergence path (`../convergence-protocol.md`).
+- `userContinueWithSecret=false` — latched to `true` by the User-continue path protocol's behavior 5 (`../../shared/secret-scan-protocols.md`), at the Phase 5.6 and Phase 6 regression-fix user-Continue sites. CANNOT be unset for the remainder of the run.
+
 ## Exit-code rules
 
 Phase 7 exits with a **non-zero** status when any of the following occurred during the run:
