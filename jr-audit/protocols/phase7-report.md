@@ -7,11 +7,11 @@
 At program start, before Phase 1:
 
 1. Parse arguments (per the "Arguments" section in `SKILL.md`).
-2. Initialize all three run-scoped boolean flags to `false` unconditionally: `abortMode=false`, `convergenceFailed=false`, `userContinueWithSecret=false`. Additionally, initialize the run-scoped string `abortReason=""` (empty string).
+2. Initialize all three run-scoped boolean flags to `false` unconditionally: `abortMode=false`, `convergenceFailed=false`, `userContinueWithSecret=false`. Additionally, initialize the run-scoped string `abortReason=""` (empty string), the run-scoped counter `unreportedCount=0`, and the run-scoped set `unreported=[]` (empty).
 3. Run flag-conflict resolution (per "Flag conflicts" in `SKILL.md`).
 4. Begin Phase 1.
 
-This is the **single** program-start initialization site — the mirror of `/jr-review`'s `protocols/phase7-cleanup-report.md` "Run-scoped flags initialization", and the reason the two skills' exit-code rules below "must not drift". It is unconditional: the exit-code rules read these flags on **every** exit path, but most paths never enter the `--converge` loop or reach an abort/user-continue site — a clean non-converge run reaches Phase 7 having touched none of them. Initializing here guarantees the exit-code gate reads a defined `false`/`""` rather than relying on unset-variable semantics.
+This is the **single** program-start initialization site — the mirror of `/jr-review`'s `protocols/phase7-cleanup-report.md` "Run-scoped flags initialization", and the reason the two skills' exit-code rules below "must not drift". It is unconditional: the exit-code rules read these values on **every** exit path, but most paths never enter the `--converge` loop or reach an abort/user-continue site — a clean non-converge run reaches Phase 7 having touched none of them (no flag set, and its Phase 3 roll-call appended nothing to `unreported`). Initializing here guarantees the exit-code gate reads a defined `false`/`""`/`0`/`[]` rather than relying on unset-variable semantics.
 
 `/jr-audit` has no `freshEyesMandatory` flag (no fresh-eyes pass — see `../convergence-protocol.md`); it is `/jr-review`-only. `/jr-audit`'s flag-conflict resolution (step 3) currently sets none of these run-scoped flags, so ordering step 2 before step 3 is defensive rather than load-bearing today; keep it so a future conflict rule that latches a flag cannot be clobbered by a later default (the trap `/jr-review` documents at its init site).
 
@@ -23,6 +23,7 @@ Flag semantics:
 - `abortReason=""` — set alongside `abortMode=true` at each abort site to one of the values in `../../shared/abort-markers.md` (single source of truth for the enum). Reset to `""` only here; typically one abort site fires per run.
 - `convergenceFailed=false` — set to `true` by any `--converge` termination-without-convergence path (`../convergence-protocol.md`).
 - `userContinueWithSecret=false` — latched to `true` by the User-continue path protocol's behavior 5 (`../../shared/secret-scan-protocols.md`), at the Phase 5.6 and Phase 6 regression-fix user-Continue sites. CANNOT be unset for the remainder of the run.
+- `unreportedCount=0` / `unreported=[]` (empty): the run-level, monotonic reviewer-roll-call state (`../../shared/subagent-reporting.md` "Lead-side: reviewer roll-call"). Phase 3 step 0.0 and every later roll-call only **append** `UNREPORTED` members, nothing resets it, and `unreportedCount` is `|unreported|`. Initialized here so a clean run (where the roll-call appends nothing) reaches the Phase 3 `unreportedCount == 0` clean-audit gate and the Phase 7 `> 0` exit / health-score gates with a defined `0` / `[]` rather than an unset value. This is **not** the `--converge` loop's per-pass `passUnreported` (loop-owned, reset each iteration per the above); the run-level set is never reset.
 
 ## Exit-code rules
 
