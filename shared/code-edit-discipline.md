@@ -60,3 +60,9 @@ Only the empty-email crash is fixed. Style, types, and unrelated concerns are le
 ## The test
 
 Could you defend every changed line to the reviewer as "this was necessary to fix the assigned finding"? If not, revert that line.
+
+## Closing the class you were assigned
+
+When your assignment is a *class* of defect rather than one named line, your report is complete only when you can name every site in that class and show each is handled — the ones you fixed AND the ones you checked and found already clean. Fixing only the instance a reviewer named while a sibling site survives is how one fix round produces the next round's findings (#76): "strip `\r\n`" that leaves NEL and CSI unhandled is not a closed class. State the enumeration, not just the count of what you changed.
+
+This is scoped to the class you were assigned — it is **not** licence to expand the diff into unrelated classes. The necessity test above still governs every changed line; closure governs only whether your *assigned* class is fully covered. If that class is a sanitiser, filter, or validator, state in-file what it defends against and what it deliberately does not (the threats in scope and the ones knowingly out), so a knowingly-excluded case is not re-opened as a fresh finding and a real gap stays visible as a gap — see `bin/jr-rollup`'s control-character sanitiser for the shape (`WHAT THIS DEFENDS` / `IN SCOPE` / `OUT OF SCOPE`).

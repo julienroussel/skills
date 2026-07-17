@@ -47,6 +47,15 @@ external-authority language is external. Any reviewer-supplied `claimType` hint 
 why `codeExcerpt` works: the guarantee comes from the lead re-reading independently, not from the reviewer's
 own assurance.
 
+**A dismissal is a claim, too.** Rejecting a finding — or waving a risk off as already-handled — asserts a
+property exactly as a finding does, and the same rule governs it: test the property actually relied on, not a
+proxy for it. "This value is safe because its sink is `@tsv`-escaped" is sound only if `@tsv` neutralises the
+specific threat; `@tsv` escapes `\t \n \r \\` and nothing else, so it does not cover C1/NEL/LS/PS, and a
+dismissal that checked only that the value *rendered* never tested what it claimed. Before dropping a finding
+on a because-clause, verify the because-clause to the same standard you would apply to the finding — an
+unverified dismissal auto-applied is the same unchecked autonomous decision this file bars, pointed the other
+way.
+
 ## Grounding hierarchy (cheapest-authoritative first)
 
 1. **Cited code** → resolves code-internal claims. Already enforced.
