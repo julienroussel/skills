@@ -124,3 +124,51 @@ if [ -d "$HOME/.claude/skills/jr-skill-audit" ]; then
     fi
   fi
 fi
+
+# 7. abortReason enum drift (one-shot; not per-skill). Every abortReason="<lit>"
+#    a skill SETS must be declared in shared/abort-markers.md's mapping table, or
+#    it falls through the runtime `case` to `*) → [ABORT — UNLABELED]` — a contract
+#    violation the model catches only after the fact. The allowed set is derived
+#    from abort-markers.md at run time (no hardcoded copy), so the two cannot drift.
+#    Scope notes that ARE the check's soundness (each earned by a real miss):
+#      - used values are extracted with the enum grammar [a-zA-Z][a-zA-Z0-9._-]*,
+#        NOT a bare "[^"]+". Two failure modes bound this: a class that OMITS '.'
+#        silently drops dotted values (head-moved-phase-5.6); a bare "[^"]+" is too
+#        greedy and matches this check's OWN documentation and a sed pattern
+#        (abortReason="//; s/) as if they were setters. The grammar includes '.'
+#        and '-' (so real values pass) and rejects '<', '/', ' ' (so placeholder
+#        mentions like abortReason="<value>" and sed junk do not).
+#      - the declared set is scoped to the mapping-table rows only, NOT the whole
+#        file: abort-markers.md's Anti-patterns section names an EXAMPLE typo
+#        (serect-halt-phase-1) that a whole-file match would wrongly accept.
+#      - secret-halt-* is a documentation glob; the runtime `case` has no glob arm,
+#        so a new secret-halt variant not enumerated in the table SHOULD orphan.
+markers="$HOME/.claude/skills/shared/abort-markers.md"
+if [ -f "$markers" ]; then
+  declared=$(awk '/^## Reason/{f=1;next} f&&/^## /{exit} f&&/^\|/{print}' "$markers" \
+               | sed 's/^| *//; s/ *|.*//' \
+               | grep -oE '`[^`]+`' | tr -d '`' | sort -u)
+  used=$(grep -rhoE 'abortReason="[a-zA-Z][a-zA-Z0-9._-]*"' "$HOME"/.claude/skills \
+           --include='*.md' --include='*.sh' 2>/dev/null \
+           | sed 's/^abortReason="//; s/"$//' | sort -u)
+  declared_count=$(printf '%s\n' "$declared" | grep -c .)
+  used_count=$(printf '%s\n' "$used" | grep -c .)
+  if [ "$declared_count" -eq 0 ]; then
+    # Mapping table stubbed/truncated — fail rather than vacuous-pass every value.
+    echo "FAIL_ABORT_MARKERS_TABLE_EMPTY"
+  elif [ "$used_count" -eq 0 ]; then
+    # Extraction matched nothing though setters are known to exist — the regex is
+    # broken, not the repo. Fail rather than certify clean.
+    echo "FAIL_ABORT_REASON_EXTRACTION_EMPTY"
+  else
+    printf '%s\n' "$used" | while IFS= read -r v; do
+      [ -z "$v" ] && continue
+      if ! printf '%s\n' "$declared" | grep -qxF "$v"; then
+        # Name every setter site so the author can find the typo.
+        grep -rn -- "abortReason=\"$v\"" "$HOME"/.claude/skills \
+          --include='*.md' --include='*.sh' 2>/dev/null \
+          | sed "s|^$HOME/.claude/skills/|FAIL_ABORT_REASON_ORPHAN:$v:|"
+      fi
+    done
+  fi
+fi
