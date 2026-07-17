@@ -58,7 +58,7 @@ For each approved candidate:
 
 **In PR mode** (`--pr`): Use `gh pr comment <number>` to post a **single consolidated comment** on the PR with all findings formatted as a checklist. Do not create one comment per finding. Before posting, redact any strings matching the canonical pattern catalog from `../../shared/secret-patterns.md` from the comment body. Replace with `[REDACTED]`.
 
-**Incompleteness caveat (mandatory)**: when `unreportedCount > 0`, prepend a caveat to the comment body. **Every member of the run-level `unreported` set gets a line** — sourced from that set per rule 1 of `../../shared/subagent-reporting.md`, which owns that rule and the reason for it. Split the lines by the member's source and never collapse them — a lost implementer does not mean the dimension went unreviewed:
+**Incompleteness caveat**: when `unreportedCount > 0`, prepend a caveat to the comment body. **Every member of the run-level `unreported` set gets a line** — sourced from that set per rule 1 of `../../shared/subagent-reporting.md`, which owns that rule and the reason for it. Split the lines by the member's source and never collapse them — a lost implementer does not mean the dimension went unreviewed:
 - reviewer-sourced: `⚠ Incomplete review — the following dimensions returned nothing and were NOT reviewed: <names>. The findings below cover only the dimensions that reported.`
 - implementer-sourced: `⚠ N finding(s) below were assigned to a fix agent that returned nothing and were NOT attempted.`
 - simplification-sourced: `⚠ The Phase 5.5 simplification pass did NOT run — its agent returned nothing.`
