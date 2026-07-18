@@ -131,24 +131,30 @@ Two narrative docs explain the framework when you need it (loaded on-demand via 
 git clone git@github.com:julienroussel/skills.git ~/.claude/skills
 ln -sf ~/.claude/skills/bin/tackle ~/.local/bin/tackle
 ln -sf ~/.claude/skills/bin/tackle-top ~/.local/bin/tackle-top
+
+# Install the native reviewer/implementer agent types so the /jr-audit, /jr-review,
+# /jr-i18n, /jr-skill-audit swarms resolve them in ANY repo (restart Claude Code after):
+mkdir -p ~/.claude/agents
+ln -sf ~/.claude/skills/.claude/agents/jr-reviewer.md   ~/.claude/agents/jr-reviewer.md
+ln -sf ~/.claude/skills/.claude/agents/jr-implementer.md ~/.claude/agents/jr-implementer.md
 ```
 
 After installing, run `/jr-doctor` from any repo to verify the setup is wired up — it checks CLI tools, plugins, `settings.json` keys, installed skills, shared protocol files, hooks, and (per-repo) `.gitignore` coverage. `/jr-doctor --fix` appends missing patterns to the current repo's `.gitignore` (per-change confirmation; never edits `settings.json` or installs anything).
 
 **macOS only — one-time Accessibility permission for `tackle`'s prompt prefill**: System Settings → Privacy & Security → Accessibility → enable your terminal app (Terminal.app or iTerm2). Without it, `tackle` still works but the starter prompt won't be pre-typed into Claude's input box. Edit the `PROMPT_*_TEMPLATE` constants at the top of `bin/tackle` to customize the starter prompts.
 
-## Plugin dependencies
+## External dependencies
 
-Required:
+**Vanilla-first: no required third-party plugin.** The reviewer/implementer swarms use two repo-local **native** agent types: `jr-reviewer` (no Write/Edit) and `jr-implementer`, defined in `.claude/agents/*.md` and installed at `~/.claude/agents/` by the Setup step above. No plugin, no experimental flag. (They replaced `agent-teams@claude-code-workflows`; see issue #72.)
 
-- `agent-teams@claude-code-workflows` — team-reviewer, team-implementer agents
+Optional integrations (make a skill better when present; documented fallback when absent, never an abort):
 
-Optional (enhance skills but not strictly needed):
-
-- `pr-review-toolkit@claude-plugins-official` — silent-failure-hunter, type-design-analyzer, code-simplifier
-- `security-scanning@claude-code-workflows` — STRIDE methodology (used by audit)
 - `codebase-memory-mcp` (MCP server) — when available and the repo is indexed, `/jr-audit`, `/jr-review`, and `/jr-ship` use graph queries (`search_graph`, `trace_path`, `detect_changes`) for cross-file impact analysis, dead-code detection, and split-analysis dependency detection. Grep fallback preserved when unavailable or unindexed.
 - `advisor` tool — used at irreversible / high-blast-radius junctures across `/jr-ship`, `/jr-audit`, `/jr-review`, and `/jr-skill-audit` (full list in the **Advisor integration** section above; canonical "when to call" rules in `shared/advisor-criteria.md`). Advisory-only; the user still gates the action. Without `--merge`, `/jr-ship` stops after CI is green and the merge advisor never fires (safer default for team review).
+
+### Methodology credits
+
+Some reviewer *methodologies* were inlined into prompts from plugins that are **never spawned** and are **not dependencies** (`/jr-doctor` does not check for them; their absence changes nothing): `pr-review-toolkit@claude-plugins-official` and `security-scanning@claude-code-workflows`. The full plugin→dimension mapping lives in `CLAUDE.md` under "Methodology credits" (kept in one place to avoid drift).
 
 ## Auto-memory integration
 

@@ -30,10 +30,13 @@ disallowed-tools: Write Edit WebFetch
   `disallowed-tools`.
 - CAVEAT — the subagent path: `disallowed-tools` governs the LEAD's tool pool only; it does
   NOT propagate to the per-locale translator subagents spawned in Phase 2 (each Agent spawn
-  carries its own tool set). Their no-write property therefore depends on
-  `agent-teams:team-reviewer` being read-only — verify that agent type excludes Write/Edit
-  before relying on the guarantee under a bypass-permissions session; persona prose alone is
-  not a structural block.
+  carries its own tool set). Their no-write property therefore rests on the repo-local
+  `jr-reviewer` type (`.claude/agents/jr-reviewer.md`) omitting `Write`/`Edit` from its `tools:`
+  allowlist. Because we own that def, this is a stronger footing than the former third-party
+  persona; verify `jr-reviewer`'s `tools:` still excludes Write/Edit before relying on it under a
+  bypass-permissions session. It is NOT hermetic, though: `jr-reviewer` keeps `Bash` (a write
+  vector), so the guarantee is the absent Write/Edit tools plus the translator instruction not to
+  write plus lead re-verification, not a structural seal.
 - `Bash(gh api repos/* *)` + `Bash(base64 *)` are the ONLY external-fetch grants: for the
   Phase 3 Tier-2 verification of external-authority locale-rule claims (CLDR/ICU/framework
   docs on GitHub) per `../shared/claim-verification.md`. The `gh api` grant is deliberately
@@ -51,9 +54,10 @@ disallowed-tools: Write Edit WebFetch
 -->
 
 <!-- Dependencies:
-  Required plugins:
-    - agent-teams@claude-code-workflows   — team-reviewer subagents (Phase 2), spawned via the Agent tool
-                                            WITHOUT `name:` (shared/subagent-reporting.md Spawn rule; no TeamCreate/TeamDelete)
+  Required agent types (repo-local native `.claude/agents/`, no plugin):
+    - jr-reviewer  — translator subagents (Phase 2); .claude/agents/jr-reviewer.md installed at
+                     ~/.claude/agents/ (see README install), spawned via the Agent tool WITHOUT `name:`
+                     (shared/subagent-reporting.md Spawn rule)
   Optional CLI:
     - gh                                  — Phase 3 Tier-2 external-authority verification (read-only
                                             `gh api` fetch of CLDR/ICU/framework docs); degrades to the
@@ -86,7 +90,7 @@ disallowed-tools: Write Edit WebFetch
 Findings-only. For each target locale, a dedicated native-speaker subagent
 ultrathinks translation accuracy + real-world idiom; the lead adds mechanical
 catalog-consistency checks. Output is a prioritized findings list with suggested
-corrected text. **Never writes catalog files** — lead-enforced via `disallowed-tools` (turn-scoped; see the frontmatter note); the Phase 2 translator subagents' no-write rests on `agent-teams:team-reviewer` being read-only (verify per the frontmatter subagent caveat), not a structural block. Complements the `i18n-reviewer`
+corrected text. **Never writes catalog files** — lead-enforced via `disallowed-tools` (turn-scoped; see the frontmatter note); the Phase 2 translator subagents' no-write rests on the repo-local `jr-reviewer` type omitting Write/Edit from its `tools:` (verify per the frontmatter subagent caveat), reinforced by instruction, not a hermetic block since Bash remains. Complements the `i18n-reviewer`
 code-review dimension, which owns the *code* side (hardcoded strings, key/placeholder
 parity in a diff); `/jr-i18n` owns *translation content quality*.
 

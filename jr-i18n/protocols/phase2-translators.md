@@ -6,9 +6,9 @@ guard) and applies it at the `## Phase 2` step. Update here to change translator
 behavior.
 
 The core of `/jr-i18n`: the **lead** spawns **one subagent per target locale** (a
-reviewer dimension can't do this — `agent-teams:team-reviewer` has no `Agent` tool,
+reviewer dimension can't do this — `jr-reviewer` has no `Agent` tool,
 so the fan-out must be lead-orchestrated). Spawn in parallel (one message, multiple
-Agent calls) with `subagent_type: "agent-teams:team-reviewer"`, `model: "opus"` (or
+Agent calls) with `subagent_type: "jr-reviewer"`, `model: "opus"` (or
 the `--model` override per `../../shared/model-override.md`). For
 many locales (> 6), batch in waves. Spawn with **no `name:`** (`../../shared/subagent-reporting.md`
 "Spawn rule"): a named subagent is a persistent teammate whose final response never reaches the

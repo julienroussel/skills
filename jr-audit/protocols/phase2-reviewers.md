@@ -48,7 +48,7 @@ Only spawn reviewers relevant to the files in scope. Do NOT spawn reviewers with
 
 ### Scale the swarm
 
-All sizes spawn reviewers the same way — via the Agent tool with `subagent_type: "agent-teams:team-reviewer"` and **no `name:`** (canonical: `../../shared/subagent-reporting.md` "Spawn rule"). Passing `name:` makes the reviewer a persistent teammate whose final response never reaches the lead, silently losing its findings; unnamed, it returns its report in its completion notification. Give each reviewer a distinct `description` instead. There is no `TeamCreate` step, and `team_name` is accepted but ignored. Scope size governs only the reviewer **count** and whether spawning is batched:
+All sizes spawn reviewers the same way — via the Agent tool with `subagent_type: "jr-reviewer"` and **no `name:`** (canonical: `../../shared/subagent-reporting.md` "Spawn rule"). Passing `name:` makes the reviewer a persistent teammate whose final response never reaches the lead, silently losing its findings; unnamed, it returns its report in its completion notification. Give each reviewer a distinct `description` instead. There is no `TeamCreate` step, and `team_name` is accepted but ignored. Scope size governs only the reviewer **count** and whether spawning is batched:
 - **Small scope**: Pick the **top 3 most relevant** dimensions.
 - **Medium scope**: Pick the **top 5–6 most relevant** dimensions.
 - **Large scope**: Spawn **all relevant dimensions** (cap at 8). Use batched spawning: Wave 1 (core reviewers), Wave 2 (conditional/custom) after 3+ Wave 1 reviewers complete.
