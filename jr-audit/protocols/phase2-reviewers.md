@@ -55,6 +55,12 @@ All sizes spawn reviewers the same way — via the Agent tool with `subagent_typ
 
 "Most relevant" = (1) how many in-scope files fall in that dimension, (2) always prioritize `security-reviewer` and `typescript-reviewer`.
 
+### Freeze the reviewed tree during the pass
+
+**The reviewed tree is frozen from the first reviewer spawn until Phase 3 step 0's `codeExcerpt` compare completes.** In that window the lead MUST NOT change any in-scope file — not dispatch an implementer, not run a tree-mutating command (`git checkout/reset/clean`, `rm`, `perl -i`, `mv`), not apply an obvious fix or correct a typo it noticed. Every fix waits for Phase 5, which exists for exactly this. A reviewer cannot be an independent check on a tree the checker is editing, and step 0's excerpt match will reject a *correct* finding about code that moved underneath the reviewer (reason `excerpt-mismatch`), which — uncorrected — poisons that reviewer's cross-run FP-calibration. Under `--converge` the freeze re-arms **per pass**: the between-pass Phase 5/5.5/6 edits are the intended fix path, and each pass reviews a settled tree.
+
+To make a violation detectable rather than merely trusted, capture a content signature over the in-scope files at spawn, using only granted primitives. Whole-repo scope: hash `git rev-parse HEAD` + `git -c core.quotepath=false diff HEAD` (tracked content) plus the untracked in-scope files' bytes via `git ls-files --others --exclude-standard -z | xargs -0 shasum` (excluding `.claude/`) — hash untracked *content*, not `git status --porcelain`, which lists names only and would miss a mid-pass edit to an existing untracked file. Bounded `--converge` scope (`modifiedFiles`): hash those files' bytes NUL-safely, `git ls-files -z -- <scope> | xargs -0 shasum`; never `printf '%s\0' "$list"` a newline-joined file-list scalar, which collapses to one record and silently yields a constant that never detects a move (`convergence-protocol.md` NUL-safety rule). Phase 3 step 0 recomputes it; if it moved, this pass's `excerpt-mismatch` rejections are marked stats-exempt (canonical: `../../shared/audit-history-schema.md` "Skip stats-exempt rejections when the reviewed tree moved during a pass").
+
 ### Reviewer instructions
 
 Each agent receives:

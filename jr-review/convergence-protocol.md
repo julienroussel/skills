@@ -80,6 +80,8 @@ For each convergence pass:
 
 **Reset `passUnreported` to empty first** — before this pass's first roll-call (Convergence Phase 3 step 0.0). Termination condition 1 above has already read the *previous* pass's value by this point, so the reset cannot race it. The run-level `unreported` set is never reset (`../shared/subagent-reporting.md`).
 
+**Re-arm the freeze anchor per pass** — capture a fresh `FREEZE_ANCHOR` at this pass's Convergence Phase 2 spawn and re-check it at this pass's Convergence Phase 3 step 0 (same as the initial pass; `protocols/phase2-reviewers.md` "Freeze the reviewed tree during the pass"). The between-pass Phase 5/5.5/6 edits legitimately move the tree, but they fall *outside* any pass's spawn→step-0 window, so they never trip the check — each pass reviews a settled tree. Each `excerpt-mismatch` rejection is tagged `statsExempt` (or not) at its own pass's step 0 and travels with the rejection record, so there is no shared flag to reset; `/jr-review` writes `reviewerStats` only once (Phase 7), and whichever rejections feed that write are exempted correctly by their own tags.
+
 #### Convergence Phase 2 — Re-review modified files only
 
 Scope the review to ONLY the files in `modifiedFiles` from the previous iteration. Do NOT review the full accumulated diff or previously-unchanged files.
