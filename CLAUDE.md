@@ -114,7 +114,7 @@ jr-skill-audit/edge-cases.md          — case→behavior reference table (~21 r
                                      `## Edge cases` points here.
 jr-i18n/SKILL.md                   — native-translator review of a project's translation catalogs. For each
                                      target locale the lead fans out ONE language-expert subagent (a reviewer
-                                     dimension can't — `agent-teams:team-reviewer` has no Agent tool) that
+                                     dimension can't — `jr-reviewer` has no Agent tool) that
                                      ultrathinks accuracy + real-world idiom, plus mechanical catalog checks
                                      (missing/extra keys, placeholder/ICU-arg parity). Findings + suggested
                                      corrected text; findings-only, NEVER writes catalogs (`disallowed-tools`
@@ -151,6 +151,12 @@ jr-tackle/SKILL.md                    — wrap an ad-hoc in-session task with ri
                                      Intentionally minimal: no shared/*.md deps, no Phase 1 Track A
                                      guard, no protocols/ or scripts/ — does not participate in the
                                      "Shared conventions" block below.
+.claude/agents/jr-reviewer.md      — repo-local native reviewer subagent type (no Write/Edit; tools: Read, Glob,
+.claude/agents/jr-implementer.md      Grep, Bash); jr-implementer adds Write/Edit. Spawned unnamed by the
+                                     reviewer/implementer swarms (/jr-audit, /jr-review, /jr-i18n, /jr-skill-audit);
+                                     installed at ~/.claude/agents/ (README install). Replaced
+                                     agent-teams@claude-code-workflows (#72). Tracked source; harness-resolved,
+                                     not loaded into the lead's context.
 shared/reviewer-boundaries.md      — canonical dimension-ownership table, severity rubric, confidence levels
 shared/untrusted-input-defense.md  — canonical prompt-injection defense block for subagent prompts
 shared/gitignore-enforcement.md    — canonical write-safety protocol for .claude/* cache + audit-trail files
@@ -216,7 +222,7 @@ shared/subagent-reporting.md       — canonical subagent→lead reporting contr
                                      **Spawn rule** (work-producing subagents are spawned WITHOUT `name:`; a named
                                      subagent is a persistent teammate whose final response never reaches the lead,
                                      which is how findings vanished silently), the verified channel matrix (volatile:
-                                     re-verify after a Claude Code / agent-teams upgrade — do not restate its verdicts
+                                     re-verify after a Claude Code upgrade — do not restate its verdicts
                                      elsewhere), the subagent-facing block passed verbatim into every reviewer/
                                      translator/implementer prompt, and the lead-side roll-call. Read at Phase 1
                                      Track A by /jr-audit, /jr-review, /jr-skill-audit, /jr-i18n.
@@ -323,11 +329,24 @@ Worktree layout, marker conventions, scratch-session contract, per-session conte
 
 Quick reminder of what lives there: role split between `tackle` and `/jr-ship` (no IPC, only filesystem conventions); why tackle does not use `claude -w`; the `scratch-session` and `tackle-type` markers under `.git/info/`; `CLAUDE.local.md` injection registered via `.git/info/exclude`; primary-vs-secondary worktree cleanup paths in `/jr-ship`; and the explicit anti-patterns (do not use `claude -w`, do not commit markers, do not inject context into `CLAUDE.md`, etc.).
 
-## Plugin dependencies
+## External dependencies — vanilla-first
 
-Required: `agent-teams@claude-code-workflows` (team-reviewer, team-implementer subagents).
+**No required third-party dependency.** Any capability a skill's guarantees rest on must be vanilla Claude Code or repo-local (`.claude/agents/*.md`, `shared/*.md`, `<skill>/scripts/`). A capability that is only available from a plugin or marketplace is a capability this repo does not have. This is not a rule against plugins; it is a rule against a skill's correctness depending on one.
 
-Optional: `pr-review-toolkit@claude-plugins-official` (silent-failure-hunter, type-design-analyzer, code-simplifier), `security-scanning@claude-code-workflows` (STRIDE methodology).
+**Reviewer/implementer agent types (repo-local, native).** The reviewer/implementer swarms in `/jr-audit`, `/jr-review`, `/jr-i18n`, `/jr-skill-audit` spawn the repo-local `jr-reviewer` (no Write/Edit; tools: `Read, Glob, Grep, Bash`) and `jr-implementer` (`Read, Write, Edit, Glob, Grep, Bash`) types, defined in `.claude/agents/*.md` and installed at `~/.claude/agents/` (see the README install). No plugin, no experimental flag; spawned WITHOUT `name:` per `shared/subagent-reporting.md` "Spawn rule". They replaced `agent-teams@claude-code-workflows` (#72).
+
+**Optional integrations must degrade gracefully.** An integration may make a skill better when present, but its absence must produce a documented fallback, never an abort. Canonical example: `codebase-memory-mcp` (reviewers prefer `search_graph`/`trace_path` when indexed; Grep fallback otherwise). If you cannot write the fallback, the dependency is required and belongs elsewhere.
+
+**Credit is not a dependency.** Where a plugin's *methodology* was inlined into a prompt, say so under Methodology credits (below), not as a dependency: a reader will install it expecting it to be wired, and `/jr-doctor` should not check for it.
+
+**Rationale.** A third-party agent definition can change its `tools:` list or persona in a release and silently alter every reviewer in the repo. That is not hypothetical: this repo depended on `agent-teams` for a read-only sandbox while overriding its persona, dimensions, model, and output format, and inherited an execution model that lost findings silently for months (#70, #72).
+
+## Methodology credits
+
+These plugins' *methodologies* were inlined into reviewer prompts. They are **never spawned** and are **not dependencies**; `/jr-doctor` does not check for them and their absence changes nothing.
+
+- `pr-review-toolkit@claude-plugins-official` — silent-failure-hunter → error-handling, type-design-analyzer → typescript, code-simplifier → Phase 5.5, comment-analyzer → comment, pr-test-analyzer → testing.
+- `security-scanning@claude-code-workflows` — STRIDE methodology → security-reviewer (large/full audits).
 
 ## Key design decisions
 

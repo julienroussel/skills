@@ -20,8 +20,9 @@ disallowed-tools: Edit
 -->
 
 <!-- Dependencies:
-  Required plugins:
-    - agent-teams@claude-code-workflows        — team-reviewer agents (Phase 2), spawned via the Agent tool WITHOUT `name:` (see shared/subagent-reporting.md Spawn rule)
+  Required agent types (repo-local native `.claude/agents/`, no plugin):
+    - jr-reviewer  — reviewer agents (Phase 2); .claude/agents/jr-reviewer.md installed at ~/.claude/agents/
+                     (see README install), spawned via the Agent tool WITHOUT `name:` (see shared/subagent-reporting.md Spawn rule)
   Required CLI:
     - gh                                        — Phase 1 Track C: `gh api repos/anthropics/claude-code/contents/CHANGELOG.md`
                                                   for changelog content (gh handles GitHub auth + redirects;
@@ -232,7 +233,7 @@ When the Track-B grouping above yields a basename present in both scopes, the le
 
 ## Phase 2 — Spawn reviewer swarm
 
-Spawn each selected reviewer dimension as a `agent-teams:team-reviewer` agent. Reviewers run **in parallel** within a single tool-use message.
+Spawn each selected reviewer dimension as a `jr-reviewer` agent. Reviewers run **in parallel** within a single tool-use message.
 
 **Spawn rule (mandatory)**: spawn each reviewer with **no `name:`** (`../shared/subagent-reporting.md` "Spawn rule"). A named subagent is a persistent teammate whose final response never reaches the lead, silently losing its dimension; unnamed, it returns its findings in its completion notification. Give each a distinct `description` instead.
 

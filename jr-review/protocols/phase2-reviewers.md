@@ -76,7 +76,7 @@ Defined in `../../shared/reviewer-boundaries.md` (read at Phase 1 Track A and pa
 
 Apply diff-size selection first, then clamp the reviewer count to the effort-adaptive cap from "Effort-adaptive breadth" above.
 
-All sizes spawn reviewers the same way — via the Agent tool with `subagent_type: "agent-teams:team-reviewer"` and **no `name:`** (canonical: `../../shared/subagent-reporting.md` "Spawn rule"). Passing `name:` makes the reviewer a persistent teammate whose final response never reaches the lead, which silently loses its findings; unnamed, it returns its report in its completion notification. Give each reviewer a distinct `description` instead — that is what the progress table renders. There is no `TeamCreate` step, and `team_name` is accepted but ignored. Diff size governs only the reviewer **count**:
+All sizes spawn reviewers the same way — via the Agent tool with `subagent_type: "jr-reviewer"` and **no `name:`** (canonical: `../../shared/subagent-reporting.md` "Spawn rule"). Passing `name:` makes the reviewer a persistent teammate whose final response never reaches the lead, which silently loses its findings; unnamed, it returns its report in its completion notification. Give each reviewer a distinct `description` instead — that is what the progress table renders. There is no `TeamCreate` step, and `team_name` is accepted but ignored. Diff size governs only the reviewer **count**:
 - **Small diff**: Pick the **top 2 most relevant** dimensions.
 - **Medium diff**: Pick the **top 3–4 most relevant** dimensions (5 if `CLAUDE_EFFORT` is `xhigh`/`max`).
 - **Large diff**: Spawn **all relevant dimensions** (up to 6 max — or up to 8 max if `CLAUDE_EFFORT` is `xhigh`/`max`).

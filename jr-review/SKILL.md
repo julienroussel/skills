@@ -31,8 +31,10 @@ allowed-tools: Read Glob Grep WebFetch AskUserQuestion Agent advisor Write(.clau
 -->
 
 <!-- Dependencies:
-  Required plugins:
-    - agent-teams@claude-code-workflows        — team-reviewer (Phase 2), team-implementer (Phase 5); spawned via the Agent tool WITHOUT `name:` (../shared/subagent-reporting.md "Spawn rule"; `TeamCreate`/`TeamDelete` removed in 2.1.178). Dependency removal tracked in issue #72.
+  Required agent types (repo-local native `.claude/agents/`, no plugin):
+    - jr-reviewer (Phase 2) + jr-implementer (Phase 5) — .claude/agents/*.md, installed at ~/.claude/agents/
+                                                  (see README install); spawned via the Agent tool WITHOUT
+                                                  `name:` (../shared/subagent-reporting.md "Spawn rule").
   Enhanced by plugins (integrated methodologies):
     - pr-review-toolkit@claude-plugins-official — pr-test-analyzer → testing-reviewer, code-simplifier → Phase 5.5, silent-failure-hunter → error-handling
     - codebase-memory-mcp (MCP)                 — detect_changes, trace_path, search_graph (Phase 1 pre-check probe; Phase 2 cross-file impact when GRAPH_INDEXED=true). Grep fallback.
@@ -371,7 +373,7 @@ Additionally, when loading `review-config.md` in Track A, check whether the file
 
 **Base commit anchor**: Before spawning implementers, record the current commit hash and capture pre-Phase-5 baselines for untracked files and symlinks. Apply the canonical procedure in `protocols/base-anchor.md` (anchor capture via `${CLAUDE_SKILL_DIR}/scripts/establish-base-anchor.sh`, NUL-delimited baseline outputs, the four-step Combined revert sequence used by every later revert site, and the `NUL_SORT_AVAILABLE`-degraded fallback rules).
 
-Spawn **all implementer agents in parallel** using multiple Agent tool calls in a single message. Use `subagent_type: "agent-teams:team-implementer"` and **no `name:`** (`../shared/subagent-reporting.md` "Spawn rule" — a named implementer is a teammate whose final response never reaches the lead, so its `addressed`/`contested` verdicts are lost); give each a distinct `description` instead. The `team_name` param is accepted but ignored since 2.1.178, so the medium/large-vs-small distinction now governs only how many implementers you spawn — not any team-creation step. Each implementer receives:
+Spawn **all implementer agents in parallel** using multiple Agent tool calls in a single message. Use `subagent_type: "jr-implementer"` and **no `name:`** (`../shared/subagent-reporting.md` "Spawn rule" — a named implementer is a teammate whose final response never reaches the lead, so its `addressed`/`contested` verdicts are lost); give each a distinct `description` instead. The `team_name` param is accepted but ignored since 2.1.178, so the medium/large-vs-small distinction now governs only how many implementers you spawn — not any team-creation step. Each implementer receives:
 
 - A set of user-approved findings scoped to specific files (strict file ownership — no two implementers touch the same file; ownership also closes over description-coupling, so a file and any file that documents or specifies it (doc, schema, fixture) go to the same implementer, never parallel ones — otherwise a doc edited beside the code it describes passes its own reconcile check merely because the other implementer has not written yet. If one file describes many changed files, the Phase 5 pre-dispatch advisor's "Re-allocate" branch merges them into one task list), including each finding's confidence level
 - The original diff context for those files

@@ -14,9 +14,10 @@ Mode: report-only          Repo: ~/.claude/skills (in-repo, has-remote)
 Global setup
   ✓ CLI tools (4/4)         git, gh (auth), jq, claude
   ✓ Optional CLI (2/2)      rtk, wt
-  ✓ settings.json (5/5)     parseable, advisorModel set, agent-teams enabled, .claude/** allowed, defaultMode=plan
-  ✓ Optional plugins (3/3)  pr-review-toolkit, security-scanning, worktrunk
+  ✓ settings.json (4/4)     parseable, advisorModel set, .claude/** allowed, defaultMode=plan
+  ✓ Optional plugins (1/1)  worktrunk
   ✓ Skills installed (4/4)  audit, review, ship, tackle
+  ✓ Agent types (2/2)       jr-reviewer (read-only), jr-implementer
   ✓ Shared files (3/3)      smoke-parse OK
   ✓ Hooks (3/3)             no-claude-attribution, cbm-code-discovery-gate, cbm-session-reminder
   ✓ Hooks wired (4/4)       rtk + no-claude-attribution + cbm-gate + cbm-session-reminder
@@ -26,7 +27,6 @@ Global setup
 
 Claude Code runtime
   ✓ claude CLI version      2.1.126
-  ✓ Required env vars (1/1) CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
   ✓ Recommended env vars    CLAUDE_CODE_NO_FLICKER=1
   ℹ Optional tunables       (all defaults)
                             For /jr-audit/jr-review users on big monorepos, consider:

@@ -14,20 +14,22 @@ So: **do not pass `name:`** when spawning a reviewer, translator, or implementer
 
 ### Verified behaviour
 
-Full 2×2, both variables crossed, 2026-07-16, `agent-teams` v1.0.3. Each agent was given a known token as its entire final response and told not to message; each named agent was afterwards confirmed **alive and already finished** by asking it directly, so these are genuine non-deliveries and not slow ones:
+Full 2×2, both variables crossed. In the 2026-07-16 run (against `agent-teams` v1.0.3), each agent was given a known token as its entire final response and told not to message; each named agent was afterwards confirmed **alive and already finished** by asking it directly, so these are genuine non-deliveries and not slow ones:
 
 | `subagent_type` | `name:` | Report reaches the lead? |
 |---|---|---|
-| `agent-teams:team-reviewer` | no | **Yes** — in the completion notification's `<result>` |
-| `agent-teams:team-reviewer` | **yes** | **No** |
+| `jr-reviewer` (repo-local) | no | **Yes** — in the completion notification's `<result>` |
+| `jr-reviewer` (repo-local) | **yes** | **No** |
 | none (default) | no | **Yes** — same `<result>` channel |
 | none (default) | **yes** | **No** |
 
-**`name:` is the sole determinant; `subagent_type` is irrelevant to it.** Both types return when unnamed and both go silent when named. The plugin is not the cause, and switching agent types neither fixes nor causes this — a repo-local `.claude/agents/*.md` type spawned with `name:` would lose findings exactly the same way.
+Provenance: the `jr-reviewer` rows relabel that original two-type cross-product. Only the `jr-reviewer` unnamed→`<result>` cell was separately re-verified (2026-07-18 against `.claude/agents/jr-reviewer.md`, identical); the named-`jr-reviewer` row follows from the type-independence the original run established across two types (below), not a fresh measurement, and the `default` rows are built-in behaviour carried over.
+
+**`name:` is the sole determinant; `subagent_type` is irrelevant to it.** Both types return when unnamed and both go silent when named. Switching agent types neither fixes nor causes this: the repo-local `jr-reviewer` type spawned with `name:` loses findings exactly the same way the default type does.
 
 The mechanism is visible in the notification shape: an unnamed spawn produces a task notification carrying a `<result>` field; a named spawn produces an idle notification (`"idleReason":"available"`) that has **no result field at all**. There is no slot for a named agent's return value.
 
-`TaskCreate` is a separate dead end, not an alternative: it is absent from `team-reviewer`, `team-implementer`, and `team-debugger` (`agents/team-reviewer.md` declares `tools: Read, Glob, Grep, Bash, TaskList, TaskGet, TaskUpdate, SendMessage`); only `team-lead` holds it, and the lead itself has no `TaskList`. Tasks are unusable as a channel in either direction.
+`TaskCreate` is a separate dead end, not an alternative: the repo-local `jr-reviewer` and `jr-implementer` defs grant no task tools at all (their `tools:` lists are `Read, Glob, Grep, Bash` and `Read, Write, Edit, Glob, Grep, Bash`), and the lead itself has no `TaskList`. Tasks are unusable as a channel in either direction.
 
 This table is harness behaviour and can change across Claude Code and plugin releases: re-verify after an upgrade (methodology: `../docs/skill-anatomy.md` "Re-verifying a harness claim").
 
@@ -38,7 +40,7 @@ This table is harness behaviour and can change across Claude Code and plugin rel
 > - **If you found nothing, say so explicitly** (for example, "no findings for <dimension>"). Do not end your turn silently: the lead cannot tell silence apart from a clean result, so silence is reported as a failure, not as a pass.
 > - **Report the scope you actually covered, not just what you found.** Name what you checked and what you did not reach — a reviewer or translator says which files or locales it examined; an implementer that fixed the named instances says whether the same defect has other sites it did not touch. A partial pass reported as a complete one is the same silent loss as an empty return, one level up.
 > - Do NOT use `TaskCreate`: you do not have it, and calling it will fail.
-> - Do NOT use `SendMessage` to deliver findings. You have the tool, and it will report success, but no lead phase reads messages — your findings would be lost while your (empty) return still clears the roll-call, which is the worst of both. Your final response is the only channel.
+> - Do NOT use `SendMessage` to deliver findings: the repo-local reviewer/implementer types do not grant it, so calling it will fail; and even where it is available, no lead phase reads messages, so anything sent that way is lost. Your final response is the only channel.
 > - Do not print progress to the console. Your console output is not visible to the user.
 
 ## Lead-side: reviewer roll-call

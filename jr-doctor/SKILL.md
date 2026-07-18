@@ -32,10 +32,11 @@ allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(gi
     - ~/.claude/skills/jr-review/scripts/install-pre-commit-secret-guard.sh — extracts EXPECTED_TEMPLATE_SHA256 (Group I template hash check)
     - ~/.claude/skills/jr-skill-audit/cache/refs.json       — fetchedAt timestamp (Group I refs-cache freshness check)
     - ~/.claude/skills/docs/worktree-architecture.md     — existence (tackle/jr-ship contract)
+    - ~/.claude/agents/{jr-reviewer,jr-implementer}.md   — presence (resolves via symlink) + jr-reviewer read-only (no Write/Edit in tools:); Group C
     - ~/.claude/hooks/{no-claude-attribution,cbm-code-discovery-gate,cbm-session-reminder} — existence + executable
     - <cwd>/CLAUDE.md, <cwd>/.gitignore          — per-repo
   Env vars probed:
-    - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS       — required (=1) for agent-teams plugin to provide team-* subagent types
+    - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS       — informational (formerly required for the agent-teams plugin; the reviewer/implementer swarms now use repo-local native `.claude/agents/` types, which need no flag)
     - CLAUDE_CODE_NO_FLICKER                     — recommended (=1) UI preference for cleaner output
     - CLAUDECODE, CLAUDE_CODE_ENTRYPOINT         — informational (set automatically inside Claude Code)
     - BASH_DEFAULT_TIMEOUT_MS, BASH_MAX_TIMEOUT_MS  — informational (long /audit-/review-/jr-ship validation runs)
@@ -171,16 +172,13 @@ Short-circuit if `SETTINGS_PRESENT=no`: emit `✗ settings.json missing` and ski
 ```bash
 jq empty ~/.claude/settings.json 2>&1                                                  # parseable
 [ -n "$(jq -r '.advisorModel // empty' ~/.claude/settings.json)" ] && echo "set" || echo "missing"
-jq -r '.enabledPlugins["agent-teams@claude-code-workflows"] // "missing"' ~/.claude/settings.json
-jq -r '.enabledPlugins["pr-review-toolkit@claude-plugins-official"] // "missing"' ~/.claude/settings.json
-jq -r '.enabledPlugins["security-scanning@claude-code-workflows"] // "missing"' ~/.claude/settings.json
 jq -r '.enabledPlugins["worktrunk@worktrunk"] // "missing"' ~/.claude/settings.json
 jq -r '.permissions.allow // [] | map(select(. == "Edit(.claude/**)" or . == "Write(.claude/**)")) | length' ~/.claude/settings.json
 jq -r '.permissions.defaultMode // "missing"' ~/.claude/settings.json
 ```
 
-Required: parseable, `advisorModel` set, `agent-teams@claude-code-workflows = true`, `permissions.allow` count ≥ 2 (✗ on fail).
-Recommended: `pr-review-toolkit`, `security-scanning`, `worktrunk` plugins enabled (warn).
+Required: parseable, `advisorModel` set, `permissions.allow` count ≥ 2 (✗ on fail).
+Recommended: `worktrunk` plugin enabled (warn).
 Preference: `defaultMode = "plan"` (warn if different).
 
 ### Group C — skills installed + shared files + tackle/docs (single Bash)
@@ -195,9 +193,26 @@ done
 [ -x ~/.claude/skills/bin/tackle ] || echo "NOT_EXECUTABLE: bin/tackle"
 [ -x ~/.claude/skills/bin/seed-project-memory ] || echo "NOT_EXECUTABLE: bin/seed-project-memory"
 [ -x ~/.claude/skills/bin/tackle-top ] || echo "NOT_EXECUTABLE: bin/tackle-top"
+# Repo-local native agent types jr-reviewer/jr-implementer (replaced the agent-teams plugin dep).
+# -e follows the symlink, so a dangling ~/.claude/agents link (target missing) still reports MISSING_AGENT.
+for a in jr-reviewer jr-implementer; do
+  [ -e ~/.claude/agents/$a.md ] || echo "MISSING_AGENT: ~/.claude/agents/$a.md"
+done
+# jr-reviewer must stay read-only: no Write/Edit tools (/jr-i18n's no-write rests on this). A native
+# subagent with NO tools: line inherits ALL tools (incl. Write/Edit), so a missing tools: line must FAIL,
+# not pass silently. Scan only the YAML frontmatter (between the first two `---`) so a body mention of
+# "Write/Edit" can't false-fire; catch the inline `tools: …` form and a YAML `- Write`/`- Edit` list item.
+if [ -e ~/.claude/agents/jr-reviewer.md ]; then
+  fm=$(awk 'NR==1 && /^---/{f=1; next} f && /^---/{exit} f' ~/.claude/agents/jr-reviewer.md)
+  if ! printf '%s\n' "$fm" | grep -qE '^tools:'; then
+    echo "AGENT_NOT_READONLY: jr-reviewer has no 'tools:' line (a subagent with no tools list inherits ALL tools, incl. Write/Edit)"
+  elif printf '%s\n' "$fm" | grep -qE '^tools:.*(Write|Edit)|^[[:space:]]*-[[:space:]]*(Write|Edit)([[:space:]]|$)'; then
+    echo "AGENT_NOT_READONLY: jr-reviewer tools: grants Write/Edit"
+  fi
+fi
 ```
 
-Missing jr-audit/jr-review/jr-ship/SKILL.md → ✗. Missing tackle/seed-project-memory/tackle-top/docs → warn (only relevant to tackle workflows). Non-executable bin/* → warn.
+Missing jr-audit/jr-review/jr-ship/SKILL.md → ✗. Missing tackle/seed-project-memory/tackle-top/docs → warn (only relevant to tackle workflows). Non-executable bin/* → warn. `MISSING_AGENT` (jr-reviewer/jr-implementer not resolvable at `~/.claude/agents/`) → ✗: the reviewer/implementer swarms in /jr-audit, /jr-review, /jr-i18n, /jr-skill-audit cannot spawn without them; run the README install, then restart Claude Code so the new agents dir is watched. `AGENT_NOT_READONLY` → ✗: jr-reviewer must exclude Write/Edit (/jr-i18n's no-write property depends on it).
 
 ### Group D — shared file smoke-parse (canonical-driven)
 
@@ -322,7 +337,7 @@ done
 - If ≥1 `TUNABLE:` lines → emit `ℹ Optional tunables       (N set)` followed by the values, indented 4 spaces.
 - The teaser block (BASH_MAX_TIMEOUT_MS / MCP_TIMEOUT suggestions) appears AFTER the printed lines if EITHER of those two specific vars is still unset — so a user with `MAX_THINKING_TOKENS=20000` but no BASH/MCP overrides still gets the suggestion. Drop a suggestion from the teaser the moment its var is set.
 
-**`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — REQUIRED `=1` for the `agent-teams` plugin to provide `team-*` subagent types (`TeamCreate`/`TeamDelete` were removed in 2.1.178; work-producing subagents are spawned **without `name:`** per `~/.claude/skills/shared/subagent-reporting.md` "Spawn rule" — do not describe them as named teammates, which is the model that lost findings silently in issue #70). Without this env var, `/jr-audit` and `/jr-review` Phase 2 reviewer dispatch will fail. Hint: `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (add to shell profile so it persists across sessions). ✗ if unset.
+**`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — Informational. Formerly REQUIRED when the reviewer/implementer swarms depended on the `agent-teams` plugin; they now use repo-local native `.claude/agents/` types (`jr-reviewer`/`jr-implementer`), which are a stable feature and need no flag. Work-producing subagents are still spawned **without `name:`** per `~/.claude/skills/shared/subagent-reporting.md` "Spawn rule"; do not describe them as named teammates, which is the model that lost findings silently in issue #70. No longer gates any skill; reported for information only.
 
 **`CLAUDE_CODE_NO_FLICKER`** — Recommended `=1` UI preference (cleaner output, no terminal redraw flicker). Hint: `export CLAUDE_CODE_NO_FLICKER=1`. ⚠ if unset.
 
@@ -447,7 +462,7 @@ Re-check: ✓ Gitignore coverage
 | Inside scratch session | Banner: `Inside tackle scratch session (id=...)`. No check changes. |
 | Headless | `--fix` auto-disabled with warning unless `--yes`. |
 | `.gitignore` missing | Treat as fixable (`--fix` creates it). |
-| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` unset/≠1 | `✗ Required env vars (0/1)`. Hint: `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (add to `~/.zshrc` or `~/.bashrc` so it persists). Blocks /jr-audit Phase 2 and /jr-review Phase 2 reviewer dispatch. |
+| `jr-reviewer`/`jr-implementer` not resolvable at `~/.claude/agents/` | `✗` (Group C `MISSING_AGENT`). The reviewer/implementer swarms cannot spawn. Hint: run the README install (`mkdir -p ~/.claude/agents && ln -sf ~/.claude/skills/.claude/agents/jr-reviewer.md ~/.claude/agents/`, same for `jr-implementer.md`), then restart Claude Code so the new agents dir is watched. |
 | `CLAUDE_CODE_NO_FLICKER` unset/≠1 | `⚠ Recommended env vars`. Hint: `export CLAUDE_CODE_NO_FLICKER=1`. Non-blocking; UI preference only. |
 | Optional tunables all unset | `ℹ Optional tunables (all defaults)` plus a 2-3-line inline suggestion of the most-likely-relevant ones (BASH_MAX_TIMEOUT_MS, MCP_TIMEOUT). Never blocks. |
 | Doctor's own SKILL.md | Group C existence check skipped — if running, it exists. Group I (skill drift) DOES include doctor — line/frontmatter/inline-drift checks remain meaningful for doctor itself. |

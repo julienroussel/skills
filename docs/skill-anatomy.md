@@ -18,9 +18,10 @@ Content in this repo lives in one of five places. Each tier has a distinct purpo
 | **`<skill>/scripts/*.sh`** | `<skill>/scripts/<name>.sh` | Executed via Bash; content never enters context unless the lead Reads it for debugging | Zero context cost (executable; output may enter context) |
 | **`<skill>/templates/*`** | `<skill>/templates/<name>.<ext>` | Read by a script (typically with SHA-256 verification before use) | Zero context cost unless the lead Reads it directly |
 
-Two tiers above the table are out of scope here:
+Beyond the table, these repo locations are also out of scope here (none is loaded into the lead's context):
 - `CLAUDE.md` — repo-level constants and conventions, loaded into every session in this repo. Use sparingly; everything in it pays the everyone-everywhere tax.
 - `docs/*.md` — narrative explainers loaded on-demand via `@docs/<file>.md` (this file is one).
+- `.claude/agents/*.md` — repo-local **native subagent definitions** (`jr-reviewer`, `jr-implementer`) resolved by the Agent tool from `~/.claude/agents/`; the body becomes the *spawned subagent's* system prompt, so it is zero context cost to the lead. Replaced the `agent-teams` plugin (#72).
 
 ---
 
@@ -194,7 +195,7 @@ Skills that grant `allowed-tools` pre-authorize the listed tools without per-cal
    -->
    ```
    This is documentation for future-you: a year from now, you'll wonder why some destructive op isn't pre-authorized. The note explains the omission was intentional.
-4. **Auto-authorize agent-management + scoped writes.** `AskUserQuestion`, `Agent`, `advisor`, `Write(.claude/**)`, `Edit(.claude/**)`, `Write(.gitignore)`, `Edit(.gitignore)` are needed by every documented phase; absent these the skill stalls on permission prompts. Do **not** grant `TaskCreate`/`TaskList`/`TaskGet`/`TaskUpdate`: the lead does not have them, no `agent-teams` reviewer role has `TaskCreate`, and granting them in `allowed-tools` advertises a reporting channel that silently loses findings.
+4. **Auto-authorize agent-management + scoped writes.** `AskUserQuestion`, `Agent`, `advisor`, `Write(.claude/**)`, `Edit(.claude/**)`, `Write(.gitignore)`, `Edit(.gitignore)` are needed by every documented phase; absent these the skill stalls on permission prompts. Do **not** grant `TaskCreate`/`TaskList`/`TaskGet`/`TaskUpdate`: the lead does not have them, the repo-local `jr-reviewer`/`jr-implementer` types grant no task tools, and granting them in `allowed-tools` advertises a reporting channel that silently loses findings.
 5. **Spawn work-producing subagents WITHOUT `name:`** (canonical: `shared/subagent-reporting.md`). A subagent's final response returns to the lead only when it is unnamed; `name:` makes it a persistent teammate that goes idle instead of returning, and its findings are lost with no error anywhere (issue #70). `name:` buys mid-flight addressability, which no documented phase needs. Give each spawn a distinct `description` instead — that is what the progress display renders. The lead must also **roll-call** its spawn list against the results actually returned: a subagent that returns nothing is `UNREPORTED`, never a clean dimension, and that state must be rendered, must set a non-zero exit, and must block every clean-result path. `TeamCreate`/`TeamDelete` were removed in 2.1.178 and must not be re-introduced.
 
 ---
@@ -266,8 +267,10 @@ Don't do these.
 
 When creating `<new-skill>/SKILL.md`:
 
+**Vanilla-first (the default):** a skill's guarantees must rest only on vanilla Claude Code or repo-local files (`.claude/agents/*.md`, `shared/*.md`, `<skill>/scripts/`), never a required third-party plugin or marketplace. Optional integrations may enhance a skill but must degrade to a documented fallback, never an abort (canonical: the `CLAUDE.md` "External dependencies — vanilla-first" section).
+
 1. **Frontmatter**: `name`, `description`, `argument-hint`, `effort`, `model: opus` (for skills that spawn reviewers/implementers), `disable-model-invocation: true` (for user-only skills), `user-invocable: true`, scoped `allowed-tools`.
-2. **Dependencies HTML comment block**: list required plugins, required CLI binaries, files read/written, shared protocol references with their smoke-parse anchors, required tools.
+2. **Dependencies HTML comment block**: list required agent types (repo-local native `.claude/agents/*.md`, not a plugin), required CLI binaries, files read/written, shared protocol references with their smoke-parse anchors, required tools.
 3. **Phase scaffolding**: numbered phases with `━━━` headers, cumulative timeline updates, parallel-first dispatch where independent.
 4. **Phase 1 Track A read list**: add hard-fail guard for any `shared/*.md` or `<skill>/protocols/*.md` files the skill consumes, with smoke-parse anchors.
 5. **`docs/worktree-architecture.md`** ← if the skill interacts with `bin/tackle` or `/jr-ship`'s worktree handling.
