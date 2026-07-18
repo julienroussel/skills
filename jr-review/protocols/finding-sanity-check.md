@@ -74,8 +74,9 @@ If the excerpt is missing or empty, treat as hallucination evidence and reject. 
 - the cited `file:line`
 - the reason: one of `missing-file`, `bad-line`, `line-out-of-range`, `excerpt-missing`, `excerpt-mismatch`, `pr-file-fetch-failed`
 - For `excerpt-mismatch`: a 2-line diff showing what the reviewer claimed vs what the file actually contains.
+- a `statsExempt` flag (default false), set true only for an `excerpt-mismatch` when the lead flagged this pass tree-moved at Phase 3 step 0 (the reviewed tree changed under the reviewer, so the mismatch is not hallucination evidence).
 
-Include all rejections in the Phase 7 report. Track the rejection rate per reviewer dimension; if a single reviewer exceeds 25% rejection, emit a Phase 7 `ACTION REQUIRED` note.
+Include all rejections in the Phase 7 report. Track the rejection rate per reviewer dimension over **assessable findings only** (a `statsExempt` rejection and the finding it came from are excluded from both numerator and denominator); if a single reviewer exceeds 25% rejection, emit a Phase 7 `ACTION REQUIRED` note. `statsExempt` rejections are excluded from the audit-history stats writes the same way — canonical: `../../shared/audit-history-schema.md` "Skip stats-exempt rejections when the reviewed tree moved during a pass".
 
 ## Why this catches subtler hallucinations than line-range alone
 

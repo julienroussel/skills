@@ -125,3 +125,14 @@ Apply the `.gitignore`-enforcement protocol (`shared/gitignore-enforcement.md`) 
 ## Skip in abort mode
 
 When a skill is in abort mode (`abortMode=true`), skip the audit-history write entirely. A reverted run has no honest accuracy signal. Note in the Phase 7 report under `[AUDIT-HISTORY SKIPPED — abort mode]`.
+
+## Skip stats-exempt rejections when the reviewed tree moved during a pass
+
+A review pass assumes the reviewed tree is frozen between reviewer spawn and the Phase 3 step 0 `codeExcerpt` compare (canonical: each skill's `phase2-reviewers.md` "Freeze the reviewed tree during the pass"). If an in-scope file changes inside that window — a mis-sequenced lead command, an early implementer dispatch, or an external editor/formatter — a **correct** finding about the pre-move code is rejected at step 0 with reason `excerpt-mismatch`, because the excerpt no longer matches the moved file. Counting that self-inflicted rejection would poison this file's calibration against a reviewer that did nothing wrong.
+
+So the lead marks such rejections **stats-exempt** at that pass's Phase 3 step 0 — a per-pass decision made while the tree-move determination is fresh, NOT a deferred run-level flag (a single flag reset each `--converge` pass would, by the time Phase 7 writes the initial pass's stats, hold a later pass's value). The exemption rides on the rejection record, so every append below excludes it correctly regardless of which pass the write records:
+
+- `reviewerStats[]` — exclude stats-exempt rejections **and the findings they came from** from BOTH `rejectedFindings` and `totalFindings`, so `rejectionRate = rejectedFindings / max(totalFindings, 1)` reflects only citations the lead could actually assess (an unassessable excerpt-mismatch is neither a pass nor a fail — leaving it in the denominator would record it as if it passed and dilute a genuine rejection signal). The formula and the `totalFindings == 0` skip are unchanged — a pass where *every* one of a reviewer's findings was exempt then correctly writes no entry, instead of a misleading 0%.
+- `runs[]` — do not append a `rejected: true` entry for them, so a self-inflicted mismatch cannot push a `dimension+category` toward Phase 4.5 cross-run suppression promotion either.
+
+Only `excerpt-mismatch` rejections on a tree-moved pass are exempt. Other reasons (`missing-file`, `bad-line`, `line-out-of-range`, `excerpt-missing`) and Phase 4 user-rejections always count — they carry real accuracy signal regardless of tree movement. Note the exemption in the Phase 7 report under `[REVIEWERSTATS EXEMPTED — tree moved during pass]` (dimension + exempted count). Composes with "Skip in abort mode" above: under `abortMode` the whole write is skipped, so this exemption is moot.

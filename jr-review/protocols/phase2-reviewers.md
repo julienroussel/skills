@@ -85,6 +85,12 @@ When `CLAUDE_EFFORT` is `low` or `medium`, force the reviewer count to 2 regardl
 
 "Most relevant" is determined by: (1) how many changed files fall in that dimension, (2) always prioritize `security-reviewer` and `typescript-reviewer`.
 
+### Freeze the reviewed tree during the pass
+
+**The reviewed tree is frozen from the first reviewer spawn until Phase 3 step 0's `codeExcerpt` compare completes.** In that window the lead MUST NOT change any in-scope file — not dispatch an implementer, not run a tree-mutating command (`git checkout/reset/clean`, `rm`, `perl -i`, `mv`), not apply an obvious fix or correct a typo it noticed. Every fix waits for Phase 5, which exists for exactly this. A reviewer cannot be an independent check on a tree the checker is editing, and step 0's excerpt match will reject a *correct* finding about code that moved underneath the reviewer (reason `excerpt-mismatch`), which — uncorrected — poisons that reviewer's cross-run FP-calibration. Applies in working-tree and `--branch` mode; `--pr` reads an immutable `gh api` snapshot and is exempt. Under `--converge` the freeze re-arms **per pass**: the between-pass Phase 5/5.5/6 edits are the intended fix path, and each pass reviews a settled tree.
+
+To make a violation detectable rather than merely trusted, capture a content signature over the in-scope files at spawn, using only granted primitives — hash the working-tree content of the reviewed set: `FREEZE_ANCHOR=$(git -c core.quotepath=false diff HEAD | shasum | awk '{print $1}')` (add `git ls-files --others --exclude-standard -z | xargs -0 shasum` for untracked in-scope files, and `git diff "$mergeBase"..HEAD` in `--branch` mode). Do NOT hash a newline-joined file-list scalar via `printf '%s\0' "$list"` — a quoted scalar emits a single record, so `xargs -0` passes one multi-line non-existent filename and the anchor silently becomes the empty-string hash, a constant that never detects a move (`convergence-protocol.md` NUL-safety rule). Phase 3 step 0 recomputes it; if it moved, this pass's `excerpt-mismatch` rejections are marked stats-exempt (canonical: `../../shared/audit-history-schema.md` "Skip stats-exempt rejections when the reviewed tree moved during a pass").
+
 ### Reviewer instructions
 
 Each agent receives:
