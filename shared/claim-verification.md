@@ -126,7 +126,8 @@ With no user to prompt (headless / `--auto-approve` / CI), verification still ru
 external-authority claim is a checked fact and may be auto-applied like any other approved finding; a
 **refuted** claim is rejected. Only a claim that **cannot be verified** (source unreachable/uncorroborable, or
 `--no-verify-claims` set) is capped to `speculative` and **deferred + reported, never auto-applied** — a run
-that had to defer ≥ 1 such finding surfaces it under a Phase 7 `ACTION REQUIRED` note for the user — an
+that had to defer ≥ 1 such finding surfaces it as an escalation in the consumer's Phase 7 report for the
+user (the escalation-section label is owned per-consumer, not fixed here) — an
 informational marker that is not itself among the Phase 7 exit-code conditions (`/jr-review`'s
 `phase7-cleanup-report.md` → "Phase 7 exit-code rules"), so the deferral alone does not force a non-zero exit. The skill never
 silently auto-applies what it could not verify, but it no longer defers what it *can* verify.

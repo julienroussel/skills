@@ -24,7 +24,7 @@ A skill renders an abort marker in its Phase 7 report only when `abortMode=true`
 | `user-abort`, `user-abort-convergence`, `user-abort-phase-5-dispatch` | `[ABORT — USER ABORT]` |
 | `unmatched-scope` | `[ABORT — UNMATCHED SCOPE]` — `/jr-skill-audit` Phase 1 Track B discovered zero skills matching the user's filter (bare positional or `--scope=<glob>`). Caller appends an "Available skills: ..." hint. |
 | `shared-file-missing` | `[ABORT — SHARED FILE MISSING]` — a Phase 1 Track A hard-fail guard tripped (a required shared protocol file was missing, empty, or failed structural smoke-parse). Rendered by any consumer whose Phase 1 guard uses the canonical-marker form; which failures a given consumer renders as this marker vs. as an inline-prose abort is owned per consumer at its own Phase 1 read site, not enumerated here (canonical split: `phase1-track-a-protocol.md` "Abort rendering"). |
-| `*` (anything else, including unset) | `[ABORT — UNLABELED]` — **contract violation**: `abortMode=true` was set without a recognised `abortReason`. Surface as `ACTION REQUIRED` so the gap is visible. |
+| `*` (anything else, including unset) | `[ABORT — UNLABELED]` — **contract violation**: `abortMode=true` was set without a recognised `abortReason`. Surface it as an escalation in the consumer's Phase 7 report so the gap is visible (the escalation-section label is owned per-consumer, not fixed here — see each skill's Phase 7 body). |
 
 ## Markers rendered outside the `abortReason` mapping
 
