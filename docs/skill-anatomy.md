@@ -14,7 +14,7 @@ Content in this repo lives in one of five places. Each tier has a distinct purpo
 |------|-----------|-------------|------------|
 | **SKILL.md body** | `<skill>/SKILL.md` | Once per session that lists or invokes the skill | Recurring across the whole session per the skills-doc lifecycle: every line is paid every turn |
 | **`shared/*.md`** | `shared/<name>.md` | At Phase 1 Track A of the consuming skill (under hard-fail + smoke-parse guard) | Recurring within the run, but skipped entirely on sessions that don't invoke a consumer |
-| **`<skill>/protocols/*.md`** | `<skill>/protocols/<name>.md` | Same as `shared/*.md`, but only one skill consumes it | Same as shared/ — pay-on-run, not pay-on-list |
+| **`<skill>/protocols/*.md`** | `<skill>/protocols/<name>.md` | Usually Phase 1 Track A like `shared/*.md` (one consumer); the deferred fix-path body is the Pattern-C exception (grep-checked at Phase 1, Read at its consumer phase) | Same as shared/ (pay-on-run); the Pattern-C body is skipped on non-fix runs |
 | **`<skill>/scripts/*.sh`** | `<skill>/scripts/<name>.sh` | Executed via Bash; content never enters context unless the lead Reads it for debugging | Zero context cost (executable; output may enter context) |
 | **`<skill>/templates/*`** | `<skill>/templates/<name>.<ext>` | Read by a script (typically with SHA-256 verification before use) | Zero context cost unless the lead Reads it directly |
 
@@ -134,7 +134,7 @@ In each case, the silent degradation is worse than the abort. **Fail-closed is t
 
 ### Skill-local protocol files
 
-`<skill>/protocols/*.md` files use the same pattern. They're treated identically to shared files at the consumer's Phase 1 Track A — read in parallel, smoke-parsed, hard-failed on absence. The only difference is scope (one consumer vs. multiple).
+`<skill>/protocols/*.md` files use the same pattern. They're treated identically to shared files at the consumer's Phase 1 Track A: read in parallel, smoke-parsed, hard-failed on absence. The only difference is scope (one consumer vs. multiple). **Exception:** a body whose consumer phase is optional and often skipped can be deferred (Pattern C, below). `jr-review`/`jr-audit`'s `fix-secret-validate.md` (the Phase 5.6 + Phase 6 bodies) is grep-checked for existence and anchors at Phase 1 but Read only at Phase 5 entry, so non-fix runs never pay for it, and the fail-fast guarantee is preserved by the grep-check.
 
 ---
 
@@ -150,7 +150,7 @@ Loaded once per session, stays for every turn. Per the skills-doc "Skill content
 - The skill's phase scaffolding (Phase 1 → Phase N, with the procedural body)
 - Cross-cutting rules that apply throughout (severity rubric *summary*, not the canonical body)
 
-The 500-line skills-doc tip is a soft cap on this tier. `/jr-review` at 640 lines is over the cap — issue #20 tracks getting it under.
+The 500-line skills-doc tip is a soft cap on this tier. When a SKILL.md pushes past it, extract phase bodies to `protocols/*.md` (as `/jr-review` and `/jr-audit` do) rather than growing the always-in-context tier.
 
 ### Pattern B: Phase 1 Track A under hard-fail guard (`shared/*.md`, `<skill>/protocols/*.md`)
 
@@ -163,9 +163,13 @@ Loaded when the skill *runs*. The Read happens at Phase 1 Track A, content stays
 
 This is the right default for content > 30 lines. The hard-fail guard ensures the skill can't run with the file missing — there's no silent degradation.
 
-### Pattern C: on-demand at the consumer phase (rare)
+### Pattern C: deferred read at the consumer phase
 
-Read at the moment the content is needed, no Phase 1 pre-load. Use this tier *only* when the consumer phase is itself optional and may not run, AND when the content is genuinely peripheral. In practice, this repo doesn't use Pattern C — the Phase-1-Track-A pre-load is cheap enough that on-demand reads aren't worth the complexity.
+Read at the point of use, not pre-loaded at Phase 1. Use this tier when the consumer phase is **optional and often skipped**, so a Phase-1 pre-load would pay the token cost on every run that never reaches it. The `/jr-review` and `/jr-audit` **fix path** is the repo's Pattern-C case: `protocols/fix-secret-validate.md` (the Phase 5.6 + Phase 6 bodies) is skipped whenever no implementer runs (`nofix`, a clean review with zero findings, or a pre-Phase-5 abort), so it is Read only at Phase 5 entry, saving its ~1K tokens on every non-fix run (issue #66).
+
+The naive risk of Pattern C is that the file is missing exactly when needed (see Pattern B). The fix-path case neutralizes this: Phase 1 still runs a **grep-only** existence + anchor check (`[ -f ]` plus `grep -Eq` on the two **line-anchored** `^## Phase` headings, without loading the body), so a missing or truncated file hard-fails at Phase 1, before any reviewer runs. The `^` line-anchor is load-bearing: the protocol file quotes its own anchor strings in its header prose (the self-declaration convention), so a plain substring `grep -Fq` would false-pass a truncation that kept only the header; anchoring to line-start matches the real body headings only.
+
+The same anchor-in-header hazard applies to a standard Pattern-B **in-context** smoke-parse (Read the file, then substring-match the anchors in the loaded content), which cannot line-anchor a substring match. There the fix is the *opposite*: keep the anchor strings out of the file's own header (body-only anchors), as `jr-skill-audit`'s `phase7-report.md` does. **Pick the strategy by match mechanism, do not unify them:** line-anchor (`grep -Eq '^…'`) an on-disk grep-guard; use body-only anchors for an in-context Read-then-match. Collapsing both to one convention reintroduces the header-only-truncation false-pass in whichever site loses its mechanism-appropriate defense. The body load defers; the fail-fast guarantee does not. That composition (grep-guard at Phase 1, Read at point of use) is what makes Pattern C safe here. Do not use a plain mid-run Read that skips the Phase-1 existence check. Anchor the deferred Read at the consumer phase's **entry**, not at a sub-step that a zero-work run might skip: `fix-secret-validate.md` loads at Phase 5 entry so it is present even when zero findings were approved and Phase 5 dispatches no implementers yet still runs Phase 6.
 
 ### Which pattern to pick
 
