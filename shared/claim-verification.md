@@ -22,7 +22,7 @@ provable from local code.**
 
 ## Claim taxonomy
 
-Every finding is one of two kinds:
+Every *finding* is one of two kinds (a skill's own assertions about its runtime are a third scope, not a finding — governed under **Harness claims** below):
 
 - **Code-internal claim** — correctness is fully provable from the cited excerpt plus other local files
   (e.g., "this value is null here," "this catch block is empty," "this prop is never passed," "this import is
@@ -36,6 +36,19 @@ Every finding is one of two kinds:
 `deprecated`, `removed in`, `as of version`, `no longer`, `per the docs`, `per the spec`, `violates the rules
 of`, `OWASP`, `CVE-`, `WCAG`, `best practice`, `the standard requires`, `browsers no longer`, and any version
 number tied to a behavior claim.
+
+## Harness claims (the skill's own assertions, not findings)
+
+A skill also asserts facts about the **runtime
+it runs on** — which tools a role has, whether a spawn returns its result, what an env var exposes, what a
+CLI's JSON fields are called. That is not a third *finding* kind (the author is the skill, not a reviewer), but
+its correctness profile is an external-authority claim's — volatile, training-drawn, not provable from the repo
+— so the same rule applies one level up: tie it to a checked fact (never memory or a commit message),
+**date-stamp it** with a `<!-- harness-claim-verified: YYYY-MM-DD -->` marker (`/jr-doctor` Group I warns past
+90 days) and re-verify on a Claude Code / plugin upgrade, and **prefer a live probe to prose** where one is
+possible. `shared/subagent-reporting.md` ("Verified behaviour") and `shared/forge-detection.md` (§c) are the
+model tables; `/jr-doctor` Group J is the live probe; methodology is in `docs/skill-anatomy.md` "Re-verifying a
+harness claim".
 
 ## Independent detection (lead, not reviewer)
 
@@ -156,6 +169,8 @@ finding-approval tiers, and the advisor pre-dispatch/pre-merge gates all already
 
 ## Last verified
 
-`2026-05-30` — Source-fetch discipline mirrors the WebFetch-fabrication constraint (raw `.md` / `gh api` /
-corroboration over a lone WebFetch summary). Re-verify the lexicon and grounding hierarchy against current
-reviewer behavior when this file is more than 90 days old.
+`2026-07-19` — Added the **Harness claims** scope (a skill's own assertions about its runtime: date-stamp +
+re-verify-on-trigger + prefer a live probe; `/jr-doctor` Group J / Group I enforce). Source-fetch discipline
+mirrors the WebFetch-fabrication constraint (raw `.md` / `gh api` / corroboration over a lone WebFetch summary).
+Re-verify the lexicon and grounding hierarchy against current reviewer behavior when this file is more than 90
+days old.

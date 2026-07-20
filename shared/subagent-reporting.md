@@ -33,6 +33,9 @@ The mechanism is visible in the notification shape: an unnamed spawn produces a 
 
 This table is harness behaviour and can change across Claude Code and plugin releases: re-verify after an upgrade (methodology: `../docs/skill-anatomy.md` "Re-verifying a harness claim").
 
+<!-- harness-claim-verified: 2026-07-19 -->
+<!-- Re-verified live 2026-07-19 against the running harness: an unnamed jr-reviewer (haiku) returned its token in `<result>`; a name:d spawn returned a mailbox/idle ack with no result. `/jr-doctor` Group J re-checks this every run; this stamp is the backstop for when the probe has not run. Bump on any re-verification. -->
+
 ## Subagent-facing block (pass verbatim)
 
 > **Your final response IS your report.** It is returned to the lead when your turn ends; nothing else you emit reaches it. Put everything you found in it.

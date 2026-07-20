@@ -111,8 +111,12 @@ if [ -d "$HOME/.claude/skills/jr-skill-audit" ]; then
     if [ -z "$fetched" ]; then
       echo "WARN_REFS_CACHE_NO_TIMESTAMP"
     else
+      # GNU date (mac `gdate`, Linux `date`) parses ISO with -d; mac stock `date` is
+      # BSD (needs -j -f). Probe -d capability rather than assume absent-gdate == BSD.
       if command -v gdate >/dev/null 2>&1; then
         fetched_epoch=$(gdate -d "$fetched" +%s 2>/dev/null)
+      elif date -d @0 +%s >/dev/null 2>&1; then
+        fetched_epoch=$(date -d "$fetched" +%s 2>/dev/null)
       else
         fetched_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$fetched" +%s 2>/dev/null)
       fi
@@ -172,3 +176,41 @@ if [ -f "$markers" ]; then
     done
   fi
 fi
+
+# 8. Harness-claim staleness (one-shot; scans shared/*.md, every SKILL.md, */protocols/*.md, docs/*.md).
+#    A `<!-- harness-claim-verified: YYYY-MM-DD -->` marker dates the last time a
+#    harness-behaviour assertion (tool grants, spawn/return semantics, CLI JSON
+#    field names) was re-verified against the running harness. Warn past 90 days —
+#    harness behaviour drifts across Claude Code/plugin releases, so a dated
+#    assertion left unchecked becomes stale certainty (canonical: docs/skill-anatomy.md
+#    "Re-verifying a harness claim"; the /jr-doctor Group J probe live-checks the
+#    spawn/tool claims every run). Absent markers are NOT a failure — opt-in per file.
+hc_now=$(date +%s)
+for f in "$HOME"/.claude/skills/shared/*.md "$HOME"/.claude/skills/*/SKILL.md "$HOME"/.claude/skills/*/protocols/*.md "$HOME"/.claude/skills/docs/*.md; do
+  [ -f "$f" ] || continue
+  grep -oE '<!-- harness-claim-verified: [0-9]{4}-[0-9]{2}-[0-9]{2} -->' "$f" 2>/dev/null \
+    | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | while IFS= read -r hcd; do
+    [ -z "$hcd" ] && continue
+    # Round-trip the date (parse, then re-format): a shape-valid but calendar-invalid
+    # stamp (e.g. 2026-02-30) makes gdate emit empty OR BSD `date` silently roll over
+    # to another day — neither is a real verification date, so signal it rather than
+    # swallow it (matching check 7's loud-fail-on-unparseable convention).
+    # Backend: mac `gdate` and Linux `date` are GNU (parse with -d); mac stock `date`
+    # is BSD (needs -j -f). `command -v gdate` alone is wrong — on Linux `date` IS GNU
+    # and there is no `gdate` — so probe GNU -d capability directly (`date -d @0`).
+    if command -v gdate >/dev/null 2>&1; then
+      hc_epoch=$(gdate -d "$hcd" +%s 2>/dev/null); hc_rt=$(gdate -d "$hcd" +%Y-%m-%d 2>/dev/null)
+    elif date -d @0 +%s >/dev/null 2>&1; then
+      hc_epoch=$(date -d "$hcd" +%s 2>/dev/null); hc_rt=$(date -d "$hcd" +%Y-%m-%d 2>/dev/null)
+    else
+      hc_epoch=$(date -j -f "%Y-%m-%d" "$hcd" +%s 2>/dev/null); hc_rt=$(date -j -f "%Y-%m-%d" "$hcd" +%Y-%m-%d 2>/dev/null)
+    fi
+    hc_label="${f#"$HOME"/.claude/skills/}"
+    if [ -n "$hc_epoch" ] && [ "$hc_rt" = "$hcd" ]; then
+      hc_age=$(( (hc_now - hc_epoch) / 86400 ))
+      [ "$hc_age" -gt 90 ] && echo "WARN_HARNESS_CLAIM_STALE:$hc_label:$hcd:$hc_age"
+    else
+      echo "WARN_HARNESS_CLAIM_UNPARSEABLE:$hc_label:$hcd"
+    fi
+  done
+done

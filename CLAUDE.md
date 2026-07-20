@@ -93,7 +93,11 @@ jr-doctor/SKILL.md                    — health-check the user's Claude Code se
                                      per-change confirmation (never edits settings.json). Group I
                                      (skill drift) runs narrow yes/no factual checks on every SKILL.md
                                      (line count, broken shared/* refs, frontmatter validity, inline
-                                     duplication, template SHA-256 drift, refs-cache freshness)
+                                     duplication, template SHA-256 drift, refs-cache freshness, abortReason enum drift, harness-claim
+                                     date-stamp staleness >90d). Group J (capability probe, default-on;
+                                     --no-probe skips) spawns two throwaway haiku jr-reviewer agents to live-verify the
+                                     reviewer→lead reporting channel (issue #70/#73), that a name:d spawn does
+                                     not return, and that the lead lacks TaskCreate/TaskList
 jr-skill-audit/SKILL.md               — opinionated audit of SKILL.md files; complements /jr-doctor's narrow
                                      factual drift checks. Spawns 7 reviewer dimensions in parallel
                                      (frontmatter, advisor-coverage, token-efficiency, shared-drift,
@@ -200,7 +204,9 @@ shared/claim-verification.md       — canonical anti-hallucination doctrine: co
                                      claim taxonomy, lead-independent Phase-3 classification (default-to-external),
                                      Tier 2 fetch-verify (default-on) + Tier 1 cap-and-defer fallback
                                      (--no-verify-claims opts out; raw .md / gh api, never a lone WebFetch), headless defer,
-                                     and the no-autonomous-decision-without-a-checked-fact rule. Read at Phase 1
+                                     the no-autonomous-decision-without-a-checked-fact rule, and the Harness-claims
+                                     scope (a skill's own runtime assertions: date-stamp + re-verify-on-trigger +
+                                     prefer a live probe; /jr-doctor Group J/I enforce). Read at Phase 1
                                      Track A by /jr-audit, /jr-review, /jr-skill-audit, /jr-i18n, /jr-mermaid; cross-ref'd by /jr-ship, /jr-tackle,
                                      /jr-doctor. /jr-skill-audit's live refs-cache is the reference Tier-2 impl.
 shared/forge-detection.md          — canonical forge auto-detection (GitHub gh ↔ GitLab glab): host-heuristic
@@ -304,7 +310,7 @@ Each `SKILL.md` has:
 
 ## Shared conventions across `/jr-audit`, `/jr-review`, `/jr-ship`, `/jr-skill-audit`
 
-(`/jr-doctor` is intentionally simpler — it's a low-effort diagnostic that does not run reviewers, agents, or validation; the conventions below do not apply to it. `/jr-skill-audit` participates in the conventions that apply to its scope: phased execution, parallel-first dispatch, silent agents, model routing for reviewers, severity rubric, finding format. Conventions tied to code modifications — fix verification, `nofix` mode, validation, auto-learning — do not apply because skill-audit is findings-only in v1.)
+(`/jr-doctor` is intentionally simpler — it's a low-effort diagnostic that runs no reviewer/implementer swarm and no validation — the only agents it spawns are the Group J capability probe's two throwaway haiku self-tests of the reviewer→lead channel (default-on, `--no-probe` skips); the conventions below do not apply to it. `/jr-skill-audit` participates in the conventions that apply to its scope: phased execution, parallel-first dispatch, silent agents, model routing for reviewers, severity rubric, finding format. Conventions tied to code modifications — fix verification, `nofix` mode, validation, auto-learning — do not apply because skill-audit is findings-only in v1.)
 
 - **Phased execution**: Every skill runs in numbered phases. Each phase has a prominent `━━━` header and a running cumulative timeline (`Phase 1 ✓ (3s) → Phase 2 ✓ (18s) → ...`).
 - **Parallel-first**: Tracks within a phase run simultaneously via multiple tool calls in a single message. Independent Bash/Read/Grep calls are always batched.
