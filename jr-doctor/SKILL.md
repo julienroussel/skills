@@ -366,7 +366,7 @@ Run the bundled drift script and parse the marker lines on stdout:
 bash "${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh" 2>&1
 ```
 
-The script implements all eight checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness, abortReason enum drift, harness-claim staleness) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
+The script implements all nine checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness, abortReason enum drift, harness-claim staleness, canonical-rule linkage) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
 
 #### Marker semantics
 
@@ -388,10 +388,14 @@ The script implements all eight checks (line count, broken shared refs, frontmat
 | `FAIL_ABORT_REASON_ORPHAN:<value>:<file>:<line>` | ✗ | A skill sets `abortReason="<value>"` that is not declared in `shared/abort-markers.md`'s mapping table. At runtime it falls through the `case` to `[ABORT — UNLABELED]` — a contract violation surfaced only after the fact. | Fix the typo, or add the value's row to the mapping table (the script and table are co-authored). |
 | `FAIL_ABORT_MARKERS_TABLE_EMPTY` | ✗ | `shared/abort-markers.md` exists but its `## Reason → Marker mapping` table yielded no values — stubbed or truncated. The enum check cannot run. | Restore `shared/abort-markers.md` from git. |
 | `FAIL_ABORT_REASON_EXTRACTION_EMPTY` | ✗ | No `abortReason="..."` setter was found in any skill though the enum is in active use — the extraction regex is broken, not the repo. Emitted so a silently-matching-nothing check fails loudly instead of certifying clean. | Inspect the abortReason extraction in `scripts/skill-drift-check.sh` (check 7). |
+| `WARN_RESTATE_UNLINKED:<path>:<line>:<id>` | ⚠ | A registered canonical rule (`<id>`) is restated inline at `<path>:<line>` with no resolvable `(canonical: <home> "<section>")` pointer within ±5 lines (issue #88). Drift risk: the inline copy can silently diverge from its canonical home. Unlike check 4, check 9 also scans `protocols/*.md`. | Add a `(canonical: <home> "<section>")` pointer next to the restatement, or remove it and defer to the canonical (`docs/skill-anatomy.md` "Restating a canonical rule inline"). |
+| `WARN_RESTATE_UNRESOLVED:<path>:<line>:<id>` | ⚠ | A `(canonical: …)` pointer beside a restated rule (`<id>`) names a `"<section>"` that no longer resolves to a heading in the home file (a stale pointer). | Update the pointer's `"<section>"` to a current heading in the home, or restore the heading. |
+| `WARN_RESTATE_TOKEN_UNUSED:<id>` | ⚠ | Check 9 registry token `<id>` matched zero non-home files: the row is stale (a typo, or the last consumer reworded its copy). Fail-loud (mirrors `FAIL_ABORT_REASON_EXTRACTION_EMPTY`) so the check cannot certify green while covering nothing. | Retire the registry row in `scripts/skill-drift-check.sh` check 9, or fix its token. |
+| `WARN_RESTATE_HOME_SECTION_MISSING:<id>:<section>` | ⚠ | Check 9 registry row `<id>` names a `<section>` absent from its declared canonical home: the row is misconfigured, or the home heading was renamed. | Fix the section string in check 9's registry, or restore the home heading. |
 
 #### Display rollup
 
-- Render one rollup line: `Skill drift (X/Y)` where Y is the number of skills iterated and X is the number passing all 5 per-skill checks. The one-shot checks (template hash, refs cache, abort-reason enum, harness-claim markers) render as their own rows below the rollup — green inline (`✓ Template hash`, `✓ Refs cache`, `✓ Abort-reason enum`, `✓ Harness-claim freshness`) or expanded with a hint on warning/failure.
+- Render one rollup line: `Skill drift (X/Y)` where Y is the number of skills iterated and X is the number passing all 5 per-skill checks. The one-shot checks (template hash, refs cache, abort-reason enum, harness-claim markers, canonical-rule linkage) render as their own rows below the rollup — green inline (`✓ Template hash`, `✓ Refs cache`, `✓ Abort-reason enum`, `✓ Harness-claim freshness`, `✓ Canonical-rule linkage`) or expanded with a hint on warning/failure.
 - On any warning/failure, expand inline with the skill name + first failing check per skill (4-space indent), matching the existing `Group D` and `Group F` expansion style.
 - All findings are warn or fail — **never auto-fixable**. /jr-doctor reports; humans refactor (or run `/jr-skill-audit --refresh-refs` for the refs-cache case).
 

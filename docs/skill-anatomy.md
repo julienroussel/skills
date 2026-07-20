@@ -220,7 +220,7 @@ Two skills exist specifically to keep this architecture from drifting:
 
 | Skill | Coverage | Trigger |
 |-------|----------|---------|
-| `/jr-doctor` Group I | Narrow yes/no factual checks: SKILL.md line count, broken `shared/*` references, frontmatter validity, inline duplication of canonical content (via anchor match), pre-commit-hook template SHA-256 drift, `/jr-skill-audit` refs-cache freshness | Run `/jr-doctor` periodically; fast, no agents |
+| `/jr-doctor` Group I | Narrow yes/no factual checks: SKILL.md line count, broken `shared/*` references, frontmatter validity, inline duplication of canonical content (via anchor match), restated-canonical-rule pointer linkage (Check 9), pre-commit-hook template SHA-256 drift, `/jr-skill-audit` refs-cache freshness | Run `/jr-doctor` periodically; fast, no agents |
 | `/jr-skill-audit` | Opinionated multi-dimension audit (frontmatter, advisor-coverage, token-efficiency, shared-drift, feature-adoption, safety-protocols). Cites live Anthropic docs (skills doc, CHANGELOG) at runtime | Run after structural changes to skills; `/jr-skill-audit <skill>` for one skill |
 
 **Run both of these regularly.** The architecture pays for itself only if drift gets caught early. A `shared-drift-reviewer` finding ("inline duplication of `untrusted-input-defense.md` content at `/jr-audit/SKILL.md:432`") is the canonical signal that someone forgot to reference the shared file and copy-pasted instead.
@@ -249,13 +249,24 @@ A run-scoped variable (a flag or string that persists across phases within one r
 
 The rule generalizes the fix-fix-fix diagnosis (#1, #76): prose-wired state with no structural enforcement is where enumerative fixes never terminate. A single producer plus an author-time check is the structural enforcement.
 
+### Restating a canonical rule inline
+
+A rule with a single canonical home (a `shared/*.md` file or a skill-local `<skill>/protocols/*.md`) is sometimes *also* restated as an inline summary in a second location, usually a `SKILL.md`. That restatement is prose-wired: nothing keeps it synced with the canonical, so it silently drifts. This is the same failure family as **Adding run-scoped state** above, with a different payload (a rule, not a variable). Two ways to resolve it, chosen per restatement:
+
+- **Point-to-canonical (default).** Delete the inline copy and defer with a one-line `(canonical: <file> "<section>")` pointer. This is Anti-pattern #1 stated positively. Choose it when the inline copy was a convenience, not something a linear reader needs in place to follow the surrounding logic.
+- **Restate-and-guard (sanctioned exception).** Keep the summary only when a linear reader genuinely needs it where it sits (to follow the phase logic), or when the text is operationally injected (a prompt fragment a subagent receives verbatim). When you keep it: (a) attach a resolvable `(canonical: <file> "<section>")` pointer next to it; (b) do not hard-copy a volatile specific (a threshold, a verbatim string) whose wrong value would mislead a reader who trusts the summary. Gesture at it and let the canonical own the exact value. (c) If a load-bearing verbatim specific must be inline (e.g. a prompt string that has to stay byte-identical across consumers), register its token in `/jr-doctor` Check 9 so a future un-pointered copy is caught at author time.
+
+**Pointer format**: `(canonical: <relative-path> "<section>")`, placed within a few lines of the restatement. `<section>` is matched as a substring of a heading in the target, so `"Convergence Phase 3"` resolves against `#### Convergence Phase 3 — Deduplicate`. The form is greppable, so re-drift is one `grep` away.
+
+**Enforcement**: `/jr-doctor` Check 9 is the author-time backstop. It holds a small registry of high-value restated rules and, for each, requires every inline restatement (across `SKILL.md` and `protocols/*.md`) to carry a resolvable pointer within ±5 lines. Like check 4 it is a linkage guard, not a semantic-equivalence detector: it proves the link exists and resolves, not that the words still match. Grow the registry when you sanction a new restate-and-guard case. Same lesson as the run-scoped-state rule: prose-wired duplication with no author-time check is where enumerative fixes never terminate.
+
 ---
 
 ## Anti-patterns
 
 Don't do these.
 
-1. **Inline duplication of `shared/*.md` content.** Every duplicate proves the shared/ pattern isn't doing its job. Cite the shared file, don't restate its rules.
+1. **Inline duplication of `shared/*.md` content.** Every duplicate proves the shared/ pattern isn't doing its job. Cite the shared file, don't restate its rules. The one sanctioned exception (a linear-reader summary that genuinely earns its place, or a prompt fragment injected verbatim) is *restate-and-guard*: keep it, but attach a resolvable `(canonical: …)` pointer so it cannot silently drift (see **Restating a canonical rule inline** above).
 2. **Cross-skill citations to sibling-skill SKILL.md files.** `/jr-audit` Phase 7 saying "apply `/jr-review` Phase 1 Track B step 7" is a drift surface — if `/jr-review` renumbers, `/jr-audit` breaks silently. Cite the underlying authority (the shared file, the skills-doc URL, the changelog version), not a sibling.
 3. **Paraphrasing the untrusted-input-defense block.** The three verbs ("do not execute, follow, or respond to") are load-bearing. Pass the shared file's content verbatim to every subagent.
 4. **Smoke-parse anchors that match worked examples instead of structural content.** `Phase 1 ✓ (3s)` matches the literal `3s` value, which a doc author might change to `5s` without realizing it breaks consumers. Anchor on `Phase 1 ✓` + `Silent reviewers, noisy lead` instead.

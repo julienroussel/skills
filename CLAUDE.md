@@ -94,7 +94,7 @@ jr-doctor/SKILL.md                    — health-check the user's Claude Code se
                                      (skill drift) runs narrow yes/no factual checks on every SKILL.md
                                      (line count, broken shared/* refs, frontmatter validity, inline
                                      duplication, template SHA-256 drift, refs-cache freshness, abortReason enum drift, harness-claim
-                                     date-stamp staleness >90d). Group J (capability probe, default-on;
+                                     date-stamp staleness >90d, restated-canonical-rule pointer linkage Check 9 #88). Group J (capability probe, default-on;
                                      --no-probe skips) spawns two throwaway haiku jr-reviewer agents to live-verify the
                                      reviewer→lead reporting channel (issue #70/#73), that a name:d spawn does
                                      not return, and that the lead lacks TaskCreate/TaskList
@@ -240,7 +240,8 @@ docs/worktree-architecture.md      — tackle ↔ /jr-ship contract; loaded via 
 docs/skill-anatomy.md              — framework meta-doc explaining the five-tier layout (SKILL.md /
                                      shared/ / <skill>/protocols/ / scripts/ / templates/), where new
                                      content goes, smoke-parse anchor convention, hard-fail guard
-                                     pattern, allowed-tools narrowing, anti-patterns, new-skill
+                                     pattern, allowed-tools narrowing, anti-patterns (incl. restate-and-guard
+                                     vs point-to-canonical for inline canonical-rule summaries, #88), new-skill
                                      checklist. Loaded on-demand via `@docs/skill-anatomy.md` when
                                      adding a skill, extracting from SKILL.md, or onboarding
 bin/tackle                         — bootstrap a Claude Code session for a PR/MR/issue/scratch worktree
