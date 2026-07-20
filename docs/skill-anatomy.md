@@ -234,7 +234,9 @@ When re-verifying one after an upgrade:
 - **Vary one parameter at a time.** The `subagent-reporting.md` matrix is a 2×2 precisely because a three-cell result would not have separated `name:` from `subagent_type`, and the wrong conclusion (blame the plugin) was the tempting one.
 - **Absence is not evidence.** A result that has not arrived within a few minutes does not mean the channel is dead — it may simply be queued past your turn boundary. Wait across a turn boundary before recording any negative verdict. Likewise, `TaskOutput` returning `No task found` is not evidence an agent is gone: it returns that for agents that are alive and answer a message minutes later.
 - **Confirm a negative before recording it.** If an agent appears not to have delivered, ask it directly whether it finished and what it produced. Both times this repo recorded a negative from silence alone, the negative was wrong.
-- **Date-stamp and name the version** (`Verified 2026-07-16 against agent-teams v1.0.3`), so a later reader can judge staleness rather than inherit a stale certainty.
+- **Date-stamp and name the version** (`Verified 2026-07-16 against agent-teams v1.0.3`), so a later reader can judge staleness rather than inherit a stale certainty. Carry the machine-readable marker `<!-- harness-claim-verified: YYYY-MM-DD -->` alongside the prose — `/jr-doctor` Group I warns when it exceeds 90 days.
+
+**Asserting a harness claim for the first time** (not just re-verifying one) carries an extra duty: add a `/jr-doctor` probe or check — do not rely on prose. A dated assertion that nothing re-runs is how issue #70 survived for months. `/jr-doctor` Group J spawns throwaway agents every run to re-verify the reviewer→lead channel, plus a `ToolSearch` for the `TaskCreate`/`TaskList` absence (the live probe); Group I's harness-claim staleness check is the calendar backstop. This is the same discipline as **Adding run-scoped state** below — prose-wired state plus an author-time check, never prose alone.
 
 ### Adding run-scoped state
 
@@ -274,8 +276,9 @@ When creating `<new-skill>/SKILL.md`:
 3. **Phase scaffolding**: numbered phases with `━━━` headers, cumulative timeline updates, parallel-first dispatch where independent.
 4. **Phase 1 Track A read list**: add hard-fail guard for any `shared/*.md` or `<skill>/protocols/*.md` files the skill consumes, with smoke-parse anchors.
 5. **`docs/worktree-architecture.md`** ← if the skill interacts with `bin/tackle` or `/jr-ship`'s worktree handling.
-6. **Run `/jr-skill-audit <new-skill>`** before declaring done — catches frontmatter issues, missing references, allowed-tools gaps.
-7. **Run `/jr-doctor`** to verify Group I doesn't flag anything.
-8. **Update `CLAUDE.md`** repo-structure listing and `README.md` skills table.
+6. **Harness assertions** ← if the skill asserts harness behaviour (which tools a role has, whether a spawn returns, env-var/CLI-field facts): date-stamp it with `<!-- harness-claim-verified: YYYY-MM-DD -->` and add a `/jr-doctor` probe/check, never assert from memory (see "Re-verifying a harness claim" above).
+7. **Run `/jr-skill-audit <new-skill>`** before declaring done — catches frontmatter issues, missing references, allowed-tools gaps.
+8. **Run `/jr-doctor`** to verify Group I doesn't flag anything.
+9. **Update `CLAUDE.md`** repo-structure listing and `README.md` skills table.
 
 That's it — the same architecture every existing skill follows.

@@ -112,6 +112,9 @@ rows the `/jr-review --pr` path consumes are now **confirmed against a live gitl
 (2026-07-10); every remaining `_?_`/TBD cell must still be confirmed
 against a real MR/issue before use. Listed below are exactly the gh fields the call-sites consume.
 
+<!-- harness-claim-verified: 2026-07-10 -->
+<!-- Marks the 2026-07-10 live-MR verification of the glab `-F json` field names above. `/jr-doctor` Group I warns when this stamp exceeds 90 days — re-confirm against a live MR and bump (a slow-drift prose claim the Group J probe cannot cover). -->
+
 Purpose | gh field | glab field | Status
 ---|---|---|---
 head branch | `headRefName` | `.source_branch` | ✅ verified 2026-07-10

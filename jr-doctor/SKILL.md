@@ -1,12 +1,12 @@
 ---
 name: jr-doctor
 description: Health-check the user's Claude Code setup and the current repo. Verifies CLI tools, plugins, settings.json, installed skills, shared protocol files, gitignore coverage, and optional integrations needed by /jr-audit, /jr-review, /jr-ship, and tackle. Reports per-check status with remediation hints. Optional --fix appends missing patterns to the current repo's .gitignore on per-change confirmation.
-argument-hint: "[--fix] [--yes]"
+argument-hint: "[--fix] [--yes] [--no-probe]"
 effort: low
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git config --get *) Bash(git ls-remote *) Bash(git diff *) Bash(git status *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(test *) Bash([ *) Bash(stat *) Bash(shasum *) Bash(sha256sum *) Bash(ls *) Bash(find . *) Bash(wc *) Bash(head *) Bash(tail *) Bash(sed *) Bash(tr *) Bash(cut *) Bash(date *) Bash(gdate *) Bash(printf *) Bash(echo *) Bash(basename *) Bash(command -v *) AskUserQuestion
+allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git config --get *) Bash(git ls-remote *) Bash(git diff *) Bash(git status *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(test *) Bash([ *) Bash(stat *) Bash(shasum *) Bash(sha256sum *) Bash(ls *) Bash(find . *) Bash(wc *) Bash(head *) Bash(tail *) Bash(sed *) Bash(tr *) Bash(cut *) Bash(date *) Bash(gdate *) Bash(printf *) Bash(echo *) Bash(basename *) Bash(command -v *) AskUserQuestion Agent ToolSearch
 ---
 
 <!-- Dependencies:
@@ -48,10 +48,14 @@ allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(gi
   Files written (only if --fix is set AND user confirms or --yes):
     - <cwd>/.gitignore                           — APPEND ONLY
     - (NEVER writes to ~/.claude/settings.json or anything outside cwd)
+  Agents spawned (only by the Group J capability probe; skipped with --no-probe):
+    - jr-reviewer (haiku, throwaway) — spawned WITHOUT name: (positive channel probe J1) and WITH name: (teammate-ack probe J2), each fed only a fixed token-echo prompt (no repo content passes in). Re-verifies the reviewer→lead reporting channel against shared/subagent-reporting.md "Verified behaviour".
+  Harness-claim markers scanned (Group I check 8, staleness):
+    - ~/.claude/skills/{shared/*.md,*/SKILL.md,*/protocols/*.md,docs/*.md}  — `<!-- harness-claim-verified: DATE -->` markers, warn past 90 days
   Required tools:
-    - Bash, Read, AskUserQuestion
+    - Bash, Read, AskUserQuestion, Agent, ToolSearch  (Agent + ToolSearch used ONLY by the Group J capability probe)
   Tools NOT used:
-    - Write (the only file mutation is the .gitignore append/create in Phase 4, done via Bash `printf >>`), TaskCreate, Agent, advisor
+    - Write (the only file mutation is the .gitignore append/create in Phase 4, done via Bash `printf >>`); TaskCreate/TaskList (the Group J probe asserts the lead LACKS these — it never calls them); advisor
 -->
 
 Diagnose whether the current codebase + Claude Code setup is ready to use `/jr-audit`, `/jr-review`, `/jr-ship`, and `bin/tackle`. Report per-check status with remediation hints. Default is read-only; `--fix` appends missing patterns to the current repo's `.gitignore` on per-change confirmation.
@@ -61,8 +65,9 @@ Diagnose whether the current codebase + Claude Code setup is ready to use `/jr-a
 Recognized flags:
 - `--fix` — Apply safe fixes (append/create the current repo's `.gitignore`) on per-change confirmation. Never modifies `~/.claude/settings.json`. Never untracks files. Never installs anything.
 - `--yes` — With `--fix`, skip per-change prompts and apply all fixable changes. Without `--fix`, ignored with a warning.
+- `--no-probe` — Skip the Group J capability probe (the reviewer→lead channel spawn checks). The rest of /jr-doctor is unaffected. Use in fast/offline runs; otherwise the probe runs by default (two throwaway haiku agents issued in one message, ~5-10s).
 
-**Examples**: `/jr-doctor`, `/jr-doctor --fix`, `/jr-doctor --fix --yes`
+**Examples**: `/jr-doctor`, `/jr-doctor --fix`, `/jr-doctor --fix --yes`, `/jr-doctor --no-probe`
 
 **Plan-mode note**: when `defaultMode: "plan"` is set in `~/.claude/settings.json`, each `.gitignore` write under `--fix` will trip the standard plan-mode permission prompt. Expect serial approval prompts; the harness handles them — this is not a /jr-doctor bug.
 
@@ -81,7 +86,7 @@ Recognized flags:
 
 ### Argument parsing
 
-Parse `$ARGUMENTS` as space-separated tokens. Accept only `--fix` and `--yes`; warn and ignore unknown tokens.
+Parse `$ARGUMENTS` as space-separated tokens. Accept only `--fix`, `--yes`, and `--no-probe`; warn and ignore unknown tokens. The Group J capability probe runs by default; `--no-probe` disables it.
 
 If `--yes` is set without `--fix`: warn `--yes ignored: only meaningful with --fix` and unset `--yes`.
 
@@ -135,7 +140,7 @@ If `IS_SCRATCH=yes`: append `Inside tackle scratch session (id=<scratch-id-from-
 
 ## Phase 2 — Run all checks (parallel groups)
 
-Dispatch Groups A, B, C, D, E, G, H, I in **one tool-use message**. Group F runs after Phase 1 because it depends on `IN_REPO` and `REPO_ROOT`.
+Dispatch Groups A, B, C, D, E, G, H, I in **one tool-use message**. Group F runs after Phase 1 because it depends on `IN_REPO` and `REPO_ROOT`. Group J (capability probe) also runs after Phase 1 as its own step — it issues `Agent`/`ToolSearch` calls, not the Bash batch — and is skipped when `--no-probe` is set.
 
 ### Group A — CLI tools
 
@@ -361,7 +366,7 @@ Run the bundled drift script and parse the marker lines on stdout:
 bash "${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh" 2>&1
 ```
 
-The script implements all seven checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness, abortReason enum drift) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
+The script implements all eight checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness, abortReason enum drift, harness-claim staleness) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
 
 #### Marker semantics
 
@@ -378,22 +383,39 @@ The script implements all seven checks (line count, broken shared refs, frontmat
 | `WARN_REFS_CACHE_MISSING` | ⚠ | `jr-skill-audit/cache/refs.json` not found. `feature-adoption-reviewer` will skip on next `/jr-skill-audit` run unless the cache is built. | Run `/jr-skill-audit --refresh-refs` once to populate the cache. |
 | `WARN_REFS_CACHE_NO_TIMESTAMP` | ⚠ | `jr-skill-audit/cache/refs.json` is present but missing the `fetchedAt` field. Likely manual edit or corruption. | Run `/jr-skill-audit --refresh-refs` to rewrite. |
 | `WARN_REFS_CACHE_STALE:<fetched>:<age_days>` | ⚠ | Cache is older than 30 days; live Anthropic docs/changelog have probably moved on. `feature-adoption-reviewer` findings will be tagged `[Source: cached YYYY-MM-DD]`. | Run `/jr-skill-audit --refresh-refs` to refresh. |
+| `WARN_HARNESS_CLAIM_STALE:<file>:<date>:<age_days>` | ⚠ | A `<!-- harness-claim-verified: DATE -->` marker (in a scanned `shared/*.md` / `SKILL.md` / `protocols/*.md` / `docs/*.md`) is older than 90 days. Harness behaviour (tool grants, spawn/return semantics, CLI JSON field names) drifts across Claude Code / plugin releases, so a dated assertion left unchecked becomes a stale certainty. | Re-verify the claim against the running harness (`docs/skill-anatomy.md` "Re-verifying a harness claim"; the Group J probe live-checks the spawn/tool claims), then update the marker date. |
+| `WARN_HARNESS_CLAIM_UNPARSEABLE:<file>:<date>` | ⚠ | A `<!-- harness-claim-verified: -->` marker's date is shape-valid (`YYYY-MM-DD`) but not a real calendar date (e.g. `2026-02-30`), so staleness cannot be computed — the marker looks present while giving zero coverage. | Correct the date to the real `YYYY-MM-DD` on which the claim was verified. |
 | `FAIL_ABORT_REASON_ORPHAN:<value>:<file>:<line>` | ✗ | A skill sets `abortReason="<value>"` that is not declared in `shared/abort-markers.md`'s mapping table. At runtime it falls through the `case` to `[ABORT — UNLABELED]` — a contract violation surfaced only after the fact. | Fix the typo, or add the value's row to the mapping table (the script and table are co-authored). |
 | `FAIL_ABORT_MARKERS_TABLE_EMPTY` | ✗ | `shared/abort-markers.md` exists but its `## Reason → Marker mapping` table yielded no values — stubbed or truncated. The enum check cannot run. | Restore `shared/abort-markers.md` from git. |
 | `FAIL_ABORT_REASON_EXTRACTION_EMPTY` | ✗ | No `abortReason="..."` setter was found in any skill though the enum is in active use — the extraction regex is broken, not the repo. Emitted so a silently-matching-nothing check fails loudly instead of certifying clean. | Inspect the abortReason extraction in `scripts/skill-drift-check.sh` (check 7). |
 
 #### Display rollup
 
-- Render one rollup line: `Skill drift (X/Y)` where Y is the number of skills iterated and X is the number passing all 5 per-skill checks. The two one-shot checks (template hash, refs cache) render as their own rows below the rollup — green inline (`✓ Template hash`, `✓ Refs cache`) or expanded with a hint on warning/failure.
+- Render one rollup line: `Skill drift (X/Y)` where Y is the number of skills iterated and X is the number passing all 5 per-skill checks. The one-shot checks (template hash, refs cache, abort-reason enum, harness-claim markers) render as their own rows below the rollup — green inline (`✓ Template hash`, `✓ Refs cache`, `✓ Abort-reason enum`, `✓ Harness-claim freshness`) or expanded with a hint on warning/failure.
 - On any warning/failure, expand inline with the skill name + first failing check per skill (4-space indent), matching the existing `Group D` and `Group F` expansion style.
 - All findings are warn or fail — **never auto-fixable**. /jr-doctor reports; humans refactor (or run `/jr-skill-audit --refresh-refs` for the refs-cache case).
 
 Group results and print using the format below. Each group prints a single line on full pass; expand inline on any `⚠`/`✗`.
 
+### Group J — Capability probe (skipped if `--no-probe`)
+
+Live-verifies the reviewer→lead reporting channel every swarm skill (`/jr-audit`, `/jr-review`, `/jr-i18n`, `/jr-skill-audit`) depends on — the machinery that failed silently for months in issue #70, where an empty result was indistinguishable from a clean review. It re-verifies `shared/subagent-reporting.md` "Verified behaviour" against the *running* harness, spawning throwaway `jr-reviewer` agents (haiku) fed only a fixed token-echo prompt (no repo content passes in, so the `Bash` their type grants has nothing to act on). Infrastructure errors (cannot spawn, tool not granted, a declined permission prompt) degrade **per-check**, never abort /jr-doctor, and a declined/blocked spawn is a skip, not a fail. Critically, a J2 or J3 infra-skip MUST NOT suppress J1: its reviewer→lead verdict is the actual #70 catch and is always reported on its own line (`⚠ <check> skipped (<reason>)` renders per failing check, never as a whole-group skip).
+
+Issue the two spawns and the ToolSearch in one tool-use message, then assert:
+
+- **J1 — reviewer→lead channel (positive).** Spawn `subagent_type: "jr-reviewer"`, `model: "haiku"`, **no** `name:`, `run_in_background: false`, prompt: *emit the token `JR-DOCTOR-PROBE-POS` as your entire final response, nothing else*. PASS if the returned result contains the token. If it does not, **retry the spawn once** before recording anything (`docs/skill-anatomy.md` "Re-verifying a harness claim": confirm a negative before recording it — one haiku turn does not bound variance, and a false alarm on a default-on check breeds the fatigue that buries the real signal). Only if the retry *also* lacks the token: `✗ reviewer→lead channel BROKEN — every swarm skill will silently lose findings; this is the #70 failure mode. Do not trust any 'clean' swarm result until fixed.` Distinguish a spawn error (could not spawn `jr-reviewer` — cross-ref Group C `MISSING_AGENT`) from a channel break (spawned, token absent).
+- **J2 — `name:` yields a teammate, not a return (negative).** Spawn the same but **with** `name: "jr-doctor-probe-named"` (append a fresh suffix if that name is still live from an earlier same-session run) and token `JR-DOCTOR-PROBE-NAMED`. PASS if the immediate spawn result is a persistent-teammate ack (a **presence** match: it contains `mailbox` / `Spawned successfully` / an `agent_id` line), NOT "token absent" — an absence-based negative is the exact anti-pattern this probe exists to prevent. This confirms `name:` buys a teammate ack (the proxy for "its report never reaches the lead"), not full non-return. If the token instead comes back: `⚠ name:'d spawns now appear to return — shared/subagent-reporting.md "Spawn rule" premise may be stale; re-verify the "Verified behaviour" matrix.` The named agent is left idle (a haiku throwaway, reclaimed at session end); do not message or stop it.
+- **J3 — lead lacks `TaskCreate`/`TaskList` (negative).** `ToolSearch("select:TaskCreate,TaskList,TaskGet,TaskUpdate")`. PASS on `No matching deferred tools found` (a definite response, not silence). If any resolve: `⚠ the lead can now obtain TaskCreate/TaskList — the agent-teams task model may be back; no skill should route reviewer reporting through it (issue #70).` If `ToolSearch` is not available under this skill's grant, skip J3 with `⚠ J3 skipped (ToolSearch unavailable)`.
+
+**Display**: one rollup line `Capability probe (X/3)`; expand inline on any `⚠`/`✗` (4-space indent), matching Group I's style.
+
+<!-- harness-claim-verified: 2026-07-19 -->
+<!-- Group J's own harness assumptions were verified live on 2026-07-19: J1 (unnamed jr-reviewer, haiku) returned its token in the result; J2 (name:d spawn) returned a mailbox/idle ack, not the token; J3 `ToolSearch("select:TaskCreate,TaskList,TaskGet,TaskUpdate")` returned exactly `No matching deferred tools found`. The probe live-re-checks J1/J2/J3 every run; this stamp additionally backstops J3's `select:` grammar + pass-string, which the probe cannot self-verify for grammar drift (docs/skill-anatomy.md "Re-verifying a harness claim"). Bump on re-verification. -->
+
 ### Sections
 
 1. **Global setup** — Groups A, B, C, D, E, I (everything outside the current repo, including skill drift checks).
-2. **Claude Code runtime** — Group H (env vars + claude version).
+2. **Claude Code runtime** — Group H (env vars + claude version) + Group J (capability probe, unless `--no-probe`).
 3. **Current repo (<REPO_ROOT>)** — Group F (skipped if `IN_REPO=no`).
 4. **Optional integrations** — Group G + any other warn-only items.
 5. **Summary line** — `Summary: N ✓  M ⚠  K ✗   Total: <elapsed>`.
