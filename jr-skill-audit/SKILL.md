@@ -43,6 +43,7 @@ disallowed-tools: Edit
     - ${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md — Track B `--plugin` scope-resolution procedure;
                                                   read at Phase 1 Track A ONLY when --plugin is set (conditional)
     - ${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md — Track B personal/project scope-resolution procedure; read at Phase 1 Track A ONLY when --plugin is NOT set (complementary conditional to plugin-scope.md)
+    - ${CLAUDE_SKILL_DIR}/protocols/phase7-report.md — Phase 7 findings-report template; read at Phase 1 Track A (unconditional, hard-fail + smoke-parse)
     - ${CLAUDE_SKILL_DIR}/edge-cases.md         — case→behavior reference table; loaded on demand (NOT Track-A-read)
   Out of scope in v1 (tracked in GitHub issues):
     - Auto-fix mode (Phase 5/6 implementer + validation)        — issue #15
@@ -149,6 +150,8 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 **Structural smoke-parse** (mandatory, after non-empty Read): apply the smoke-parse algorithm and Canonical Anchor Table from `../shared/phase1-track-a-protocol.md` — each row of the canonical's table lists the required substrings for one shared file (case-sensitive, `grep -F` semantics, AND-joined within a row). **Self-reference escape hatch (hardcoded)**: before parsing the canonical's table, verify `../shared/phase1-track-a-protocol.md` itself contains the literal string `Canonical Anchor Table` — a stub corruption of the canonical that preserves only its self-row anchor would otherwise pass the table-driven check. If any file fails the smoke-parse (self check OR any row check), abort Phase 1 with `[ABORT — SHARED FILE MISSING]` as above.
 
 **Skill-local protocol files (conditional — exactly one per run)**: when `--plugin=<name>` is set, also Read `${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md` into lead context (parallel with the shared files above) and apply the same hard-fail + non-empty + smoke-parse discipline — abort with `[ABORT — SHARED FILE MISSING]` if it is absent, empty, or fails its anchors `Locate the marketplace` AND `Enumerate git-tracked skills` (case-sensitive `grep -F`). When `--plugin` is NOT set, Read `${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md` instead (same discipline; anchors `Scope roots` AND `Gitignore exclusion`) — the two are mutually exclusive, so exactly one is read per run (mirrors `/jr-review`'s conditional `convergence-protocol.md` read under `--converge`).
+
+**Skill-local phase-body file (unconditional)**: Read `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` into lead context (parallel with the shared files above) under the same hard-fail + non-empty + smoke-parse discipline. Abort with `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if it is absent, empty, or fails its anchors `Findings Report` AND `Summary: N findings across M skills` (case-sensitive `grep -F`). It holds the Phase 7 findings-report template, rendered at Phase 7.
 
 ### Track B — Discover skill targets
 
@@ -438,50 +441,7 @@ Print the report below. **No file is written in v1** beyond the cache update —
 
 ### Report structure
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- /jr-skill-audit — Findings Report
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Skills audited: <names>   Dimensions: <selected>   Findings: N (X dropped, Y kept)
-Roots: personal=<personalRoot>   project=<projectRoot(s)>   [auto-scoped to project — --scope-only=both to include personal]
-By scope: personal=<n> (skills: <p-list>)   project=<m> (skills: <j-list>)
-Plugin: <name>  (marketplace: <mp>, source repo: <url>)  [third-party — verify against plugin docs]
-
-Reference fetch status:
-  skills-doc            ✓ fresh (2026-05-09)
-  env-vars-doc          ✓ fresh
-  claude-code-changelog ⚠ stale (cached 2026-04-12, > 30 days)
-  Hint: re-run with --refresh-refs to update.
-
-═══ Critical (n) ═══
-[1] [personal] <skill>/SKILL.md:<line>   <dimension>   <title>
-    <description>
-    Recommendation: <recommendation>
-    Source: <citation>
-    Excerpt:
-      <line-1>
-      <line>
-      <line+1>
-[2] [project]  <skill>/SKILL.md:<line>   <dimension>   <title>
-    ...
-
-═══ High (n) ═══   ... (same format)
-═══ Medium (n) ═══ ... (same format)
-═══ Speculative (n) ═══ ... (only if --auto-approve was set OR Tier 3 was approved)
-
-═══ Action items (n) ═══
-All N approved findings above require user action. Roll-up by tier and skill:
-  Critical: <c>   High: <h>   Medium: <m>   Speculative: <s>
-  By skill: <skill1>[personal] (<n1>), <skill1>[project] (<n2>), <skill2> (<n3>), ...   # tags ONLY on names that collide across scopes
-  [Clarify] items still awaiting decision: <count> (referenced by index above)
-
-Audit integrity (n):
-  <items from Phase 3 sanity-check + reviewer-quality issues — codeExcerpt rejections, out-of-set `file` citations, missing source citations, ≥25% reviewer rejection rate>
-  <UNREPORTED dimensions from Phase 3 step 0.0, named: "<dimension>-reviewer returned nothing — its dimension was NOT audited">
-  (Empty section means the audit itself was clean — distinct from "no findings".)
-
-Summary: N findings across M skills.   Total: <elapsed>
-```
+Render the findings report per the template in `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` (read into lead context at Phase 1 Track A). The scope-tag rendering rules and naming contract below modify how that template is filled.
 
 **Scope-tag rendering rules** (single-scope simplifications):
 - **`Roots` line**: always rendered on a personal/project run, never omitted — it is the report's only unconditional statement of which directories were audited, and under the auto-scope default the same command audits different skills in different directories, so a report without it is ambiguous. List the roots named by `effectiveScope` — the authoritative record of what was audited (`protocols/personal-project-scope.md`). Append the `[auto-scoped to project — …]` qualifier only when `autoNarrowed=true` **and the run did not abort**, never when `autoScope=project` was merely computed. The abort carve-out matters because the fallback's empty arm leaves `autoNarrowed=true` deliberately (`protocols/personal-project-scope.md`), and that arm is reached only after the fallback has already restored personal and found nothing auditable there: the qualifier's `--scope-only=both to include personal` advice would send the user to a scope this very run just tried and exhausted. On an aborting run the guard's own message states the cause, so the qualifier adds nothing but a false lead. Omit the line only on a `--plugin` run, where the `Plugin:` header already names the source.

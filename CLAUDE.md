@@ -36,7 +36,10 @@ jr-audit/protocols/                   — skill-local procedures read at Phase 1
                                      smoke-parse guard: phase2-reviewers.md (Phase 2 reviewer-swarm body —
                                      scope/effort/selection/scaling/reviewer instructions/finding format;
                                      anchors: `### Classify scope size` AND `### Finding format`),
-                                     phase7-report.md (Phase 7 cleanup/report body; anchor `False positive rates`).
+                                     phase7-report.md (Phase 7 cleanup/report body; anchor `False positive rates`),
+                                     fix-secret-validate.md (Phase 5.6 secret re-scan + Phase 6 validate-fix
+                                     loop bodies; grep-checked at Phase 1 for existence + the two `## Phase`
+                                     anchors, then Read at Phase 5 entry; deferred / Pattern C, #66).
 jr-audit/standardisation-target.md    — generic reference for /jr-audit's optional migration-map lens;
                                      contains NO target itself. The lens is opt-in per repo via a
                                      `## Standardisation target` in that repo's .claude/review-config.md
@@ -56,7 +59,8 @@ jr-review/scripts/                    — Phase 5 base-commit anchor + symlink-e
 jr-review/templates/                  — canonical pre-commit hook body (pre-commit-secret-guard.sh.tmpl);
                                      read-only; install script verifies its hash.
 jr-review/protocols/                  — skill-local procedures read at Phase 1 Track A under hard-fail +
-                                     smoke-parse guard (mirrors shared/* discipline). Nine files:
+                                     smoke-parse guard (mirrors shared/* discipline). Ten files (nine read at
+                                     Phase 1; fix-secret-validate.md is the deferred exception, detailed in its entry below):
                                      phase2-reviewers.md (Phase 2 body — effort-adaptive breadth,
                                      reviewer selection + swarm scaling, reviewer instructions,
                                      finding format), finding-sanity-check.md (Phase 3 step 0
@@ -72,7 +76,10 @@ jr-review/protocols/                  — skill-local procedures read at Phase 1
                                      merge base`), pr-url-mode.md (Phase 1 `--pr=<url>` URL parse + forge-pin
                                      from URL host + same-repo guard + `--allow-remote` off-repo opt-in; read
                                      ONLY when the --pr value is a URL, anchors `Parse the forge URL` AND
-                                     `Same-repo guard`). These extractions pull /jr-review to Anthropic's
+                                     `Same-repo guard`), fix-secret-validate.md (Phase 5.6 secret re-scan +
+                                     Phase 6 validate-fix loop bodies; grep-checked at Phase 1 for existence +
+                                     the two `## Phase` anchors, then Read at Phase 5 entry; deferred /
+                                     Pattern C, #66). These extractions pull /jr-review to Anthropic's
                                      500-line guideline (518→500, held below 500 with pr-url-mode extracted;
                                      issue #20).
 jr-ship/SKILL.md                      — ship working-tree changes via PR (GitHub) / MR (GitLab), forge
@@ -113,6 +120,10 @@ jr-skill-audit/protocols/personal-project-scope.md — Track B personal/project 
                                      gitignore exclusion); read at Phase 1 Track A ONLY when `--plugin` is NOT set
                                      (complementary conditional to plugin-scope.md). Anchors: `Scope roots` AND
                                      `Gitignore exclusion`.
+jr-skill-audit/protocols/phase7-report.md — Phase 7 findings-report template (the fenced report layout); read at
+                                     Phase 1 Track A UNCONDITIONALLY (hard-fail + smoke-parse, anchors `Findings Report`
+                                     AND `Summary: N findings across M skills`); rendered at Phase 7. Extracted to hold
+                                     jr-skill-audit under the 500-line guideline (#66 follow-up).
 jr-skill-audit/edge-cases.md          — case→behavior reference table (~21 rows); loaded on demand, NOT
                                      read at Phase 1 (reference material, no hard-fail guard). SKILL.md
                                      `## Edge cases` points here.
