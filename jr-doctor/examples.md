@@ -24,6 +24,7 @@ Global setup
   ✓ Skill drift (7/7)       line counts, shared refs, frontmatter, inline-copy
   ✓ Template hash           jr-review/templates/pre-commit-secret-guard.sh.tmpl matches install script
   ✓ Refs cache              jr-skill-audit/cache/refs.json fetched 3 days ago
+  ✓ Canonical-rule linkage  all restated rules carry resolvable pointers
 
 Claude Code runtime
   ✓ claude CLI version      2.1.126

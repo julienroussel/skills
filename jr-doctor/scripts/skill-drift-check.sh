@@ -214,3 +214,67 @@ for f in "$HOME"/.claude/skills/shared/*.md "$HOME"/.claude/skills/*/SKILL.md "$
     fi
   done
 done
+
+# 9. Restated-canonical-rule linkage (one-shot; issue #88). A rule with a single
+#    canonical home (shared/*.md or a skill-local protocols/*.md) that is legitimately
+#    restated inline (restate-and-guard) must carry a resolvable
+#    `(canonical: <home> "<section>")` pointer within ±5 lines of the restated token,
+#    in any SKILL.md or protocols/*.md EXCEPT the rule's own home. Catches the
+#    semantic/verbatim restatements check 4 cannot see: check 4 tests only for a bare
+#    `shared/<file>` mention and scans SKILL.md only; this requires the pointer FORM and
+#    scans protocols/*.md too (docs/skill-anatomy.md "Restating a canonical rule inline").
+#    The registry is a small allowlist of high-value restatements — grow it like check 4's
+#    anchor list as more restate-and-guard cases are sanctioned.
+#      Row = check_restate_linkage TOKEN(grep -F, ASCII+distinctive) HOME SECTION(grep -F) ID
+#      SECTION must be a ')'-free substring of a home heading: the pointer-span extraction below
+#      stops at the first ')', so a ')' inside the section would leave it silently unvalidated.
+#    Two fail-loud guards (each mirrors check 7's non-empty convention): a token that
+#    matches nothing (WARN_RESTATE_TOKEN_UNUSED) or a registry section absent from its
+#    home (WARN_RESTATE_HOME_SECTION_MISSING) means the row is stale — without them the
+#    check would certify GREEN while covering nothing.
+check_restate_linkage() {
+  token="$1"; home="$2"; section="$3"; id="$4"
+  home_full="$HOME/.claude/skills/$home"
+  home_re=$(basename "$home" | sed 's/\./\\./g')   # escape . (the only ERE metachar in a .md basename)
+
+  # fail-loud A: the token must be restated in at least one non-home consumer file.
+  used_somewhere=no
+  for f in "$HOME"/.claude/skills/*/SKILL.md "$HOME"/.claude/skills/*/protocols/*.md; do
+    [ -f "$f" ] || continue
+    case "$f" in *"/$home") continue;; esac
+    if grep -Fq -- "$token" "$f"; then used_somewhere=yes; break; fi
+  done
+  [ "$used_somewhere" = no ] && echo "WARN_RESTATE_TOKEN_UNUSED:$id"
+
+  # fail-loud B: the registry's declared section must resolve to a heading in the home.
+  if [ ! -f "$home_full" ] || ! grep -E '^#{1,6} ' "$home_full" | grep -Fq -- "$section"; then
+    echo "WARN_RESTATE_HOME_SECTION_MISSING:$id:$section"
+  fi
+
+  # linkage: every inline restatement needs a resolvable pointer within ±5 lines.
+  for f in "$HOME"/.claude/skills/*/SKILL.md "$HOME"/.claude/skills/*/protocols/*.md; do
+    [ -f "$f" ] || continue
+    case "$f" in *"/$home") continue;; esac          # never flag the canonical home itself
+    label="${f#"$HOME"/.claude/skills/}"
+    grep -Fn -- "$token" "$f" | cut -d: -f1 | while IFS= read -r ln; do
+      [ -z "$ln" ] && continue
+      lo=$((ln > 5 ? ln - 5 : 1)); hi=$((ln + 5))
+      # Require the POINTER FORM `(canonical: …<home>…)`, not a bare filename mention:
+      # a restated token's ±5 window can legitimately contain non-pointer mentions of the
+      # home file (e.g. a Phase 1 read-list) that must NOT count as linkage.
+      ptr=$(sed -n "${lo},${hi}p" "$f" | grep -oE "\(canonical:[^)]*${home_re}[^)]*\)" | head -1)
+      if [ -n "$ptr" ]; then
+        # Pointer present → if it names a "section", that section must resolve in the home.
+        # Parse the section from the pointer SPAN only (grep -o above), not the whole line, so a
+        # section-less pointer sharing a line with later quoted text can't mis-capture it as a section.
+        psec=$(printf '%s' "$ptr" | sed -n 's/.*"\([^"]*\)".*/\1/p')
+        if [ -n "$psec" ] && [ -f "$home_full" ] && ! grep -E '^#{1,6} ' "$home_full" | grep -Fq -- "$psec"; then
+          echo "WARN_RESTATE_UNRESOLVED:$label:$ln:$id"
+        fi
+      else
+        echo "WARN_RESTATE_UNLINKED:$label:$ln:$id"
+      fi
+    done
+  done
+}
+check_restate_linkage 'Calibration: Your last 5 runs' 'shared/audit-history-schema.md' 'reviewerStats[]' 'fp-calibration-note'
