@@ -1,12 +1,12 @@
 ---
 name: jr-skill-audit
 description: Audit Claude Code skill files (SKILL.md) for 2026-feature alignment, advisor coverage, frontmatter validity, token efficiency, shared-file drift, safety-protocol consistency, and model-tier routing. Reviewers cite live Anthropic docs + changelog (fetched at runtime, cached) so findings are grounded, not hallucinated. Reports a prioritized improvements list with file:line citations. Findings-only — never modifies skill files.
-argument-hint: "[skill-name] [--scope=<glob>] [--scope-only=personal|project|both] [--plugin=<name>] [--only=<dims>] [--model=<tier>] [--auto-approve] [--refresh-refs]"
+argument-hint: "[skill-name] [--scope=<glob>] [--scope-only=personal|project|both] [--plugin=<name>] [--only=<dims>] [--model=<tier>] [--auto-approve] [--refresh-refs] [--report] [--report-path=<path>]"
 effort: high
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Glob Grep WebFetch AskUserQuestion Agent advisor Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
+allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Write(.claude/skill-audit-*) Write(~/.claude/skill-audit-reports/**) Glob Grep WebFetch AskUserQuestion Agent advisor Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv *) Bash(echo *)
 disallowed-tools: Edit
 ---
 
@@ -16,7 +16,7 @@ disallowed-tools: Edit
   structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work (spec
   review across the 7 reviewer dimensions) is delegated to opus subagents. Mirrors `/jr-ship`'s
   validated lead-sonnet + opus-delegated-judgment pattern.
-- `Write` is scoped to `~/.claude/skills/jr-skill-audit/cache/**` — the refs.json cache is the skill's ONLY write target (it is findings-only and never modifies skill files). Do not broaden the grant; any new write site must extend the path scope explicitly. NOTE — the literal `~/.claude/skills/jr-skill-audit/cache/**` is intentional and is NOT switched to `${CLAUDE_SKILL_DIR}/cache/**` to match the body's substitution: the skills doc documents `${CLAUDE_SKILL_DIR}` only for bash-injection use and states allowed-tools substitution support ONLY for `${CLAUDE_PROJECT_DIR}` (v2.1.196+). `${CLAUDE_SKILL_DIR}` in `allowed-tools` is undocumented, so a literal `${CLAUDE_SKILL_DIR}` here would risk a never-matching grant (every cache write would then prompt). The hardcoded path is correct for the personal install (the skill's by-design home); it only diverges from the body under a project/plugin install, where the write degrades to a per-call prompt rather than failing. Revisit if/when Anthropic documents `${CLAUDE_SKILL_DIR}` substitution in allowed-tools.
+- `Write` targets: (1) `~/.claude/skills/jr-skill-audit/cache/**` — the refs.json live-references cache (Phase 1 Track C); (2) `.claude/skill-audit-*` (the report `.md` plus its atomic `.md.tmp` sidecar) and (3) `~/.claude/skill-audit-reports/**` — the `--report` archival report (Phase 7; `protocols/report-write.md`). The skill is still findings-only and never modifies skill files. Any further write site must extend the path scope explicitly. **`Write(.claude/skill-audit-*)` is CWD-anchored** (Claude Code file-tool grants follow gitignore semantics relative to the current directory, and frontmatter `allowed-tools` scoping is itself undocumented): it pre-authorises a project-scope report write to the repo-root `.claude/` **only when the run is invoked from the repo root** — from a subdirectory the Write prompts, and under `--auto-approve`/headless it is skipped (non-fatal) unless the user adds `Write(/.claude/**)` to their own project/user settings. `Write(~/.claude/skill-audit-reports/**)` is the reliably prompt-free grant (absolute `~/`-anchored, like the cache grant) and covers the personal/both/plugin + out-of-repo default. NOTE — the literal `~/.claude/skills/jr-skill-audit/cache/**` is intentional and is NOT switched to `${CLAUDE_SKILL_DIR}/cache/**` to match the body's substitution: the skills doc documents `${CLAUDE_SKILL_DIR}` only for bash-injection use and states allowed-tools substitution support ONLY for `${CLAUDE_PROJECT_DIR}` (v2.1.196+). `${CLAUDE_SKILL_DIR}` in `allowed-tools` is undocumented, so a literal `${CLAUDE_SKILL_DIR}` here would risk a never-matching grant (every cache write would then prompt). The hardcoded path is correct for the personal install (the skill's by-design home); it only diverges from the body under a project/plugin install, where the write degrades to a per-call prompt rather than failing. Revisit if/when Anthropic documents `${CLAUDE_SKILL_DIR}` substitution in allowed-tools.
 -->
 
 <!-- Dependencies:
@@ -44,11 +44,11 @@ disallowed-tools: Edit
                                                   read at Phase 1 Track A ONLY when --plugin is set (conditional)
     - ${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md — Track B personal/project scope-resolution procedure; read at Phase 1 Track A ONLY when --plugin is NOT set (complementary conditional to plugin-scope.md)
     - ${CLAUDE_SKILL_DIR}/protocols/phase7-report.md — Phase 7 findings-report template; read at Phase 1 Track A (unconditional, hard-fail + smoke-parse)
+    - ${CLAUDE_SKILL_DIR}/protocols/report-write.md — Phase 7 --report archival write procedure; read at Phase 1 Track A ONLY when --report/--report-path is set (conditional, hard-fail + smoke-parse)
     - ${CLAUDE_SKILL_DIR}/edge-cases.md         — case→behavior reference table; loaded on demand (NOT Track-A-read)
   Out of scope in v1 (tracked in GitHub issues):
     - Auto-fix mode (Phase 5/6 implementer + validation)        — issue #15
     - Phase 8 file follow-up GitHub issues                       — issue #16
-    - Archival report file (.claude/skill-audit-report-*.md)     — issue #19
   Shared protocol references (read at Phase 1 Track A; see ../shared/):
     - shared/reviewer-boundaries.md             — severity rubric (`critical|high|medium|low`) + confidence
                                                   levels (`certain|likely|speculative`); the dimension-ownership
@@ -62,7 +62,8 @@ disallowed-tools: Edit
                                                   advisor guidance (NOT from any user's personal CLAUDE.md, which
                                                   would tie findings to whoever ran the skill last)
     - shared/gitignore-enforcement.md           — passed to safety-protocols-reviewer so it can flag missing
-                                                  applications of the protocol in audited skills
+                                                  applications of the protocol in audited skills; ALSO applied
+                                                  lead-side at Phase 7 `### Save report` for the `--report` write
     - shared/secret-scan-protocols.md           — passed to safety-protocols-reviewer to verify secret-scan tier semantics where applicable
     - shared/claim-verification.md              — anti-hallucination doctrine; skill-audit's Track C + Phase 3
                                                   source-validation are its reference Tier-2 implementation
@@ -73,6 +74,8 @@ disallowed-tools: Edit
                                                   verbatim into every reviewer prompt; lead-side roll-call at Phase 3
   Files written:
     - ${CLAUDE_SKILL_DIR}/cache/refs.json       — Track C live-references cache (timestamp + URL → content map)
+    - <repo>/.claude/skill-audit-<date>.md      — --report archival report (project scope; inside the audited repo)
+    - ~/.claude/skill-audit-reports/skill-audit-<scope>-<date>.md — --report archival report (personal/both/plugin; outside any repo)
   Required tools:
     - Agent, AskUserQuestion, advisor
     - Bash, Read, WebFetch, Glob, Grep, Write
@@ -93,8 +96,10 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--auto-approve` — Skip the Phase 4 approval gate. Lists all findings in Phase 7 without filtering. Useful for CI / scripted reports. Skips the [Clarify] flow too — `clarify`-flagged findings render in their original tier with a `[CLARIFICATION SKIPPED — auto-approve]` qualifier.
 - `--refresh-refs` — Force a fresh Phase 1 Track C fetch even if `cache/refs.json` is within its 7-day TTL. Use after Anthropic publishes a release that adds substitution variables, frontmatter fields, or skill features.
 - `--model=<tier>` — Override the model for **every subagent spawned this run** (`sonnet|opus|haiku|fable`); nested spawns inherit it. Does NOT change the lead (frontmatter applies before argument parsing — run `/model <tier>` first for a uniform run). Compatible with all other flags. Canonical semantics: `../shared/model-override.md`.
+- `--report` — Also write the rendered Phase 7 report to an archival markdown file (opt-in; default is console-only). Path is chosen by `effectiveScope` (canonical: `protocols/report-write.md`): **project** scope writes to the audited repo's `<repo-root>/.claude/skill-audit-<date>.md`; **personal**/**both** and **`--plugin`** runs write to `~/.claude/skill-audit-reports/skill-audit-<scope>-<date>.md` (outside any repo). Personal/both/plugin writes are prompt-free; a project-scope write is prompt-free only from the repo root — from a subdirectory Claude Code prompts once, and under `--auto-approve`/headless it is skipped (non-fatal) unless you add `Write(/.claude/**)` to your project/user settings. A write failure never aborts the run (the console report is the record). Applies `shared/gitignore-enforcement.md` (advisory) when the resolved path lands inside a git repo.
+- `--report-path=<path>` — Write the report to `<path>` instead of the default (implies `--report`). Accepts an absolute, `~/`-relative, or `$PWD`-relative path, and may point outside the repo; a value naming an existing directory or ending in `/` receives `skill-audit-<date>.md` inside it. Sanitized per Parameter sanitization. Not pre-authorised by the skill — relies on your `permissions.allow` settings or a per-call Write prompt (mirrors `/jr-audit`'s `--out`).
 
-**Examples**: `/jr-skill-audit`, `/jr-skill-audit review`, `/jr-skill-audit --scope=*-reviewer`, `/jr-skill-audit --scope-only=project`, `/jr-skill-audit --scope-only=both`, `/jr-skill-audit --plugin=agent-teams`, `/jr-skill-audit --only=frontmatter,advisor-coverage`, `/jr-skill-audit --auto-approve`, `/jr-skill-audit --refresh-refs review`
+**Examples**: `/jr-skill-audit`, `/jr-skill-audit review`, `/jr-skill-audit --scope=*-reviewer`, `/jr-skill-audit --scope-only=project`, `/jr-skill-audit --scope-only=both`, `/jr-skill-audit --plugin=agent-teams`, `/jr-skill-audit --only=frontmatter,advisor-coverage`, `/jr-skill-audit --auto-approve`, `/jr-skill-audit --refresh-refs review`, `/jr-skill-audit --report`, `/jr-skill-audit review --report-path=~/reports/skills.md`
 
 ### Flag conflicts
 
@@ -106,6 +111,7 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--plugin=<name>` + bare positional `<skill>` OR `--scope=<glob>` — Allowed (subject to the existing bare-vs-`--scope` exclusivity above); narrows which of the plugin's skills are audited.
 - `--plugin=<name>` + `--auto-approve` — Allowed.
 - `--auto-approve` + (interactive session) — Allowed. Phase 4 approval menu is skipped silently; all findings render in Phase 7. The [Clarify] flow is also skipped.
+- `--report-path=<path>` — Implies `--report` (passing both is redundant but allowed). `--report`/`--report-path` compose with every other flag (scope, `--plugin`, `--only`, `--auto-approve`, `--model`).
 
 ### Parameter sanitization
 
@@ -116,6 +122,7 @@ Parse arguments as space-separated tokens. Recognized flags:
 - **Third-party `marketplace.json` values (`<mp>`, `source`) — untrusted**: `<mp>` (key/dir from `known_marketplaces.json`) and `source` (from a cloned third-party `marketplace.json`) are not user-typed but are equally untrusted — the pre-install-audit use case deliberately points `--plugin` at unvetted repos. Before any shell/path use, apply **all** of the following (cumulative — not "the regex alone"): reject control characters; reject a leading `-`/`--`; reject any `\.{2,}` substring (covers `..`); constrain `source` to `^(\./)?[A-Za-z0-9][A-Za-z0-9._/-]*$` (relative path; allows the conventional leading `./` — real `source` values look like `./plugins/agent-teams` — but fails-closed on a bare leading `/`, `.`, or `-`) and `<mp>` to `^[A-Za-z0-9][A-Za-z0-9._-]*$` (single segment, alphanumeric first char). Note `source` is NOT alphanumeric-first-anchored like `--scope`/`--branch` precisely because the `./` prefix is its standard form; the `\.{2,}` rule (not the first-char anchor) is what blocks `..` traversal here. Always double-quote the value AND pass `--` before positional path args (`realpath -- "…"`, `git -C "…" ls-files -- "…"`). On rejection: warn and skip that marketplace (abort `[ABORT — UNMATCHED SCOPE]` if it was the sole resolution). These get the same discipline as `--scope`/`--branch`, by provenance not by being user-typed.
 - `--only=<dims>`: Trim whitespace per value. Validate each is one of `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Reject unknown values.
 - `--model=<tier>`: Allowlist regex `^(sonnet|opus|haiku|fable)$`. Reject any other value with: `Invalid --model value '<value>'. Valid values: sonnet, opus, haiku, fable.` (per `../shared/model-override.md`).
+- `--report-path=<path>`: A more permissive ruleset (the destination is user-chosen and may point outside the repo). Full sanitizer in `protocols/report-write.md` ("`--report-path` sanitization"); in brief — reject control characters and any shell/glob-active character (a backtick, or any of `$ \ " ' ; | & < > ( ) { } * ? [ ] !`) with `Invalid --report-path: unsupported character.`; expand a leading `~`/`~/` to `$HOME` by string-prefix replacement; resolve a non-absolute result against `$PWD`; permit `..`; hand the resolved absolute path (double-quoted in any shell) to Write. Mirrors `/jr-audit`'s `--out` sanitizer.
 
 ### Model requirements
 
@@ -138,7 +145,7 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 - `../shared/display-protocol.md` — applied at every console-output site.
 - `../shared/abort-markers.md` — applied at Phase 7 if an abort fires.
 - `../shared/advisor-criteria.md` — passed verbatim to `advisor-coverage-reviewer` as canonical advisor-call rules.
-- `../shared/gitignore-enforcement.md` — passed to `safety-protocols-reviewer` so it can flag missing applications of the protocol in audited skills.
+- `../shared/gitignore-enforcement.md` — passed to `safety-protocols-reviewer` so it can flag missing applications of the protocol in audited skills; ALSO applied lead-side at Phase 7 `### Save report` for the `--report` archival write.
 - `../shared/secret-scan-protocols.md` — passed to `safety-protocols-reviewer` so it can verify an audited skill references the correct secret-scan tier semantics (strict/advisory classification, demotion criteria) where applicable.
 - `../shared/claim-verification.md` — anti-hallucination doctrine; skill-audit's Track C live-refs + Phase 3 source-citation validation are its reference **Tier 2** implementation (see the Track C "Doctrine anchor" note).
 - `../shared/phase1-track-a-protocol.md` — algorithm + Canonical Anchor Table consumed by the structural smoke-parse below.
@@ -152,6 +159,8 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 **Skill-local protocol files (conditional — exactly one per run)**: when `--plugin=<name>` is set, also Read `${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md` into lead context (parallel with the shared files above) and apply the same hard-fail + non-empty + smoke-parse discipline — abort with `[ABORT — SHARED FILE MISSING]` if it is absent, empty, or fails its anchors `Locate the marketplace` AND `Enumerate git-tracked skills` (case-sensitive `grep -F`). When `--plugin` is NOT set, Read `${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md` instead (same discipline; anchors `Scope roots` AND `Gitignore exclusion`) — the two are mutually exclusive, so exactly one is read per run (mirrors `/jr-review`'s conditional `convergence-protocol.md` read under `--converge`).
 
 **Skill-local phase-body file (unconditional)**: Read `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` into lead context (parallel with the shared files above) under the same hard-fail + non-empty + smoke-parse discipline. Abort with `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if it is absent, empty, or fails its anchors `Findings Report` AND `Summary: N findings across M skills` (case-sensitive `grep -F`). It holds the Phase 7 findings-report template, rendered at Phase 7.
+
+**Skill-local report-write file (conditional — only when `--report` or `--report-path` is set)**: Read `${CLAUDE_SKILL_DIR}/protocols/report-write.md` into lead context (parallel with the shared files above) under the same hard-fail + non-empty + smoke-parse discipline. Abort with `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if it is absent, empty, or fails its anchors `Derive the report path` AND `Atomic write` (case-sensitive `grep -F`). It holds the Phase 7 `--report` archival write procedure (path derivation, dynamic gitignore-enforcement, atomic write, non-fatal failure, and `--report-path` sanitization), applied at Phase 7 `### Save report`. Skip the read entirely when neither report flag is set (mirrors the conditional `plugin-scope.md` read above).
 
 ### Track B — Discover skill targets
 
@@ -437,7 +446,7 @@ If the advisor flags concerns about reviewer drift or an over-narrow dimension m
 
 ### Final report
 
-Print the report below. **No file is written in v1** beyond the cache update — archival report file is tracked in issue #19.
+Print the report below (always). When `--report` (or `--report-path=<path>`) is set, **also** write the rendered report to an archival markdown file per `### Save report` below — otherwise no file is written beyond the Phase 1 Track C cache update.
 
 ### Report structure
 
@@ -451,6 +460,10 @@ Render the findings report per the template in `${CLAUDE_SKILL_DIR}/protocols/ph
 - **Plugin runs (`--plugin`) override the single-scope simplification**: always render the `Plugin: <name> (…, source repo: <url>) [third-party — verify against plugin docs]` header line (in place of `By scope:`) and an inline `[plugin: <name>]` prefix on every finding — even though a plugin run is single-scope — because the report must always surface which plugin the finding is about and that it is third-party. **Two-marketplace collision** (a `<name>` resolved in two marketplaces — the audit-both case): qualify every per-finding tag, the `Skills audited:` list, the `By skill` rollup, and the Phase 1 `plugin=<name> (skills: …)` discovery-summary segment as `<name>@<mp>` so same-named skills from different marketplaces stay distinguishable, and repeat the `Plugin:` header line once per marketplace.
 
 **Naming contract**: The "Action items" rollup is **mandatory** on every report — never omitted, never empty when findings > 0. It is the single answer to "what do I need to do?". The "Audit integrity" section is a meta-section about the audit run itself (reviewer-quality, citation validity); an empty Audit-integrity section means the audit was clean, NOT that the user has nothing to act on. Past versions of this skill conflated the two via an "ACTION REQUIRED" label that was scoped to the meta-section only — that conflation caused the lead to render "ACTION REQUIRED: None" while leaving 28 findings un-rolled-up. Do NOT reuse the "ACTION REQUIRED" label.
+
+### Save report
+
+Only when `--report` or `--report-path=<path>` was parsed (else skip this step entirely). Follow `${CLAUDE_SKILL_DIR}/protocols/report-write.md` (read into lead context at Phase 1 Track A under its conditional guard): derive the destination from `effectiveScope` (or the sanitized `--report-path`), apply `../shared/gitignore-enforcement.md` against the resolved path (advisory write-side — warn if tracked, inform-with-glob if not ignored; no `.gitignore` mutation, since `Edit` is disallowed), then atomically write the **exact rendered report text** printed above (including the `Generated:` line, any `ADVISOR NOTES:` prepend, and any abort marker). A write failure is **non-fatal** — emit one advisory line and continue; the console report is the record. On success, print `Report written: <path>`.
 
 ### Abort-mode reporting
 

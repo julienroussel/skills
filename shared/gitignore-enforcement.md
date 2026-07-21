@@ -4,7 +4,7 @@
 
 ## The protocol (applied before every matching write)
 
-Before writing `<PATH>` (a `.claude/*.json` or `.claude/*.md` file produced by `/jr-audit` or `/jr-review`):
+Before writing `<PATH>` (a `.claude/*.json` or `.claude/*.md` file produced by `/jr-audit` or `/jr-review` — and, **read-side only**, by `/jr-skill-audit`, whose advisory-only application is scoped in the note below, so steps 1–2 apply to it but the step-3 auto-append does not):
 
 1. Check whether the path is tracked by git:
    ```bash
@@ -25,6 +25,8 @@ Before writing `<PATH>` (a `.claude/*.json` or `.claude/*.md` file produced by `
 | `/jr-audit` | `.claude/audit-report-YYYY-MM-DD.md` (glob: `.claude/audit-report-*.md`) | Audit reports contain finding descriptions, code excerpts, and potentially redacted secret locations. |
 | `/jr-review` | `.claude/secret-warnings.json` (+ per-session variants `.claude/secret-warnings-*.json`) | Secret audit trail. Records file paths, line numbers, and pattern types where secret patterns were detected — committing exposes the locations of current or historical secrets. |
 | `/jr-review` | `.claude/secret-hook-patterns.txt` | Pre-commit hook regex patterns. /jr-review writes this file (one regex per line) before invoking the pre-commit hook installer; the hook then reads it at runtime. A committed patterns file could be tampered to weaken or disable specific secret-detection rules across all future commits — the additive baseline patterns hardcoded in the hook template still fire, but extension patterns (the broader set) would silently regress. |
+
+**`/jr-skill-audit` (advisory-only producer, no Sites row).** `/jr-skill-audit --report` also produces a `.claude/*.md` report (`.claude/skill-audit-*`, project scope) whose contents (audited skill paths, line numbers, 3-line excerpts) must likewise not be committed. It applies the **read-side** of this protocol — the `git ls-files --error-unmatch` tracked-check — and, when the path is not ignored, **advises** the user to add `.claude/skill-audit-*` to `.gitignore`. It does NOT auto-append (findings-only, with no `Edit`/`Write(.gitignore)` grant), so it is deliberately **not** a row in the table above and **not** part of `/jr-doctor`'s synced coverage set. Its personal/both/plugin reports write outside any repo (`~/.claude/skill-audit-reports/`), where the tracked-check no-ops.
 
 ## Ancillary files (in `.gitignore` but no per-write protocol)
 

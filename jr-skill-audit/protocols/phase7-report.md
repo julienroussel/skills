@@ -8,6 +8,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  /jr-skill-audit — Findings Report
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generated: <YYYY-MM-DDThh:mm:ssZ>
 Skills audited: <names>   Dimensions: <selected>   Findings: N (X dropped, Y kept)
 Roots: personal=<personalRoot>   project=<projectRoot(s)>   [auto-scoped to project — --scope-only=both to include personal]
 By scope: personal=<n> (skills: <p-list>)   project=<m> (skills: <j-list>)
@@ -48,3 +49,7 @@ Audit integrity (n):
 
 Summary: N findings across M skills.   Total: <elapsed>
 ```
+
+The `Generated:` line is `date -u +%Y-%m-%dT%H:%M:%SZ` (ISO-8601 UTC), rendered on every run — in the
+console report and, under `--report`, in the archival file (`protocols/report-write.md`). It is additive
+to the two smoke-parse anchors (the title line and the `Summary:` line), which are unchanged.

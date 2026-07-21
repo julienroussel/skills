@@ -108,7 +108,9 @@ jr-doctor/SKILL.md                    — health-check the user's Claude Code se
 jr-skill-audit/SKILL.md               — opinionated audit of SKILL.md files; complements /jr-doctor's narrow
                                      factual drift checks. Spawns 7 reviewer dimensions in parallel
                                      (frontmatter, advisor-coverage, token-efficiency, shared-drift,
-                                     feature-adoption, safety-protocols, model-routing). Findings-only (no auto-fix in v1)
+                                     feature-adoption, safety-protocols, model-routing). Findings-only (no auto-fix
+                                     in v1); opt-in `--report`/`--report-path` writes an archival Phase 7 report
+                                     (relative to what was audited; see protocols/report-write.md, #19).
 jr-skill-audit/protocols/plugin-scope.md — Track B `--plugin` scope-resolution procedure (marketplace
                                      location, git-tracked-skill enumeration, symlink/containment
                                      canonicalization, tagging); read at Phase 1 Track A ONLY when
@@ -124,7 +126,15 @@ jr-skill-audit/protocols/phase7-report.md — Phase 7 findings-report template (
                                      Phase 1 Track A UNCONDITIONALLY (hard-fail + smoke-parse, anchors `Findings Report`
                                      AND `Summary: N findings across M skills`); rendered at Phase 7. Extracted to hold
                                      jr-skill-audit under the 500-line guideline (#66 follow-up).
-jr-skill-audit/edge-cases.md          — case→behavior reference table (~21 rows); loaded on demand, NOT
+jr-skill-audit/protocols/report-write.md — Phase 7 --report archival write procedure (path derivation by
+                                     effectiveScope, dynamic gitignore-enforcement probe [advisory write-side —
+                                     Edit is disallowed, so no .gitignore mutation], atomic .tmp→mv write,
+                                     non-fatal failure, --report-path sanitizer); read at Phase 1 Track A ONLY
+                                     when --report/--report-path is set (conditional, hard-fail + smoke-parse,
+                                     anchors `Derive the report path` AND `Atomic write`); applied at Phase 7.
+                                     Default path: project scope → <repo>/.claude/skill-audit-<date>.md;
+                                     personal/both/plugin → ~/.claude/skill-audit-reports/ (out of repo). (#19)
+jr-skill-audit/edge-cases.md          — case→behavior reference table (~34 rows); loaded on demand, NOT
                                      read at Phase 1 (reference material, no hard-fail guard). SKILL.md
                                      `## Edge cases` points here.
 jr-i18n/SKILL.md                   — native-translator review of a project's translation catalogs. For each
