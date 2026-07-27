@@ -189,25 +189,27 @@ Reviewers cite live documentation so findings stay current as Claude Code ships 
 ```json
 {
   "fetchedAt": "2026-05-09T12:34:56Z",
+  "refsSpecVersion": 2,
   "refs": {
     "skills-doc":     { "url": "https://code.claude.com/docs/en/skills",     "content": "...", "ok": true },
     "env-vars-doc":   { "url": "https://code.claude.com/docs/en/env-vars",   "content": "...", "ok": true },
+    "sub-agents-doc": { "url": "https://code.claude.com/docs/en/sub-agents", "content": "...", "ok": true },
     "claude-code-changelog": { "url": "gh:anthropics/claude-code:CHANGELOG.md", "content": "...", "ok": true }
   }
 }
 ```
 
 **Refresh logic**:
-1. If `--refresh-refs` is set OR the cache file is missing OR `fetchedAt` is older than 7 days → refresh.
+1. If `--refresh-refs` is set OR the cache file is missing OR `fetchedAt` is older than 7 days OR the cache is **missing any ref key the schema above declares** OR its `refsSpecVersion` differs from the current spec version (**`2`** — bump this integer, here and in the schema, whenever you add/remove a ref key or change a fetch prompt in step 2) → refresh. A ref-set or fetch-prompt change therefore self-heals on the next run instead of silently serving a stale/incomplete set within the TTL.
 2. Otherwise → load from cache silently.
 
 **Refresh procedure** (best-effort; partial-success is allowed):
 1. `mkdir -p "${CLAUDE_SKILL_DIR}/cache"`.
-2. WebFetch `https://code.claude.com/docs/en/skills` and `https://code.claude.com/docs/en/env-vars`. Each prompt should ask the model to return the **frontmatter reference table** + **substitution variables table** + the **`Skill content lifecycle`** + the **500-line tip** for the skills doc; for env-vars, return the full content.
+2. WebFetch `https://code.claude.com/docs/en/skills`, `https://code.claude.com/docs/en/env-vars`, and `https://code.claude.com/docs/en/sub-agents`. Each prompt asks for specific sections (WebFetch summarizes — see the limitation note below): skills doc → the **frontmatter reference table** + **substitution variables table** + the **`Skill content lifecycle`** + the **500-line tip**; env-vars → the **named env-var table**, explicitly including the subagent controls (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`, `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`, `CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`), not a vague 'full content' ask; sub-agents → the **supported-frontmatter-fields table** + the **model-resolution order** + the **available-tools / background-default** rules + the **concurrency / session / spawn-depth caps**.
 3. `gh api repos/anthropics/claude-code/contents/CHANGELOG.md --jq .content | base64 -d | head -c 60000` for the latest changelog. (gh is preferred over WebFetch for github.com URLs per WebFetch's own guidance.) Trim to 60 KB so the cache stays bounded; the most recent ~30 versions easily fit.
-4. Write `cache/refs.json` atomically (write to `cache/refs.json.tmp`, then `mv`). Set `ok: false` for any source that failed and surface the failure in the Phase 7 report under "Reference fetch status".
+4. Write `cache/refs.json` atomically (write to `cache/refs.json.tmp`, then `mv`), including the current `refsSpecVersion`. Set `ok: false` for any source that failed and surface the failure in the Phase 7 report under "Reference fetch status".
 
-**Known limitation — WebFetch summarization**: WebFetch returns AI-summarized content extracted by a small model from the prompt, not raw HTML. Citation validation by URL key works regardless (the URL is in the cache or it isn't), but `feature-adoption-reviewer`'s reasoning over content fidelity has a ceiling — if the small model summarized away a feature mention, the reviewer won't see it. The `gh api` path for the changelog returns raw markdown without this limitation. For the skills/env-vars docs, the prompt asks for the specific tables/sections, which works around most of the lossy-summarization risk in practice.
+**Known limitation — WebFetch summarization**: WebFetch returns AI-summarized content extracted by a small model from the prompt, not raw HTML. Citation validation by URL key works regardless (the URL is in the cache or it isn't), but `feature-adoption-reviewer`'s reasoning over content fidelity has a ceiling — if the small model summarized away a feature mention, the reviewer won't see it. The `gh api` path for the changelog returns raw markdown without this limitation. For the skills/env-vars/sub-agents docs, the prompt asks for the specific tables/sections, which works around most of the lossy-summarization risk in practice.
 
 **Fallback to stale cache**: if the refresh fails entirely (no network, gh unauth, etc.) AND a previous `cache/refs.json` exists, use it and prepend `[STALE: cache from <fetchedAt>]` to every reviewer prompt that consumes it. Reviewers must add `[Source: cached YYYY-MM-DD]` to any finding citing a source from the stale cache so the user can judge freshness.
 
@@ -231,7 +233,7 @@ Name `projectRoot(s)` from the returned contract, never a path synthesised from 
 
 Print a one-line summary. Omit scope segments that are empty (e.g., a personal-only run drops the `project=` segment, and `Shadowed: none` is omitted when both scopes have zero overlap):
 ```
-Discovered N skill(s): personal=<p-list> project=<j-list>   |   Shadowed: <colliding-names>   |   Excluded (gitignored): <names with [personal]/[project] tags | "none">   |   M reviewer dimensions selected   |   Refs: <fresh|cached YYYY-MM-DD|stale|missing>
+Discovered N skill(s): personal=<p-list> project=<j-list>   |   Shadowed: <colliding-names>   |   Excluded (gitignored): <names with [personal]/[project] tags | "none">   |   M reviewer dimensions selected   |   Refs: <fresh|cached YYYY-MM-DD|partial (<missing-keys>)|stale|missing>
 ```
 For a `--plugin` run, render `Discovered N skill(s): plugin=<name> (skills: <s-list>)   |   M reviewer dimensions selected   |   Refs: <…>` instead — the `personal=`/`project=`/`Shadowed:` segments are bypassed.
 
@@ -257,7 +259,7 @@ Spawn each selected reviewer dimension as a `jr-reviewer` agent. Reviewers run *
 
 ### Per-reviewer reference excerpts (token budget)
 
-Each reviewer receives ONLY the references it needs (mirrors the principle "skills load on demand"). Excerpts are pulled from `cache/refs.json`:
+Each reviewer receives ONLY the references it needs (mirrors the principle "skills load on demand"). Excerpts are pulled from `cache/refs.json`. The Refresh logic above normally repopulates a newly-added or version-stale key before this point; if a schema-declared key is still absent (an offline refresh could not fetch it), the reviewer proceeds with the refs present but the run is **partial, not silently omitted** — render `Refs: partial (<missing-keys>)` on the discovery line and add a note under the Phase 7 "Reference fetch status" naming the missing key(s) and recommending `--refresh-refs`:
 
 | Dimension | Receives |
 |-----------|----------|
@@ -265,8 +267,8 @@ Each reviewer receives ONLY the references it needs (mirrors the principle "skil
 | `advisor-coverage-reviewer` | `shared/advisor-criteria.md` (full). NO Track C refs needed. |
 | `token-efficiency-reviewer` | `skills-doc` Skill content lifecycle section + 500-line Tip. |
 | `shared-drift-reviewer` | The full canonical `shared/*.md` set (already in lead context from Track A). NO Track C refs. |
-| `feature-adoption-reviewer` | `skills-doc` (Frontmatter reference + Substitutions tables) + `claude-code-changelog` (head ~30 versions). |
-| `safety-protocols-reviewer` | `shared/untrusted-input-defense.md` + `shared/gitignore-enforcement.md` + `shared/secret-scan-protocols.md` (all already in lead context from Phase 1 Track A reads; the latter two loaded specifically for this dimension so it can flag missing gitignore-enforcement applications and verify secret-scan tier semantics). NO Track C refs. |
+| `feature-adoption-reviewer` | `skills-doc` (Frontmatter reference + Substitutions tables) + `sub-agents-doc` (subagent frontmatter / model-resolution / background-default / caps) + `env-vars-doc` (subagent + effort env vars) + `claude-code-changelog` (head ~30 versions). |
+| `safety-protocols-reviewer` | `shared/untrusted-input-defense.md` + `shared/gitignore-enforcement.md` + `shared/secret-scan-protocols.md` + `shared/subagent-reporting.md` (all already in lead context from Phase 1 Track A reads; gitignore-enforcement and secret-scan-protocols so it can flag missing gitignore-enforcement applications and verify secret-scan tier semantics, subagent-reporting for the spawn-correctness check). NO Track C refs. |
 | `model-routing-reviewer` | NO Track C refs — reasons over the audited skill's own phase descriptions + frontmatter `model`/`effort` fields (already in the full `SKILL.md` content every reviewer receives per Phase 2). |
 
 ### Dimension table
@@ -278,7 +280,7 @@ Each reviewer receives ONLY the references it needs (mirrors the principle "skil
 | `token-efficiency-reviewer` | Line count vs. live skills-doc 500-line tip; large inline blocks that should be `${CLAUDE_SKILL_DIR}/scripts/*` or `shared/*.md` extractions; per-phase prose density; redundant prose between phases; tables/code blocks that could collapse. **Skill content lifecycle** (the doc's section name): every line is a recurring token cost across the whole session — flag aggressively. | Frontmatter character cap (frontmatter dimension); model-tier cost (model-routing dimension). |
 | `shared-drift-reviewer` | Inline duplicates of `shared/*.md` content (every duplicate proves the shared/ pattern isn't doing its job); missing references where shared files apply (e.g., subagent prompt without `untrusted-input-defense.md` reference); smoke-parse substring presence at every Read site of a shared file. | Whether the shared file itself is the right design (architecture concern, out of scope here). |
 | `feature-adoption-reviewer` | 2026 substitutions used vs. **what the live skills-doc lists** (`${CLAUDE_EFFORT}`, `${CLAUDE_SESSION_ID}`, `${CLAUDE_SKILL_DIR}`, `$ARGUMENTS`, `$N`, `$name`); `allowed-tools` minimization (over-permissive grants like blanket `Bash(*)` without rationale); features adopted by Anthropic post-skill-creation that the skill could leverage (cross-reference the changelog). Every finding MUST cite the doc URL (`https://code.claude.com/docs/en/skills:<heading>`) or a changelog version (`changelog:<version>`). | Whether to add a feature at all if not present (advisor-coverage / token-efficiency may flag instead). |
-| `safety-protocols-reviewer` | Untrusted-input defense applied at **every** subagent prompt site (reviewer, implementer, simplifier, convergence, fresh-eyes); gitignore-enforcement applied at every `.claude/*` cache/audit-trail write site; secret-scan tier classification correctly referenced when applicable; explicit-consent gates on destructive operations (e.g., `git push --force`, `rm -rf`); abort markers used on irrecoverable failures. | Specific finding text in shared files (shared-drift dimension). |
+| `safety-protocols-reviewer` | Untrusted-input defense applied at **every** subagent prompt site (reviewer, implementer, simplifier, convergence, fresh-eyes); gitignore-enforcement applied at every `.claude/*` cache/audit-trail write site; secret-scan tier classification correctly referenced when applicable; explicit-consent gates on destructive operations (e.g., `git push --force`, `rm -rf`); abort markers used on irrecoverable failures; **subagent-spawn correctness** for any skill that spawns — read the skill's `protocols/*.md` and `scripts/` too, not only `SKILL.md`, since spawn sites and roll-calls are frequently extracted there, and confirm a roll-call or reporting-block is genuinely absent across all of them before flagging (canonical `../shared/subagent-reporting.md`): work-producing spawns carry no `name:` (a named one is a persistent teammate whose findings never reach the lead, issue #70), a lead-side roll-call consumes `UNREPORTED`, no `TaskCreate`/`TaskList`/`TaskGet`/`TaskUpdate`/`SendMessage` is granted or called, and the Subagent-facing block is passed verbatim into each spawn prompt. **Carve-out** (`clarify: true`, never a hard flag): a named spawn that is a documented capability self-test (a probe, not a work producer); a skill that by design substitutes per-call-site zero-return checks for a roll-call; and lead-only or findings-only skills lacking the relevant phase. | Specific finding text in shared files (shared-drift dimension); spawn `model:` tier (model-routing dimension). |
 | `model-routing-reviewer` | Model-tier appropriateness: frontmatter `model:` / `effort:` vs. the skill's actual workload — flag premium `opus` on a skill whose phases are predominantly mechanical (discovery / dedup / reporting / validation), or an under-powered tier on a heavy-reasoning skill; body-level subagent-spawn `model:` choices vs. the work each spawned agent does. Evidence is the skill's own phase descriptions; `source` cites `<skill>/SKILL.md:<line>` as a self-contradiction within the same skill. Set `clarify: true` when premium tier is a defensible headroom choice. Canonical good shape: jr-skill-audit/SKILL.md:79. | Whether `model:` is a *legal enum value* (frontmatter dimension owns that); line-level prose cost (token-efficiency dimension). |
 | `scope-resolution` (lead-synthesized, not a reviewer) | Name collisions across personal and project scopes — emits one `medium`/`clarify:true` finding per colliding basename per the spec in "Shadow detection (lead-side synthesis)" above. Always fires when collisions exist (NOT filterable via `--only=` since it runs before reviewer dispatch). | Everything else; reviewer-dispatch dimensions own the rest. |
 
@@ -298,7 +300,7 @@ Per-finding requirements:
 1. Cite file:line. The codeExcerpt MUST be 3 verbatim consecutive lines from the
    file. The lead will re-read the cited range and reject mismatching findings.
 2. **Cite an authoritative source for every claim**. Primary (the `source` field):
-   - `https://code.claude.com/docs/en/skills:<heading>` (or env-vars doc)
+   - `https://code.claude.com/docs/en/skills:<heading>` (or env-vars / sub-agents doc)
    - `changelog:<version>` (e.g., `changelog:2.1.138`)
    - `~/.claude/skills/shared/<file>:<line>` (canonical shared protocol)
    - `<skill>/SKILL.md:<line>` only when citing a self-contradiction within the SAME
