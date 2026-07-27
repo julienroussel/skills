@@ -2,7 +2,7 @@
 
 **Canonical source** for the secret-scan behavioral rules (and the rules consumed by the pre-commit hook some skills install). Read at Phase 1 (Track A or inline). Consumers aren't enumerated here (to avoid per-file drift) — the authoritative source is each skill's own Phase 1 read list, summarised in the repo `CLAUDE.md` "shared/ — single source of truth" section.
 
-`/jr-review` consumes ALL sections (it has full headless/CI support and post-implementation re-scan flows). `/jr-audit` consumes the **Advisory-tier classification** section only — at the time of writing `/jr-audit` is interactive-only and does not run a CI/headless secret-halt protocol or User-continue path.
+`/jr-review` consumes ALL sections (it has full headless/CI support and post-implementation re-scan flows). `/jr-audit` consumes the CI/headless secret-halt protocol, the User-continue path, and the **Advisory-tier classification** section: it has no `--auto-approve` flag, but `isHeadless` is still true under CI or a non-TTY stdin, so the headless halt path is live (`jr-audit/protocols/fix-secret-validate.md`). One carve-out: `/jr-audit` cannot execute User-continue **behavior 3** (pre-commit hook offer) — the installer and template ship only under `jr-review/` — so it executes the other five and reports behavior 3 as unavailable rather than skipping it silently. A change to the halt or continue sections lands on both skills; do not assume `/jr-review` is the only consumer.
 
 ## Headless/CI detection (`isHeadless`)
 
@@ -12,7 +12,20 @@
 
 1. The `--auto-approve` flag is set. This is the authoritative signal for non-interactive intent.
 2. Any of these CI environment variables is non-empty: `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`, `BUILDKITE`, `CIRCLECI`, `TF_BUILD`, `DRONE`, `WOODPECKER_CI`, `TEAMCITY_VERSION`.
-3. Stdin is not a terminal (`[ ! -t 0 ]`) — catches cases where AskUserQuestion would hang because the user cannot respond (e.g., `echo y | /jr-review`).
+
+**There is deliberately no tty condition.** A third condition, `[ ! -t 0 ]`, was removed: it measured the wrong process and was **always true**, silently forcing every run into headless mode. The lead evaluates this predicate inside a Bash-tool subprocess, and Claude Code spawns those without a terminal, so stdin is never a tty there no matter how interactive the session is. Verified 2026-07-27 by running the implementation below in a session where `AskUserQuestion` was demonstrably working: it returned `true` with no CI variable set. The consequence was not cosmetic — an interactive user hit the CI abort path instead of the `[Abort | Continue]` prompt, and `/jr-audit` (which has no `--auto-approve` flag, so its predicate reduced to the tty check alone) could never reach its User-continue path at all.
+
+**This was independently diagnosed once before and did not propagate.** `/jr-doctor` reached the same conclusion for its own predicate and documented it (`jr-doctor/SKILL.md`, Group H `--fix` gating): the Bash tool runs subprocesses without a TTY, so the test always fires and would incorrectly auto-disable `--fix` in normal interactive use. That workaround stayed local and the canonical kept the defect, so every other consumer inherited it. When a consumer has to deviate from a canonical to work around the canonical's bug, fix the canonical.
+
+**Residual gap, stated rather than papered over.** Dropping the condition means a genuinely unattended run that sets no CI variable and passes no `--auto-approve` is classified interactive and will block at an `AskUserQuestion` instead of halting. That is a hang, not a safety failure: nothing proceeds, nothing is auto-approved, no secret is accepted. **Unattended invocations MUST pass `--auto-approve`** (condition 1 already calls it the authoritative signal); CI runners set `CI` regardless. Do NOT close this gap with an undocumented environment variable: `CLAUDECODE` and `CLAUDE_CODE_CHILD_SESSION` are both set in *any* Bash-tool subprocess and so distinguish nothing, and `CLAUDE_CODE_ENTRYPOINT` is not documented on the env-vars page (checked 2026-07-27) — keying a security predicate on an undocumented value is how this defect got here.
+
+<!-- harness-claim-verified: 2026-07-27 -->
+<!-- Live probe 2026-07-27: the implementation below returned isHeadless=true in an interactive
+     session with AUTO_APPROVE and all CI vars empty; `[ -t 0 ]`, `[ -t 1 ]` and `[ -t 2 ]` all
+     reported "not a tty" inside the Bash tool. Doc check the same day (env-vars page): CLAUDECODE
+     and CLAUDE_CODE_CHILD_SESSION are set for every spawned subprocess; CLAUDE_CODE_ENTRYPOINT is
+     undocumented. Re-verify if Claude Code changes how Bash-tool subprocesses are spawned. -->
+
 
 ### `AUTO_APPROVE` export (mandatory)
 
@@ -36,8 +49,10 @@ Hard-exit at this site is appropriate: the export runs before any team is create
 isHeadless=$([ -n "$AUTO_APPROVE" ] || [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ] \
   || [ -n "$GITLAB_CI" ] || [ -n "$JENKINS_URL" ] || [ -n "$BUILDKITE" ] \
   || [ -n "$CIRCLECI" ] || [ -n "$TF_BUILD" ] || [ -n "$DRONE" ] \
-  || [ -n "$WOODPECKER_CI" ] || [ -n "$TEAMCITY_VERSION" ] || [ ! -t 0 ] \
+  || [ -n "$WOODPECKER_CI" ] || [ -n "$TEAMCITY_VERSION" ] \
   && echo true || echo false)
+# No `[ ! -t 0 ]` term. See "There is deliberately no tty condition" above: the Bash tool has no
+# terminal, so that test is always true and would pin every run to headless. Do not re-add it.
 ```
 
 ### Verification
@@ -60,7 +75,13 @@ When a secret re-scan detects strict-tier matches and `isHeadless=true`: do not 
 
 1. **Clean untracked files first** — they may contain secrets introduced by implementers and would not be removed by `git checkout` if interrupted. Compare current `git ls-files --others --exclude-standard -z` (NUL-delimited) against `$untrackedBaseline`; log the list under `[REVERT — Untracked files removed]` in the Phase 7 report; delete new entries with `git clean -fd -- <newUntrackedFiles>`.
 2. **Clean new gitignored files** — also run `git ls-files --others -z` (without `--exclude-standard`) and compare against `$untrackedBaselineAll` to detect files written to gitignored paths. `git clean` skips them; pipe through `xargs -0 rm -f --` or individually double-quote each path. Use NUL-delimited output throughout to safely handle filenames containing spaces, glob characters, or other shell metacharacters.
-3. **Detect and remove new symbolic links** — compare `find . -type l -print0` against the pre-Phase-5 symlink baseline file at `$symlinkBaseline` (NUL-delimited) using `comm -z -23 <(find . -type l -print0 | sort -z) <(sort -z "$symlinkBaseline")`. Remove any new symlinks BEFORE checkout to prevent writes through symlinks to locations outside the repository.
+3. **Detect and remove new symbolic links** — compare `find . -type l -print0` against the pre-Phase-5 symlink baseline file at `$symlinkBaseline` (NUL-delimited). Remove any new symlinks BEFORE checkout to prevent writes through symlinks to locations outside the repository.
+
+   **`NUL_SORT_AVAILABLE` (mandatory probe, both branches canonical here).** The comparison method depends on a capability that is **absent on stock macOS**: `sort` ships with `-z` but `comm` does not, so `comm -z` fails there. Probe **both together** — a `sort -z`-only probe reports success on a host where the comparison still cannot run — and set the flag once, at the same site that captures the baselines:
+   - `NUL_SORT_AVAILABLE=true` → `comm -z -23 <(find . -type l -print0 | sort -z) <(sort -z "$symlinkBaseline")`.
+   - `NUL_SORT_AVAILABLE=false` → use the validated `tr`-based fallback path rather than `comm -z`, and **log the degradation in the Phase 7 report — never silently** (same convention as `FLOCK_AVAILABLE=false`). On macOS CI, `brew install coreutils` restores the direct path.
+
+   Both branches live here because both consumers of this sequence reach step 3; a consumer that probes but has no fallback to key on would fail this step outright with no degraded-mode signal.
 4. **Restore working tree** — `git -c core.symlinks=false checkout "$baseCommit" -- .`. The `core.symlinks=false` flag causes git to write symlinks as plain text files containing the target paths, eliminating the write-through-symlink primitive AND closing the TOCTOU window between enumeration and checkout.
 5. **Reset index** — `git reset "$baseCommit" -- .` to unstage any new files that do not exist at `$baseCommit`.
 
@@ -80,7 +101,7 @@ The protocol sets `abortMode=true` before transferring control to Phase 7 (see P
 
 ## User-continue path after post-implementation secret detection
 
-When a post-implementation secret re-scan (Phase 5.6, Phase 6 regression re-scan, Convergence Phase 5.6, Fresh-eyes fix cycle) OR the Phase 1 pre-implementation secret pre-scan detects a strict-tier match AND the user chooses `Continue` at the interactive AskUserQuestion prompt (i.e., the user is knowingly accepting the secret into the working tree rather than aborting + unstaging / reverting), the implementing site MUST execute ALL SIX behaviors below — no subset or substitution is permitted. The suppression list `$postImplAcceptedTuples` is shared across Phase 1 and post-implementation sites so a Phase-1-accepted match does not re-fire in any subsequent re-scan against the same value.
+When a post-implementation secret re-scan (Phase 5.6, Phase 6 regression re-scan, Convergence Phase 5.6, Fresh-eyes fix cycle) OR the Phase 1 pre-implementation secret pre-scan detects a strict-tier match AND the user chooses `Continue` at the interactive AskUserQuestion prompt (i.e., the user is knowingly accepting the secret into the working tree rather than aborting + unstaging / reverting), the implementing site MUST execute ALL SIX behaviors below — no subset or substitution is permitted, EXCEPT where a consumer documents a capability gap in the consumer note at the top of this file (today: `/jr-audit` cannot run behavior 3, and substitutes a mandatory ACTION REQUIRED report entry). The suppression list `$postImplAcceptedTuples` is shared across Phase 1 and post-implementation sites so a Phase-1-accepted match does not re-fire in any subsequent re-scan against the same value.
 
 ### Mandatory execution order
 
@@ -123,7 +144,7 @@ The six behaviors split into "register now" (synchronous at the Continue site) a
 
 Behaviors 1-6 are unified because silently dropping any one of them degrades safety:
 
-- Dropping (3) removes the only automated commit-blocker.
+- Dropping (3) removes the only automated commit-blocker. A consumer that structurally cannot offer it (no installer shipped) MUST report its absence under ACTION REQUIRED rather than skip it silently — the compensating control is the operator knowing the commit is unguarded.
 - Dropping (4) or (5) hides the condition from CI wrappers.
 - Dropping (1) or (2) hides it from the audit trail and from `/jr-ship`'s future enforcement contract.
 - Dropping (6) re-prompts the user on every subsequent iteration and makes a later abort retroactively revert earlier accepted fixes.
