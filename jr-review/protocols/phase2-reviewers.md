@@ -10,7 +10,7 @@ At Phase 2 entry, the lead agent reads the `CLAUDE_EFFORT` env var (per Claude C
 effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=high
 ```
 
-The value resolves to one of `low`, `medium`, `high`, `xhigh`, `max`. If empty (uncommon — Pro/Max users on Opus 4.6/4.7 default to `high` since v2.1.117), the `[ -z ... ]` fallback assigns `high`.
+The value resolves to one of `low`, `medium`, `high`, `xhigh`, `max`. If empty (uncommon — Pro/Max users on Opus default to `high` since v2.1.117), the `[ -z ... ]` fallback assigns `high`.
 
 **Why the env-var approach (and not skill substitution)**: Claude Code's skill-substitution syntax — the dollar sign, an open brace, `CLAUDE_EFFORT`, a close brace — gets resolved at skill-load time, baking one literal value into the prose. That would break this section's conditional table because every reference would resolve to the same loaded value instead of branching. Reading the env var via Bash at execution time produces a real branchable variable.
 

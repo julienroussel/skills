@@ -43,7 +43,7 @@ for d in "$HOME"/.claude/skills/*/; do
   fi
   model=$(echo "$fm" | grep -E '^model:' | head -1 | sed 's/^model:[[:space:]]*//; s/[[:space:]]*$//')
   if [ -n "$model" ]; then
-    echo "$model" | grep -qE '^(inherit|haiku|sonnet|opus|claude-(haiku|sonnet|opus)-[0-9]+-[0-9]+(-[0-9]+)?(\[[a-z0-9]+\])?)$' \
+    echo "$model" | grep -qE '^(inherit|haiku|sonnet|opus|fable|claude-(haiku|sonnet|opus)-[0-9]+-[0-9]+(-[0-9]+)?(\[[a-z0-9]+\])?)$' \
       || echo "WARN_MODEL:$name:$model"
   fi
   echo "$fm" | grep -qE '^description:' || echo "FAIL_NO_DESC:$name"
