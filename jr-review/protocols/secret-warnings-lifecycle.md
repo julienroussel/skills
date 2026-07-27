@@ -4,7 +4,7 @@
 
 ## Sub-step (a) — Schema validation
 
-Validate the file against `../shared/secret-warnings-schema.md` (apply its shared path validation block — allowlist regex PLUS the `..` / leading-dot / leading-hyphen segment checks — to the `file` field of every entry). On validation failure, follow the schema-failure backup protocol from that shared file: back up to `.claude/secret-warnings.json.corrupt-$(date +%s)` via `mv`; if the backup itself fails halt with `[SECRET-WARNINGS BACKUP FAILED]` and exit non-zero; on successful backup emit a Phase 7 ACTION REQUIRED entry. Any backup triggered here contributes to the non-zero Phase 7 exit code — do NOT silently drop entries.
+Validate the file against `../../shared/secret-warnings-schema.md` (apply its shared path validation block — allowlist regex PLUS the `..` / leading-dot / leading-hyphen segment checks — to the `file` field of every entry). On validation failure, follow the schema-failure backup protocol from that shared file: back up to `.claude/secret-warnings.json.corrupt-$(date +%s)` via `mv`; if the backup itself fails halt with `[SECRET-WARNINGS BACKUP FAILED]` and exit non-zero; on successful backup emit a Phase 7 ACTION REQUIRED entry. Any backup triggered here contributes to the non-zero Phase 7 exit code — do NOT silently drop entries.
 
 ## Sub-step (b) — File-existence check + lifecycle
 
@@ -54,7 +54,7 @@ When `patternType == "other"` (catch-all enum value for patterns without a dedic
 
 #### Advisory-tier filter for `"other"` full-scan
 
-The "Advisory-tier classification for re-scans" (`../shared/secret-scan-protocols.md`) classifies matches into strict and advisory tiers. For the `"other"` full-scan, only strict-tier matches count toward the line-update / persistence decision. Advisory-tier matches are logged to the Phase 7 report and treated as "no match" for line-update / persistence purposes.
+The "Advisory-tier classification for re-scans" (`../../shared/secret-scan-protocols.md`) classifies matches into strict and advisory tiers. For the `"other"` full-scan, only strict-tier matches count toward the line-update / persistence decision. Advisory-tier matches are logged to the Phase 7 report and treated as "no match" for line-update / persistence purposes.
 
 To preserve audit-trail integrity across runs where a file's advisory-classification criteria may drift (e.g., a file moved into a `test/` directory after the entry was written), an `"other"` entry whose ONLY remaining matches are advisory-tier is NOT pruned outright — instead, kept with `status: "unverified"` and surfaced in the Phase 7 report as `ACTION REQUIRED: secret-warnings entry <file>:<line> — only advisory-tier matches remain; verify manually that the underlying pattern has been resolved before the entry can be pruned.` This prevents silent audit-trail deletion based on transient path-classification criteria.
 

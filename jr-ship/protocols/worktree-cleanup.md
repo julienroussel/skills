@@ -1,6 +1,6 @@
 # Worktree-Aware Cleanup
 
-**Canonical procedure** for the post-CI cleanup shared by single-PR step 15 and multi-PR step 12-multi. Read at Phase 1 under the hard-fail + smoke-parse guard (anchors: `Consent basis` AND `Path B — secondary worktree`). The call sites own their run/skip conditions (when CI must be green, `--draft`/`--merge` interactions); this file owns the cleanup body.
+**Canonical procedure** for the post-CI cleanup shared by single-PR step 15 and multi-PR step 12-multi. Read at Phase 1 under the hard-fail + smoke-parse guard; the anchors are declared at the `jr-ship/SKILL.md` read site and deliberately not restated here, since a header that quotes its own anchors lets a body-stripped truncation false-pass the guard. The call sites own their run/skip conditions (when CI must be green, `--draft`/`--merge` interactions); this file owns the cleanup body.
 
 **Parameters** (set by the call site before applying):
 

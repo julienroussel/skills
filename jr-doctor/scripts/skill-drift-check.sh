@@ -78,6 +78,15 @@ for d in "$HOME"/.claude/skills/*/; do
   check_inline_drift 'AKIA[0-9A-Z]{16}'                      'secret-patterns\.md'
   check_inline_drift 'cache-poisoning guard'                 'cache-schema-validation\.md'
   check_inline_drift 'Before substantive work'               'advisor-criteria\.md'
+  check_inline_drift 'Code-edit discipline'                  'code-edit-discipline\.md'
+  check_inline_drift '[REJECTED — CLAIM REFUTED BY SOURCE]'  'claim-verification\.md'
+  check_inline_drift 'Command equivalence table'             'forge-detection\.md'
+  check_inline_drift 'Model override semantics'              'model-override\.md'
+  check_inline_drift 'Spawn rule: never pass'                'subagent-reporting\.md'
+  # 16 of the canonical's 17 rows are covered. `phase1-track-a-protocol.md` is
+  # deliberately excluded: every consumer both hardcodes its `Canonical Anchor
+  # Table` self-check AND references the file, so an inline-vs-reference test
+  # cannot distinguish drift there.
 done
 
 # 5. Template SHA-256 drift (one-shot; not per-skill). /jr-review's installer
@@ -278,3 +287,95 @@ check_restate_linkage() {
   done
 }
 check_restate_linkage 'Calibration: Your last 5 runs' 'shared/audit-history-schema.md' 'reviewerStats[]' 'fp-calibration-note'
+
+# 10. Guard-mode mismatch (one-shot). A smoke-parse anchor declared line-anchored
+#     (`^...`) CANNOT be verified with `grep -F`: -F treats `^` as a literal, never
+#     matches a healthy file, and the hard-fail guard then aborts Phase 1 on EVERY
+#     run of that skill. Shipped once for real (/jr-ship multi-pr-flow, 2026-07-27).
+#     Links each affirmative "via/with `grep -F`" instruction to the anchor ROW for
+#     the same target file, so a -F instruction governing plain anchors elsewhere in
+#     the file (the legitimate shared-anchor case) does not false-positive.
+for f in "$HOME"/.claude/skills/*/SKILL.md; do
+  [ -f "$f" ] || continue
+  gm_name=$(basename "$(dirname "$f")")
+  grep -nE '(via|with) `grep -F`' "$f" 2>/dev/null | while IFS=: read -r gm_ln gm_rest; do
+    printf '%s\n' "$gm_rest" | grep -oE '[a-z0-9-]+\.md' | sort -u | while read -r gm_tgt; do
+      [ -n "$gm_tgt" ] || continue
+      # the ANCHOR ROW for this target: a list line naming it followed by `: `
+      if grep -E "^[[:space:]]*[-*] .*\`[^\`]*${gm_tgt}\`: " "$f" 2>/dev/null | grep -q '`\^'; then
+        echo "FAIL_GUARD_MODE:$gm_name:$gm_ln:$gm_tgt"
+      fi
+    done
+  done
+done
+
+# 11. Malformed harness-claim marker (one-shot). Check 8 matches only the exact
+#     `<!-- harness-claim-verified: YYYY-MM-DD -->` form. A marker that lost its
+#     comment delimiters (e.g. a bulk relocation that stripped `<!--`) is invisible
+#     to check 8 while still LOOKING present to a reader: zero coverage, no signal.
+#     Counts the bare token vs the well-formed marker; a shortfall means a stripped
+#     or reshaped marker. Lines that merely NAME the token in prose are excluded by
+#     requiring a date to follow it.
+for f in "$HOME"/.claude/skills/shared/*.md "$HOME"/.claude/skills/*/SKILL.md \
+         "$HOME"/.claude/skills/*/protocols/*.md "$HOME"/.claude/skills/docs/*.md; do
+  [ -f "$f" ] || continue
+  hm_all=$(grep -cE 'harness-claim-verified: [0-9]{4}-[0-9]{2}-[0-9]{2}' "$f" 2>/dev/null)
+  hm_all=${hm_all:-0}
+  hm_ok=$(grep -cE '<!-- harness-claim-verified: [0-9]{4}-[0-9]{2}-[0-9]{2} -->' "$f" 2>/dev/null)
+  hm_ok=${hm_ok:-0}
+  if [ "$hm_all" -gt "$hm_ok" ] 2>/dev/null; then
+    echo "WARN_HARNESS_CLAIM_MALFORMED:${f#$HOME/.claude/skills/}:$((hm_all - hm_ok))"
+  fi
+done
+
+# 12. Tail-unguarded protocol file (one-shot). A multi-anchor grep-guard only makes a
+#     TRUNCATED body fail if the LAST anchor sits near the end. An anchor in the middle
+#     lets a tail truncation pass while dropping the rest of the procedure — including,
+#     in the shipped case, every irreversible step of a multi-PR flow. Warns when the
+#     last declared anchor first occurs before 60% of the target file.
+#     Only ANCHOR-DECLARATION rows qualify: the text after `<file>.md`: must open with a
+#     backtick or `**`. A prose application line ("Apply `protocols/x.md`: detect ... under
+#     `path`") also carries backticked tokens, and treating its trailing token as an anchor
+#     reports a depth for a guard that was never declared there.
+for f in "$HOME"/.claude/skills/*/SKILL.md; do
+  [ -f "$f" ] || continue
+  ta_name=$(basename "$(dirname "$f")")
+  ta_dir=$(dirname "$f")
+  grep -oE '`protocols/[a-z0-9-]+\.md`: (`|\*\*)[^|]*' "$f" 2>/dev/null | while read -r ta_row; do
+    ta_file=$(printf '%s' "$ta_row" | sed -n 's/^`\([^`]*\)`:.*/\1/p')
+    ta_full="$ta_dir/$ta_file"
+    [ -f "$ta_full" ] || continue
+    ta_total=$(wc -l < "$ta_full" 2>/dev/null | tr -d ' ')
+    case "$ta_total" in ''|*[!0-9]*) continue ;; esac
+    [ "$ta_total" -gt 40 ] || continue
+    ta_last=$(printf '%s' "$ta_row" | sed 's/^`[^`]*`: //' | grep -oE '`[^`]+`' | tail -1 | sed 's/^`//;s/`$//')
+    [ -n "$ta_last" ] || continue
+    ta_pat=$(printf '%s' "$ta_last" | sed 's/^\^//;s/\\//g')
+    ta_hit=$(grep -nF -- "$ta_pat" "$ta_full" 2>/dev/null | head -1 | cut -d: -f1)
+    case "$ta_hit" in ''|*[!0-9]*) continue ;; esac
+    if [ $((ta_hit * 100 / ta_total)) -lt 60 ]; then
+      echo "WARN_ANCHOR_TAIL_UNGUARDED:$ta_name:$ta_file:$ta_hit/$ta_total"
+    fi
+  done
+done
+
+# 13. Unresolved canonical pointer (one-shot). Generalises check 9's section test to
+#     EVERY inline `(canonical: <file> "<section>")` pointer, not just registry tokens:
+#     `<section>` must be a substring of a heading in the target, per
+#     docs/skill-anatomy.md "Pointer format". A pointer naming a bold bullet or a
+#     numbered list item resolves to nothing for the reader who follows it.
+for f in "$HOME"/.claude/skills/*/SKILL.md "$HOME"/.claude/skills/*/protocols/*.md; do
+  [ -f "$f" ] || continue
+  cp_name=${f#$HOME/.claude/skills/}
+  cp_dir=$(dirname "$f")
+  grep -oE '\(canonical: `[^`]+\.md` "[^"]+"\)' "$f" 2>/dev/null | sort -u | while read -r cp_ptr; do
+    cp_file=$(printf '%s' "$cp_ptr" | sed -n 's/.*`\([^`]*\.md\)`.*/\1/p')
+    cp_sec=$(printf '%s' "$cp_ptr" | sed -n 's/.*"\([^"]*\)".*/\1/p')
+    [ -n "$cp_file" ] && [ -n "$cp_sec" ] || continue
+    cp_full="$cp_dir/$cp_file"
+    [ -f "$cp_full" ] || { echo "WARN_CANON_PTR_NOFILE:$cp_name:$cp_file"; continue; }
+    if ! grep -E '^#{1,6} ' "$cp_full" | grep -Fq -- "$cp_sec"; then
+      echo "WARN_CANON_PTR_UNRESOLVED:$cp_name:$cp_file:$cp_sec"
+    fi
+  done
+done
