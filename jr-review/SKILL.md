@@ -6,29 +6,12 @@ effort: high
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Grep WebFetch AskUserQuestion Agent advisor Write(.claude/**) Edit(.claude/**) Write(.gitignore) Edit(.gitignore) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git ls-files *) Bash(git rev-parse *) Bash(git symbolic-ref *) Bash(git rev-list *) Bash(git merge-base *) Bash(git show *) Bash(git diff-tree *) Bash(git cat-file *) Bash(git config --get *) Bash(gh pr view *) Bash(gh pr diff *) Bash(gh pr list *) Bash(gh issue list *) Bash(gh repo view *) Bash(gh api *) Bash(gh auth status *) Bash(glab mr view *) Bash(glab mr diff *) Bash(glab mr list *) Bash(glab issue list *) Bash(glab repo view *) Bash(glab api *) Bash(glab auth status *) Bash(grep *) Bash(wc *) Bash(test *) Bash([ *) Bash(stat *) Bash(find . *) Bash(jq *) Bash(perl *) Bash(printf *) Bash(date *) Bash(mktemp *) Bash(comm *) Bash(sort *) Bash(awk *) Bash(cut *) Bash(head *) Bash(tail *) Bash(xargs *) Bash(command -v *) Bash(shasum *) Bash(echo *) Bash(mv *) Bash(mkdir -p *)
+allowed-tools: Read Glob Grep WebFetch AskUserQuestion Agent advisor Write(.claude/**) Edit(.claude/**) Write(.gitignore) Edit(.gitignore) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git ls-files *) Bash(git rev-parse *) Bash(git symbolic-ref *) Bash(git rev-list *) Bash(git merge-base *) Bash(git show *) Bash(git diff-tree *) Bash(git cat-file *) Bash(git config --get *) Bash(gh pr view *) Bash(gh pr diff *) Bash(gh pr list *) Bash(gh issue list *) Bash(gh repo view *) Bash(gh api *) Bash(gh auth status *) Bash(glab mr view *) Bash(glab mr diff *) Bash(glab mr list *) Bash(glab issue list *) Bash(glab repo view *) Bash(glab api *) Bash(glab auth status *) Bash(grep *) Bash(wc *) Bash(test *) Bash([ *) Bash(stat *) Bash(find . *) Bash(jq *) Bash(perl *) Bash(printf *) Bash(date *) Bash(mktemp *) Bash(comm *) Bash(sort *) Bash(awk *) Bash(cut *) Bash(head *) Bash(tail *) Bash(xargs *) Bash(command -v *) Bash(shasum *) Bash(echo *) Bash(mv .claude/*) Bash(mkdir -p *)
 ---
 
-<!-- Frontmatter notes (load-bearing):
-- `model: sonnet` (lead): Phase 3 claim-classification is rule-driven (keyword-scan external-authority
-  detection, verbatim citation matching), and Phase 4 approval / Phase 5.55 fix-verification are
-  structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work
-  (bug-hunting, fix implementation, simplification, security fresh-eyes) is delegated to opus
-  subagents. Mirrors `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern.
-- `when_to_use` is omitted on purpose: with `disable-model-invocation: true` the description is not
-  loaded into context (skills doc), so `when_to_use` would only affect the `/` menu listing. Don't re-add.
-- `allowed-tools` deliberately PROMPTS for: arbitrary `rm`, destructive git (checkout/reset/clean/
-  commit/rm/add) outside the implementer-managed revert sequence, gh pr comment/create/merge (+ glab `mr note`/`mr create`/`mr merge`), gh issue
-  create (+ glab `issue create`), and Write/Edit outside `.claude/**` + `.gitignore` — these mutate user code or external state
-  and stay a per-call decision. Phase 5 implementer subagents spawn their own scoped allowlists; the
-  lead does NOT. Agent-management tools + scoped `.claude/**`/`.gitignore` writes ARE granted (every
-  phase needs them; absent these the skill stalls on prompts in `--auto-approve`). `flock` is absent —
-  the permission system always prompts for it (exec wrapper).
-- `WebFetch` is granted for claim verification (Tier 2, `../shared/claim-verification.md`), which is **on by
-  default**: fetching authoritative docs to confirm or refute external-authority findings. Invoked whenever an
-  external-authority claim needs a doc lookup (skipped only under `--no-verify-claims` or offline); the
-  doctrine forbids resting a load-bearing claim on one WebFetch summary.
--->
+<!-- Frontmatter rationale (model/effort/allowed-tools/disallowed-tools): see
+     docs/skill-anatomy.md "Grant and model rationale, by skill" -> /jr-review. Read it before
+     changing any frontmatter field here. -->
 
 <!-- Dependencies:
   Required agent types (repo-local native `.claude/agents/`, no plugin):
@@ -63,6 +46,10 @@ allowed-tools: Read Glob Grep WebFetch AskUserQuestion Agent advisor Write(.clau
       read only when --converge is set, protocols/branch-mode.md only when --branch is set, and
       protocols/pr-url-mode.md only when the --pr value is a URL.
     - protocols/fix-secret-validate.md — Phase 5.6 + Phase 6 bodies; grep-checked at Phase 1 Track A (existence + anchors, NOT loaded), Read at Phase 5 entry (deferred / Pattern C)
+    - protocols/post-fix.md          — Phase 5.5 (simplification) + Phase 5.55 (fix verification) bodies;
+                                       grep-checked at Phase 1 Track A (existence + line-anchored headings, NOT
+                                       loaded), Read at Phase 5 entry beside fix-secret-validate.md. Phase 5 is
+                                       skipped under nofix (and --pr implies nofix), so those runs never load it.
   Required tools:
     - Agent, AskUserQuestion, advisor
     - Bash, Read, Write, Glob, Grep
@@ -236,6 +223,7 @@ Read **all of the following files in parallel** using multiple Read tool calls i
   - `${CLAUDE_SKILL_DIR}/protocols/phase8-followups.md` — `Public repository check` AND `Dedup decision logging`
   - `${CLAUDE_SKILL_DIR}/convergence-protocol.md` (only when `--converge` is set) — `priorFindings` AND `freshEyesMandatory` AND `Proceed to Phase 7 (cleanup and report)`. Three anchors at top/mid/bottom — a mid-file truncation that drops the convergence loop body would otherwise pass two top-half-only anchors. Skip read+smoke-parse entirely if `--converge` was not passed; if `--converge` is set and the file is invalid, hard-fail.
 - **Deferred fix-path body (grep-guard, NOT Read at Phase 1)**: The Phase 5.6 + Phase 6 bodies live in `${CLAUDE_SKILL_DIR}/protocols/fix-secret-validate.md`, Read at Phase 5 entry (deferred / Pattern C), not here. At Phase 1, verify presence WITHOUT loading: `[ -f ]` the file AND `grep -Eq` both **line-anchored** headings `^## Phase 5.6 — Secret re-scan` AND `^## Phase 6 — Validate-fix loop` (the `^` is load-bearing: this file quotes both anchor strings in its own line-3 header prose, so a plain `grep -Fq` substring match would false-pass a body-stripped truncation that retained only the header; line-anchoring matches the real body headings only). If absent, empty, or either heading missing, abort Phase 1 with `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` (`abortReason=shared-file-missing`); same fail-fast surface as the other skill-local protocols, only the body load is deferred.
+- **Deferred post-fix body (grep-guard, NOT Read at Phase 1)**: the Phase 5.5 + Phase 5.55 bodies live in `${CLAUDE_SKILL_DIR}/protocols/post-fix.md`, Read at Phase 5 entry beside `fix-secret-validate.md`. At Phase 1, verify presence WITHOUT loading: `[ -f ]` the file AND `grep -Eq` both **line-anchored** headings `^## Phase 5\.5 — Simplification pass` AND `^## Phase 5\.55 — Fix verification` (line-anchor for the same reason as above, plus `5.5` is a prefix of `5.55` — match the full heading text, not the number). If absent, empty, or either heading missing, abort Phase 1 with `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` (`abortReason=shared-file-missing`). Phase 5 is skipped under `nofix` (and `--pr` implies `nofix`), so on those runs the body is never loaded at all.
 - **Project memory** (auto-memory system, silent no-op if absent — new project): compute the memory dir via `memoryDir=~/.claude/projects/"${PWD//[.\/]/-}"/memory` (the encoding replaces `/` and `.` in `$PWD` with `-`). Read `"$memoryDir/MEMORY.md"` first; the file is an index of `- [Title](file.md)` pointers. Then fan out in parallel to read every referenced `feedback_*.md`, `project_*.md`, `reference_*.md`, and `user_*.md` file in `$memoryDir`. These entries are explicit user decisions from prior sessions in this project — treat them with the same precedence as `CLAUDE.md`. Pass the concatenated content to reviewers in Phase 2 as an additional **Project memory** block alongside the existing project-standards context.
 - **User-global memory — `user`-type entries only** (silent no-op if absent): also read `~/.claude/projects/"${HOME//[.\/]/-}--claude-skills"/memory/MEMORY.md` (the skills repo's own auto-memory dir, derived from `$HOME` — the skills repo lives at `$HOME/.claude/skills`, so this is independent of `$PWD` yet portable across users; do NOT hardcode a username). From the index, fan out in parallel to `user_*.md` files **only** — skip `feedback_*.md`, `project_*.md`, and `reference_*.md` here because those are project-specific and must NOT leak across repos (e.g., a React/Tailwind-flavored feedback entry must not apply when reviewing a Python service). `user_*.md` entries describe the user's role, expertise, and communication preferences — those apply globally. If the current CWD is itself the skills repo, this file is the same as the project-memory read above; read it once and de-duplicate. Pass the user-global block to reviewers in Phase 2 under a **User-global context** header, separate from **Project memory**.
 
@@ -377,13 +365,15 @@ Additionally, when loading `review-config.md` in Track A, check whether the file
 
 **Deferred load of the fix-path body (Pattern C)**: Now (Phase 5 entry, base anchor established, before spawning implementers), Read `${CLAUDE_SKILL_DIR}/protocols/fix-secret-validate.md` into lead context: the Phase 5.6 and Phase 6 bodies, verified present at Phase 1 by the grep-guard. Before applying the loaded body, re-confirm it still contains a line-start `## Phase 5.6 — Secret re-scan` heading AND a line-start `## Phase 6 — Validate-fix loop` heading (not merely the header's anchor quotes); abort `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if either is absent, closing the Phase-1-to-Phase-5 window against a mid-run truncation. Anchoring the Read at Phase 5 *entry* (not the spawn block) guarantees the body loads even when zero findings were approved at Phase 4 (the flow still enters Phase 5, captures the anchor, spawns zero implementers, and Phase 6 still runs). The convergence loop and fresh-eyes pass reuse the already-loaded body; do not re-read.
 
+In the **same** Read batch, also Read `${CLAUDE_SKILL_DIR}/protocols/post-fix.md` into lead context: the Phase 5.5 (simplification) and Phase 5.55 (fix-verification) bodies, verified present at Phase 1 by their own grep-guard. Before applying, re-confirm it still contains line-start `## Phase 5.5 — Simplification pass` AND `## Phase 5.55 — Fix verification` headings; abort `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if either is absent. Both files load here for the same reason — Phase 5 entry is the last point common to every run that will need them, and no `nofix`/`--pr` run reaches it.
+
 Spawn **all implementer agents in parallel** using multiple Agent tool calls in a single message. Use `subagent_type: "jr-implementer"` and **no `name:`** (`../shared/subagent-reporting.md` "Spawn rule" — a named implementer is a teammate whose final response never reaches the lead, so its `addressed`/`contested` verdicts are lost); give each a distinct `description` instead. The `team_name` param is accepted but ignored since 2.1.178, so the medium/large-vs-small distinction now governs only how many implementers you spawn — not any team-creation step. Each implementer receives:
 
 - A set of user-approved findings scoped to specific files (strict file ownership — no two implementers touch the same file; ownership also closes over description-coupling, so a file and any file that documents or specifies it (doc, schema, fixture) go to the same implementer, never parallel ones — otherwise a doc edited beside the code it describes passes its own reconcile check merely because the other implementer has not written yet. If one file describes many changed files, the Phase 5 pre-dispatch advisor's "Re-allocate" branch merges them into one task list), including each finding's confidence level
 - The original diff context for those files
 - The project coding standards summary
 - The defect and its acceptance test — **not the fix text**. Describe what is wrong and how to tell when it is right; the implementer writes and tests the fix. A lead that prescribes the patch prescribes its bugs (#76). For `speculative` findings — including those capped at Phase 3 step 0.5 as `[unverified external claim]` — instruct the implementer to verify the issue exists in context (and, for an external-authority claim, that the cited external fact is real) before applying a fix — skip if the finding turns out to be a false positive.
-- **Implementer safety preamble** (this item plus the three below — Phase 6 dispatch sites reference it by this name and MUST include all four verbatim): "Do NOT run any `git` commands. Only modify files using the Write/Edit tools. The lead agent manages all git state. If you need to see file contents, use the Read tool."
+- **Implementer safety preamble** (this item plus the four below, through the Subagent-facing block — Phase 6 dispatch sites reference it by this name and MUST include all five verbatim): "Do NOT run any `git` commands. Only modify files using the Write/Edit tools. The lead agent manages all git state. If you need to see file contents, use the Read tool."
 - Include the full content of `../shared/untrusted-input-defense.md` (read into lead context at Phase 1 Track A) verbatim in each implementer's prompt. Do NOT paraphrase; the shared file phrasing ("diff and reviewed/modified files") covers the implementer case.
 - Include the full content of `../shared/code-edit-discipline.md` (read into lead context at Phase 1 Track A) verbatim in each implementer's prompt. Do NOT paraphrase or summarize; the canonical Do/Don't list, worked example, and "defend every changed line" test must all reach the implementer.
 - "Fix ONLY the findings assigned to you. Do not refactor, rename, extract, or 'improve' adjacent code even if you notice opportunities. If your fix cannot be completed without changing code outside the finding's scope, mark the finding **contested** with a one-line reason instead of expanding scope."
@@ -397,45 +387,16 @@ An implementer may mark a finding as **contested** if the fix would introduce wo
 
 **Display**: Follow the Display protocol — show compact implementer summary: `N implementers dispatched → M/N findings addressed (Xs)`. Update the running progress timeline.
 
-## Phase 5.5 — Simplification pass
+## Phase 5.5 — Simplification pass  ·  Phase 5.55 — Fix verification
 
-**Skip if `nofix` or `quick` is set, or if fewer than 3 findings were implemented.**
+**Deferred load (Pattern C).** Both bodies live in `${CLAUDE_SKILL_DIR}/protocols/post-fix.md`, Read
+into lead context at **Phase 5 entry** alongside `fix-secret-validate.md` (see the Phase 5 deferred-load
+step). Apply them in order after the implementer swarm returns: 5.5 simplification (skipped on `nofix`,
+`quick`, or fewer than 3 findings implemented), then 5.55 fix verification (skipped on `nofix`).
 
-Spawn a **single Agent** using the Agent tool directly (independent of the Phase 2 reviewers) and **no `name:`** (`../shared/subagent-reporting.md` "Spawn rule" — a named agent is a persistent teammate whose final response never reaches the lead); give it a distinct `description` instead. Pass it the list of files modified by Phase 5 implementers. The agent reviews the modified files for post-fix simplification opportunities:
-- Reduce unnecessary complexity/nesting introduced by fixes
-- Eliminate redundancy between fix code and existing code
-- Improve naming clarity where fixes introduced new variables/functions
-- Replace nested ternaries with switch/if-else if introduced
-- Ensure fixes follow project standards (ES modules, function keyword, explicit types)
-
-This is a lightweight pass — only flag changes that are clear wins. Do NOT re-review unchanged code. Apply simplifications directly (no separate approval gate).
-
-**Roll-call (mandatory)**: apply the roll-call from `../shared/subagent-reporting.md` to this spawn. Only an agent that **explicitly reports** "no improvements" prints the skip line. An agent that returns nothing, an empty result, or an error is `UNREPORTED`: it latches `unreportedCount` and is named in the Phase 7 Coverage-gaps item 7(b) — never rendered as a silent skip, which is exactly what a clean pass looks like from the outside. **Do not assume the tree is clean**: the agent applies simplifications in place, so one that errors or exhausts its turn budget *after* editing returns nothing while leaving unreviewed edits behind — diff the modified-file set against the pre-5.5 snapshot and report those files under item 7(b) too, since no `improvements applied` count can be printed for them.
-
-Instruct the simplification agent: "Do NOT run any `git` commands. Only modify files using the Write/Edit tools." Then include the full content of `../shared/untrusted-input-defense.md` (read into lead context at Phase 1 Track A) verbatim in the simplification-agent prompt. Do NOT paraphrase. Additionally include the full content of `../shared/code-edit-discipline.md` verbatim, prefixed with the Phase-5.5-specific lead-in defined in the **Model requirements** section above ("Your assignment is to simplify only when…") — keep the two prompt-construction sites in sync. Additionally include the **Subagent-facing block** of `../shared/subagent-reporting.md` verbatim, so an agent that finds nothing says so rather than ending its turn silently.
-
-**Display**: `Phase 5.5 — Simplification: N improvements applied` (or skip line if none)
-
-## Phase 5.55 — Fix verification (read-after-write)
-
-**Skip if `nofix` flag is set** (no fixes were applied). Skip findings marked `contested` by their implementer (the implementer explicitly declined to fix; there is nothing to verify).
-
-For each finding that Phase 5 marked as "addressed", the lead agent performs a targeted re-read to confirm the fix actually resolved the cited issue. This catches the failure mode where an implementer technically modified the file but did not address the finding (e.g., added `// @ts-expect-error` instead of handling the null, renamed a variable but left the bug, or fixed the wrong line). The check is lightweight and strictly additive — it does NOT re-review the rest of the file.
-
-For each addressed finding, **in parallel** (batch Read calls into a single message across findings):
-
-1. Re-read the cited `file` over the range `[line - 5, line + 5]` (clamped to file bounds).
-2. Evaluate against the finding's description and suggested fix: is the issue described as "wrong" still present at (or near) the cited line? Consider small line-number drift (±5) from the implementer's edit.
-3. Classify the finding into one of:
-   - **verified**: the fix is visible and plausibly resolves the cited issue. No action.
-   - **unverified**: the fix is not visible, the cited line is unchanged, or the fix looks like a suppression (`@ts-expect-error`, `eslint-disable`, swallowing catch) rather than a resolution. Mark the finding with a `verified=false` flag and surface in the Phase 7 report under `ACTION REQUIRED: Fix did not resolve cited issue: <dimension>/<category> at <file>:<line>`.
-   - **moved**: the cited line no longer contains the problem but the fix is at a different nearby line (common with formatter adjustments). Treat as verified and note the line shift in the Phase 7 report.
-
-**Thresholds**:
-- If more than **30% of findings** in a single dimension are `unverified`, surface a Phase 7 `ACTION REQUIRED` note: `High unverified rate in <dimension> (<N>/<M>). Review implementer output manually.` Do NOT auto-revert — `unverified` is a soft flag that informs the user, not a halt signal. The user decides whether to run `/jr-review` again or revert.
-- If any `critical`-severity finding is `unverified`, escalate to a single targeted AskUserQuestion in interactive mode: `Critical finding "<description>" may not have been resolved. Options: [Accept as-is — I'll verify manually] / [Revert all Phase 5 changes and re-run]`. In headless/CI mode, skip the prompt but keep the ACTION REQUIRED entry and exit non-zero.
-
-**Display**: `Phase 5.55 — Verification: M/N fixes verified (K unverified, L moved)` (or skip line if zero fixes).
+Phase 5 is skipped entirely under `nofix`, and `--pr` implies `nofix`, so on every findings-only and
+remote-PR review this file is never loaded — which is the point of deferring it
+(`https://code.claude.com/docs/en/skills`, "Skill content lifecycle").
 
 ## Phase 5.6 — Secret re-scan
 

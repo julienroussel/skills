@@ -286,7 +286,7 @@ When creating `<new-skill>/SKILL.md`:
 
 **Vanilla-first (the default):** a skill's guarantees must rest only on vanilla Claude Code or repo-local files (`.claude/agents/*.md`, `shared/*.md`, `<skill>/scripts/`), never a required third-party plugin or marketplace. Optional integrations may enhance a skill but must degrade to a documented fallback, never an abort (canonical: the `CLAUDE.md` "External dependencies — vanilla-first" section).
 
-1. **Frontmatter**: `name`, `description`, `argument-hint`, `effort`, `model: opus` (for skills that spawn reviewers/implementers), `disable-model-invocation: true` (for user-only skills), `user-invocable: true`, scoped `allowed-tools`.
+1. **Frontmatter**: `name`, `description`, `argument-hint`, `effort`, `model: sonnet` for a **lead** that spawns reviewers/implementers, with `model: "opus"` on the subagent spawns themselves (the validated lead-sonnet + opus-delegated-judgment pattern every swarm skill uses); `model: opus` only for a lead-only skill with no swarm to delegate to, such as `/jr-mermaid` or `/jr-tackle`, `disable-model-invocation: true` (for user-only skills), `user-invocable: true`, scoped `allowed-tools`.
 2. **Dependencies HTML comment block**: list required agent types (repo-local native `.claude/agents/*.md`, not a plugin), required CLI binaries, files read/written, shared protocol references with their smoke-parse anchors, required tools.
 3. **Phase scaffolding**: numbered phases with `━━━` headers, cumulative timeline updates, parallel-first dispatch where independent.
 4. **Phase 1 Track A read list**: add hard-fail guard for any `shared/*.md` or `<skill>/protocols/*.md` files the skill consumes, with smoke-parse anchors.
@@ -297,3 +297,136 @@ When creating `<new-skill>/SKILL.md`:
 9. **Update `CLAUDE.md`** repo-structure listing and `README.md` skills table.
 
 That's it — the same architecture every existing skill follows.
+
+## Grant and model rationale, by skill
+Relocated here from each `SKILL.md`'s `<!-- Frontmatter notes -->` block. That prose explains *why*
+a skill's `model`/`effort`/`allowed-tools`/`disallowed-tools` are set the way they are — it is written
+for whoever next edits the frontmatter, not for the runtime agent, and every line of it was a
+recurring per-session token cost in a file that stays in context for the whole session
+(`https://code.claude.com/docs/en/skills`, "Skill content lifecycle").
+
+**Read this section before changing any skill's frontmatter.** Each `SKILL.md` carries a one-line
+pointer here. The `Dependencies` comment block stays in each `SKILL.md` — it is runtime-relevant
+(which shared files to read, which tools are required), unlike this rationale.
+
+### `/jr-audit`
+
+- `model: sonnet` (lead): the lead's Phase 3 claim-classification and dedup are rule-driven
+  (keyword-scan external-authority detection, verbatim citation matching, pattern clustering) —
+  structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work
+  (bug-hunting, fix implementation) is delegated to opus reviewer/implementer subagents. Mirrors
+  `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern.
+- `allowed-tools` deliberately omits: blanket `git checkout *`, `git reset *` outside the canonical
+  revert sequence (uses pinned `git -c core.symlinks=false checkout *`), `git stash *`, `git clean *`
+  outside `git clean -fd *`, blanket `rm -rf *`, blanket `mv *`, and Write/Edit outside `.claude/**`
+  and `.gitignore`. The Phase 5 base-anchor revert sequence (clean → rm-f → checkout → reset)
+  uses these scoped forms; broader destructive ops should remain a per-call decision.
+- The `--out=<path>` flag (Phase 1) may target a report destination OUTSIDE `.claude/`. The skill
+  intentionally does NOT widen the Write scope above to accommodate it: an out-of-`.claude` write
+  relies on the user's own `permissions.allow` settings rule (prompt-free / headless-safe) or falls
+  through to Claude Code's per-call Write prompt (interactive), mirroring `/jr-mermaid`'s design.
+- `allowed-tools` grants `Bash(rm -f -- *)` UNSCOPED (alongside the scoped `Bash(rm -f .claude/*)`):
+  the Combined revert sequence must delete untracked files absent at the base commit — including
+  gitignored ones that `git clean -fd` skips — and an implementer with strict file ownership over a
+  finding's cited file may have created that file anywhere in the tree, so the target cannot be
+  confined to a subdirectory. Every invocation passes explicit paths from the Phase 5 untracked /
+  symlink baselines; the `*` is the allowlist wildcard for those arguments, not a glob the skill
+  expands itself.
+- `allowed-tools` also grants the shell-utility wrappers `Bash(xargs *)`, `Bash(find . *)`,
+  `Bash(sed *)`, `Bash(awk *)` and `Bash(base64 *)`. These are accounted for here rather than
+  scoped, because each is a general-purpose execution or in-place-write surface that reaches past
+  the omits-list above (`xargs rm -rf`, `find -exec`, `sed -i`), and no narrower form covers the
+  uses: the revert sequence pipes NUL-delimited baselines through `xargs`, `find . -type l -print0`
+  builds the symlink baseline, and `sed`/`awk`/`base64` parse tool output and decode `gh api`
+  payloads. The omits-list above is an accurate account of what is withheld; this bullet keeps it
+  a complete account of what is granted. Treat both as one list when auditing the grant surface.
+- `WebFetch` is included for claim verification (Tier 2, see `../shared/claim-verification.md`), which is
+  **on by default**: fetching authoritative docs to confirm or refute external-authority findings. It is
+  invoked whenever an external-authority claim needs a doc lookup (skipped only under `--no-verify-claims` or
+  when offline), and the doctrine forbids resting a load-bearing claim on a single WebFetch summary
+  (cross-check against a `gh api` raw fetch or a second source).
+
+### `/jr-review`
+
+- `model: sonnet` (lead): Phase 3 claim-classification is rule-driven (keyword-scan external-authority
+  detection, verbatim citation matching), and Phase 4 approval / Phase 5.55 fix-verification are
+  structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work
+  (bug-hunting, fix implementation, simplification, security fresh-eyes) is delegated to opus
+  subagents. Mirrors `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern.
+- `when_to_use` is omitted on purpose: with `disable-model-invocation: true` the description is not
+  loaded into context (skills doc), so `when_to_use` would only affect the `/` menu listing. Don't re-add.
+- `allowed-tools` deliberately PROMPTS for: arbitrary `rm`, destructive git (checkout/reset/clean/
+  commit/rm/add) outside the implementer-managed revert sequence, gh pr comment/create/merge (+ glab `mr note`/`mr create`/`mr merge`), gh issue
+  create (+ glab `issue create`), and Write/Edit outside `.claude/**` + `.gitignore` — these mutate user code or external state
+  and stay a per-call decision. Phase 5 implementer subagents spawn their own scoped allowlists; the
+  lead does NOT. Agent-management tools + scoped `.claude/**`/`.gitignore` writes ARE granted (every
+  phase needs them; absent these the skill stalls on prompts in `--auto-approve`). `flock` is absent —
+  the permission system always prompts for it (exec wrapper).
+- The list above is what is *withheld*; this bullet keeps the account of what is *granted* complete.
+  `Bash(perl *)`, `Bash(xargs *)`, `Bash(find . *)` and `Bash(awk *)` are general-purpose execution
+  surfaces that reach past the withheld list (`perl -e 'system(...)'`, `xargs rm -rf`, `find -exec`).
+  They are granted knowingly: the revert sequence pipes NUL-delimited baselines through `xargs`,
+  `find . -type l -print0` builds the symlink baseline, and `perl`/`awk` do the NUL-safe parsing the
+  shell cannot. `Bash(mv *)` was narrowed to `Bash(mv .claude/*)` — the only `mv` this skill performs
+  is the `.claude/secret-warnings.json.tmp` atomic rename — matching `/jr-audit`'s scoped rule.
+- **The two bundled scripts prompt, and that is accepted.** No `allowed-tools` rule matches
+  `scripts/establish-base-anchor.sh` or `scripts/install-pre-commit-secret-guard.sh`, so each
+  invocation raises a per-call permission prompt. The documented prompt-free pattern needs a braced
+  `${CLAUDE_SKILL_DIR}` on both sides, but both call-sites live in `protocols/*.md` files Read at
+  runtime, where no skill-content substitution applies — so adopting it would mean relocating the
+  invocations, not adding a rule. Known and accepted, like `flock` above; do not read the omission
+  as an oversight.
+- `WebFetch` is granted for claim verification (Tier 2, `../shared/claim-verification.md`), which is **on by
+  default**: fetching authoritative docs to confirm or refute external-authority findings. Invoked whenever an
+  external-authority claim needs a doc lookup (skipped only under `--no-verify-claims` or offline); the
+  doctrine forbids resting a load-bearing claim on one WebFetch summary.
+
+### `/jr-ship`
+
+- `allowed-tools` grants `Bash(git ls-files *)`, `Bash(mktemp *)`, `Bash(git clean -fd *)` and
+  `Bash(rm -f -- *)` for the Phase 1 step-4 untracked secret scan and the CI-fix Clean-tree guarantee.
+  Both enumerate untracked files against a NUL-delimited `mktemp` baseline and delete only what the
+  agent added. `rm -f --` is unscoped for the same reason `/jr-audit` documents: the agent may create a
+  gitignored file anywhere in the tree, and `git clean` skips gitignored paths. Every invocation passes
+  explicit paths computed from the baseline diff; the `*` is the allowlist wildcard for those arguments,
+  not a glob the skill expands. Without these grants the scan and the revert fall through to the
+  permission system, and a denied scan would report a clean tree it never read.
+
+- `model: sonnet` (not `opus`): the lead does mechanical orchestration — arg parsing, git/gh
+  sequencing, CI waiting, display. The judgment-heavy tasks (split analysis Phase 2, CI-failure
+  diagnosis/fix) are delegated to opus sub-agents (`--model` overrides) — see "Model requirements".
+- `allowed-tools` grants `Bash(git checkout *)` (broad wildcard): every documented phase needs a
+  `git checkout` form — branch switch + create (`-b`), HEAD detach in cleanup, file-level restore
+  from the staging ref (`git checkout <staging> -- <files>`, step 7-multi). Each form is documented.
+- `allowed-tools` grants `Bash(git push origin *)` (broad wildcard) deliberately: the resume and
+  multi-PR paths push refspecs this skill composes at runtime, so an enumerated list would break
+  them. Note the grant's trailing `*` also matches `--force`, which the body forbids ("Never
+  force-push or delete remote branches on failure"). That prohibition is enforced by the body,
+  NOT by the grant — do not read the pre-authorisation as permission. `Bash(git push origin HEAD:*)`
+  is fully subsumed by this rule and is retained only for readability at the call sites.
+- `allowed-tools` grants no `Write`/`Edit`: `/jr-ship` mutates the repo only through `git`/`gh` and
+  reads with `Read` — it has no file-write site of its own. The former `Write(.claude/**)` (the
+  step-4 `.claude/secret-warnings.json` audit-trail write) was removed when that write was deferred
+  to the not-yet-implemented `/jr-review`→`/jr-ship` enforcement contract — see issue #32.
+
+### `/jr-skill-audit`
+
+- `model: sonnet` (lead): Phase 3 source-citation verification is a mechanical match against the
+  Track C refs cache, and Phase 4 synthesis (plus the lead-emitted scope-resolution dimension) is
+  structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work (spec
+  review across the 7 reviewer dimensions) is delegated to opus subagents. Mirrors `/jr-ship`'s
+  validated lead-sonnet + opus-delegated-judgment pattern.
+- `Write` targets: (1) `~/.claude/skills/jr-skill-audit/cache/**` — the refs.json live-references cache (Phase 1 Track C); (2) `.claude/skill-audit-*` (the report `.md` plus its atomic `.md.tmp` sidecar) and (3) `~/.claude/skill-audit-reports/**` — the `--report` archival report (Phase 7; `protocols/report-write.md`). The skill is still findings-only and never modifies skill files. Any further write site must extend the path scope explicitly. **`Write(.claude/skill-audit-*)` is CWD-anchored** (Claude Code file-tool grants follow gitignore semantics relative to the current directory, and frontmatter `allowed-tools` scoping is itself undocumented): it pre-authorises a project-scope report write to the repo-root `.claude/` **only when the run is invoked from the repo root** — from a subdirectory the Write prompts, and under `--auto-approve`/headless it is skipped (non-fatal) unless the user adds `Write(/.claude/**)` to their own project/user settings. `Write(~/.claude/skill-audit-reports/**)` is the reliably prompt-free grant (absolute `~/`-anchored, like the cache grant) and covers the personal/both/plugin + out-of-repo default. NOTE — the literal `~/.claude/skills/jr-skill-audit/cache/**` is intentional and is NOT switched to `${CLAUDE_SKILL_DIR}/cache/**` to match the body's substitution. The reason is narrower than it looks: the skills doc ("Available string substitutions") DOES document `${CLAUDE_SKILL_DIR}` substitution in `allowed-tools`, since v2.1.129 — but scoped to **Bash rules** ("the skill's markdown content, and Bash rules in the `allowed-tools` frontmatter"). This grant is a `Write(...)` rule, which is outside that documented surface, so substituting here would risk a never-matching grant (every cache write would then prompt). The `~/`-anchored literal is correct for the personal install (the skill's by-design home); it only diverges from the body under a project/plugin install, where the write degrades to a per-call prompt rather than failing. Revisit if Anthropic documents substitution for non-Bash `allowed-tools` rules.
+
+#### `/jr-skill-audit` — harness-claim date stamp
+
+<!-- harness-claim-verified: 2026-07-27 -->
+
+Verified 2026-07-27 against the live skills doc (https://code.claude.com/docs/en/skills,
+"Available string substitutions"): substitution applies to "the skill's markdown content, and
+Bash rules in the allowed-tools frontmatter"; `${CLAUDE_SKILL_DIR}` in allowed-tools requires
+v2.1.129+, `${CLAUDE_PROJECT_DIR}` requires v2.1.196+. This corrected a prior note claiming
+`${CLAUDE_SKILL_DIR}` in allowed-tools was undocumented — it is documented, but only for Bash
+rules, which is why the Write grant keeps its literal path. Re-verify on a Claude Code upgrade.
+
+

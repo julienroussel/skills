@@ -9,34 +9,9 @@ user-invocable: true
 allowed-tools: Read Write(.claude/**) Edit(.claude/**) Write(.gitignore) Edit(.gitignore) Glob Grep Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git ls-files *) Bash(git rev-parse *) Bash(git diff-tree *) Bash(git show *) Bash(git config --get *) Bash(git clean -fd *) Bash(git -c core.symlinks=false checkout *) Bash(git reset *) Bash(gh repo view *) Bash(gh pr list *) Bash(gh pr view *) Bash(gh api *) Bash(gh auth status *) Bash(gh issue list *) Bash(gh issue create *) Bash(glab repo view *) Bash(glab mr list *) Bash(glab mr view *) Bash(glab api *) Bash(glab auth status *) Bash(glab issue list *) Bash(glab issue create *) Bash(jq *) Bash(wc *) Bash(grep *) Bash(stat *) Bash(test *) Bash(mkdir -p *) Bash(rm -f .claude/*) Bash(rm -f -- *) Bash(mv .claude/*) Bash(find . *) Bash(cat *) Bash(head *) Bash(tail *) Bash(comm *) Bash(sort *) Bash(printf *) Bash(date *) Bash(mktemp *) Bash(flock *) Bash(shasum *) Bash(sed *) Bash(tr *) Bash(awk *) Bash(xargs *) Bash(base64 *) Bash([ *) Bash(echo *) WebFetch AskUserQuestion Agent advisor
 ---
 
-<!-- Frontmatter notes (load-bearing):
-- `model: sonnet` (lead): the lead's Phase 3 claim-classification and dedup are rule-driven
-  (keyword-scan external-authority detection, verbatim citation matching, pattern clustering) —
-  structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work
-  (bug-hunting, fix implementation) is delegated to opus reviewer/implementer subagents. Mirrors
-  `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern.
-- `allowed-tools` deliberately omits: blanket `git checkout *`, `git reset *` outside the canonical
-  revert sequence (uses pinned `git -c core.symlinks=false checkout *`), `git stash *`, `git clean *`
-  outside `git clean -fd *`, blanket `rm -rf *`, blanket `mv *`, and Write/Edit outside `.claude/**`
-  and `.gitignore`. The Phase 5 base-anchor revert sequence (clean → rm-f → checkout → reset)
-  uses these scoped forms; broader destructive ops should remain a per-call decision.
-- The `--out=<path>` flag (Phase 1) may target a report destination OUTSIDE `.claude/`. The skill
-  intentionally does NOT widen the Write scope above to accommodate it: an out-of-`.claude` write
-  relies on the user's own `permissions.allow` settings rule (prompt-free / headless-safe) or falls
-  through to Claude Code's per-call Write prompt (interactive), mirroring `/jr-mermaid`'s design.
-- `allowed-tools` grants `Bash(rm -f -- *)` UNSCOPED (alongside the scoped `Bash(rm -f .claude/*)`):
-  the Combined revert sequence must delete untracked files absent at the base commit — including
-  gitignored ones that `git clean -fd` skips — and an implementer with strict file ownership over a
-  finding's cited file may have created that file anywhere in the tree, so the target cannot be
-  confined to a subdirectory. Every invocation passes explicit paths from the Phase 5 untracked /
-  symlink baselines; the `*` is the allowlist wildcard for those arguments, not a glob the skill
-  expands itself.
-- `WebFetch` is included for claim verification (Tier 2, see `../shared/claim-verification.md`), which is
-  **on by default**: fetching authoritative docs to confirm or refute external-authority findings. It is
-  invoked whenever an external-authority claim needs a doc lookup (skipped only under `--no-verify-claims` or
-  when offline), and the doctrine forbids resting a load-bearing claim on a single WebFetch summary
-  (cross-check against a `gh api` raw fetch or a second source).
--->
+<!-- Frontmatter rationale (model/effort/allowed-tools/disallowed-tools): see
+     docs/skill-anatomy.md "Grant and model rationale, by skill" -> /jr-audit. Read it before
+     changing any frontmatter field here. -->
 
 <!-- Dependencies:
   Required agent types (repo-local native `.claude/agents/`, no plugin):
@@ -70,6 +45,7 @@ allowed-tools: Read Write(.claude/**) Edit(.claude/**) Write(.gitignore) Edit(.g
     - shared/code-edit-discipline.md            — surgical-changes discipline passed verbatim to implementers
     - shared/phase1-track-a-protocol.md         — hard-fail guard algorithm + Canonical Anchor Table (self-reference)
     - shared/model-override.md                  — --model=<tier> per-run subagent model override
+    - shared/subagent-reporting.md              — Spawn rule (no `name:`), subagent-facing block, lead-side roll-call
   Files written:
     - .claude/audit-report-YYYY-MM-DD.md        — audit report (Phase 7)
     - .claude/audit-history.json                — append-only audit history (Phase 7)
@@ -232,6 +208,27 @@ After the file inventory from step 4 is ready:
 
 6.5. **Secret pre-scan**: Scan files flagged by security-sensitive file detection (step 6) and any files that will be pre-read in step 11 using the canonical pattern catalog from `../shared/secret-patterns.md` (treat ALL matches as strict tier at this pre-scan site — no advisory demotion). On match: interactive mode → AskUserQuestion `[Continue — files will be read by reviewers] / [Abort]`; headless mode (per `../shared/secret-scan-protocols.md` "Headless/CI detection") → abort immediately listing pattern types only. Catches existing secrets before they are passed to reviewer agents.
 
+### Cache-write security checks (stated once; applied at every `.claude/*` write site)
+
+Before **every** write to a `.claude/*` path below, apply `../shared/gitignore-enforcement.md`
+(read at Phase 1 Track A): run `git ls-files --error-unmatch <path> 2>/dev/null`, then its
+warn-if-tracked / append-and-inform behaviour, logging to the Phase 7 report in headless mode.
+Each site applies the protocol independently — never batch them.
+
+| Path | Reason if tracked (use verbatim in the warning) |
+|---|---|
+| `.claude/review-profile.json` | A committed cache file could be manipulated — a malicious commit could set `validationCommands` to all-null values to disable validation. |
+| `.claude/review-baseline.json` | A committed baseline with inflated failure counts could make real regressions appear pre-existing, silently passing validation. |
+| `.claude/review-config.md` | A committed config with crafted suppression rules could silence security findings for all users. If the team intentionally commits shared review configuration, scope auto-learned suppressions to a separate section that reviewers can distinguish from manually authored rules. |
+| `.claude/audit-report-YYYY-MM-DD.md` | Audit reports contain finding descriptions, code excerpts, and potentially redacted secret locations — these should not be committed to the repository. |
+| `.claude/audit-history.json` | A committed history with manipulated false-positive rates could bias reviewer calibration in future audits. |
+| `.claude/secret-warnings.json` | A committed secret-warnings file would conflate one user's accepted-secret entries with another's, silently suppressing legitimate halts. |
+| `.claude/health.json` | A committed or poisoned health snapshot could misrepresent this app's score / finding counts in the /jr-rollup estate view, hiding real risk. |
+
+Call-sites below say only **"Security check (enforced): cache-write protocol for `<path>`"**; the
+command and the reason live here. Adding a `.claude/*` write means adding a row here **and** the
+matching row in `shared/gitignore-enforcement.md`'s "Sites that apply this protocol" table.
+
 ### Track C — Run tooling baseline and detect stack
 
 7. **Stack profile cache**: Read `.claude/review-profile.json` (if it exists) **and** run `stat -f %m package.json tsconfig.json Makefile 2>/dev/null` — both in parallel.
@@ -239,7 +236,7 @@ After the file inventory from step 4 is ready:
    **If the profile exists AND `--refresh-stack` was NOT passed**: Compare current modification timestamps against cached `sourceTimestamps`. If all match (and absent files are still absent), the cache is valid. Apply the **schema validation** + **binary availability probe** + **same-session shortcut** rules from `../shared/cache-schema-validation.md` (canonical for both `review-profile.json` and `review-baseline.json`). On any failure, force full re-detection. Use cached `packageManager`, `lockFile`, `validationCommands`. Output: `Stack: cached (${packageManager}, ${Object.keys(validationCommands).join('+')})`. Skip to step 8.
 
    **Otherwise**: Run full detection — read `package.json`, lock files (`bun.lockb`, `pnpm-lock.yaml`, `yarn.lock`), `tsconfig.json`, `Makefile` in parallel. Determine package manager from which lock file exists (default to `npm`). Write results to `.claude/review-profile.json` per the **canonical write shape** in `../shared/cache-schema-validation.md` (review-profile.json section, read at Phase 1 Track A — the single source shared with `/jr-review`).
-   **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-profile.json`. Core command: `git ls-files --error-unmatch .claude/review-profile.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol. Per-site reason if tracked: "A committed cache file could be manipulated — a malicious commit could set `validationCommands` to all-null values to disable validation."
+   **Security check (enforced)**: cache-write protocol for `.claude/review-profile.json` (command + reason: SKILL.md "Cache-write security checks").
    Output: `Stack: detected (${packageManager}, ${Object.keys(validationCommands).join('+')}) — cached for next run`.
 
 7.5. **Standardisation classification** (lead-only; skip entirely if the standardisation lens is OFF per Track A, or excluded by an `Applicability` note in the configured target): using the configured target from Track A plus the detected stack, do ONE lightweight lead pass — **no subagent, no findings, no severity**. Enumerate the in-scope top-level components (monorepo roots such as `apps/*`, `packages/*`, `services/*`, else the repo root for a single-app repo); read each component's manifest (`package.json` / `composer.json` / `pyproject.toml`, IaC dirs, etc.) to determine its stack; classify each **on-target vs off-target** against the configured target. For each off-target component record a migration-map row `component | current stack | on-target? | target | effort (S/M/L) | coupling`. Keep it **component-granular, never per-file**, and hold the rows in lead context for the Phase 7 Standardisation section. This is **strategic classification, not defect-finding**: it produces NO findings, gets NO severity, and is NEVER auto-fixed or validated. `Output: Standardisation: N off-target of M components` (or `Standardisation: lens off`).
@@ -247,7 +244,7 @@ After the file inventory from step 4 is ready:
 8. **Detect validation commands**: Check `## Validation commands` in review-config.md first (already read in Track A). If not configured and not loaded from cache, inspect `package.json` scripts for `lint`, `typecheck`/`type-check`/`tsc`, `test`, `build`. Build a list using the detected package manager. If a `Makefile` has matching targets, use those.
 9. **Establish a validation baseline** (skip if `nofix`):
    **Baseline cache**: Check `.claude/review-baseline.json`. If it exists, is within TTL (10 minutes), and `--refresh-baseline` was NOT passed, apply the schema validation rules from `../shared/cache-schema-validation.md` and use cached results on success.
-   **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-baseline.json`. Core command: `git ls-files --error-unmatch .claude/review-baseline.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol. Per-site reason if tracked: "A committed baseline with inflated failure counts could make real regressions appear pre-existing, silently passing validation."
+   **Security check (enforced)**: cache-write protocol for `.claude/review-baseline.json` (command + reason: SKILL.md "Cache-write security checks").
    Output: `Baseline: cached`. Otherwise, run **all detected validation commands in parallel** (lint, typecheck, test, build as separate simultaneous Bash calls in a single message). Write results to `.claude/review-baseline.json` per the **canonical write shape** in `../shared/cache-schema-validation.md` (review-baseline.json section). Pre-existing failures are NOT the audit's responsibility.
 10. **Collect test coverage and dependency audit in parallel**: Run **both simultaneously** using parallel Bash calls:
     - Test coverage command (if available). Pass output to `testing-reviewer`.
@@ -329,7 +326,7 @@ Rules:
 
 - **Cross-run shared state (`.claude/audit-history.json`)**: schema, append-only invariants, schema-mismatch handling, and `.gitignore`-enforcement rules live in `../shared/audit-history-schema.md` (read at Phase 1 Track A). Both `/jr-audit` and `/jr-review` MUST read and write the same schema; the shared file is the single source of truth.
 
-**Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/review-config.md`. Core command: `git ls-files --error-unmatch .claude/review-config.md 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol. Per-site reason if tracked: "A committed config with crafted suppression rules could silence security findings for all users. If the team intentionally commits shared review configuration, scope auto-learned suppressions to a separate section that reviewers can distinguish from manually authored rules."
+**Security check (enforced)**: cache-write protocol for `.claude/review-config.md` (command + reason: SKILL.md "Cache-write security checks").
 
 Additionally, when loading `review-config.md` in Track A, check whether the file is tracked by git (`git ls-files --error-unmatch .claude/review-config.md 2>/dev/null`). If it is tracked and contains any `[security-reviewer]` suppression rules, emit a warning: 'review-config.md is tracked by git and contains security-reviewer suppressions. Committed security suppressions can silence security findings for all users. Verify the file intentionally contains these rules.' Note: emit this warning to console output in interactive mode, or to the Phase 7 report when `isHeadless` is true (per `../shared/secret-scan-protocols.md` "Headless/CI detection") — consistent with the other headless-aware warning sites in this skill.
 
@@ -341,7 +338,7 @@ Additionally, when loading `review-config.md` in Track A, check whether the file
 
 **Pre-dispatch advisor check (required unless skipped per below)**: Before recording the base commit anchor below, call `advisor()` (no parameters — the full transcript is auto-forwarded). `/jr-audit` Phase 5 is the highest-blast-radius operation in the skill — multiple implementers will modify multiple files in parallel, often across the entire codebase. The advisor sees the approved finding set, the implementer file allocation plan, and the project context, and can flag risky combinations (e.g., "implementer A is rewriting auth.ts while implementer B is rewriting middleware.ts that imports from auth.ts — these should be sequenced, not parallel"). If the advisor concurs, proceed silently. If the advisor raises a concrete concern, surface via AskUserQuestion BEFORE spawning: `Advisor flagged a Phase 5 dispatch concern: <one-line summary>. Options: [Proceed as planned] / [Re-allocate files (give all related files to one implementer)] / [Abort and re-run with --only=...]`. On **Re-allocate files**, redo the file-ownership assignment to merge the implicated files into a single implementer's task list, then proceed. On **Abort**, skip Phase 5 and Phase 6, set `abortMode=true` and `abortReason="user-abort-phase-5-dispatch"`, and proceed to Phase 7. The advisor runs at most once per audit run at this site (does NOT re-fire on Wave 2 or convergence iteration dispatches — see Phase 6.5 convergence handling). Phase 5 is the substantive-edit boundary regardless of finding count: even small dispatches mutate user code in parallel. The only skips are (a) `nofix` (no dispatch happens), (b) Wave 2 dispatches implicit in root-cause clustering (the advisor already ran before Wave 1), and (c) a single-implementer/single-file dispatch where blast radius is genuinely contained.
 
-**Base commit anchor**: Before spawning implementers, record the current commit hash: `baseCommit=$(git rev-parse HEAD)`. Validate that the captured hash matches the format `^[0-9a-f]{40}$|^[0-9a-f]{64}$` (SHA-1 or SHA-256). If not, abort with an error: 'Failed to capture a valid commit hash — cannot proceed with implementation.' Also capture the current untracked file list as the pre-Phase-5 baseline: `untrackedBaseline=$(git ls-files --others --exclude-standard)` and `untrackedBaselineAll=$(git ls-files --others)`. Also capture the pre-Phase-5 symlink baseline: `symlinkBaseline=$(find . -type l -print0 2>/dev/null)`. These baselines are referenced by Phase 5.6 for revert operations.
+**Base commit anchor**: Before spawning implementers, record the current commit hash: `baseCommit=$(git rev-parse HEAD)`. Validate that the captured hash matches the format `^[0-9a-f]{40}$|^[0-9a-f]{64}$` (SHA-1 or SHA-256). If not, abort with an error: 'Failed to capture a valid commit hash — cannot proceed with implementation.' Also capture the pre-Phase-5 baselines as **NUL-delimited files**, never as shell-variable contents: the Combined revert sequence in `../shared/secret-scan-protocols.md` consumes each as a **path** (`sort -z "$symlinkBaseline"`), so assigning contents makes `sort` try to open a file named after the concatenated paths; `jr-review/protocols/base-anchor.md` states the rule directly — "Never store NUL-delimited file contents in shell variables". Capture with `mktemp` targets: `untrackedBaseline=$(mktemp); git ls-files --others --exclude-standard -z > "$untrackedBaseline"`, `untrackedBaselineAll=$(mktemp); git ls-files --others -z > "$untrackedBaselineAll"`, `symlinkBaseline=$(mktemp); find . -type l -print0 2>/dev/null > "$symlinkBaseline"`. Also set `NUL_SORT_AVAILABLE` here, per the probe defined in `../shared/secret-scan-protocols.md` (Combined revert sequence, step 3) — it probes `sort -z` **and** `comm -z` together, and the canonical's step 3 branches on it. These baseline **files** are referenced by Phase 5.6 for revert operations.
 
 **Deferred load of the fix-path body (Pattern C)**: Now (Phase 5 entry, base anchor established, before spawning implementers), Read `${CLAUDE_SKILL_DIR}/protocols/fix-secret-validate.md` into lead context: the Phase 5.6 and Phase 6 bodies, verified present at Phase 1 by the grep-guard. Before applying the loaded body, re-confirm it still contains a line-start `## Phase 5.6 — Secret re-scan` heading AND a line-start `## Phase 6 — Validate-fix loop` heading (not merely the header's anchor quotes); abort `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if either is absent, closing the Phase-1-to-Phase-5 window against a mid-run truncation. Anchoring the Read at Phase 5 *entry* (not the spawn block) guarantees the body loads even when zero findings were approved at Phase 4 (the flow still enters Phase 5, captures the anchor, spawns zero implementers, and Phase 6 still runs). The convergence loop reuses the already-loaded body; do not re-read.
 
@@ -420,7 +417,7 @@ After the report is written, apply the **Post-write redaction verification (mand
 
 The human-readable report goes to `.claude/audit-report-YYYY-MM-DD.md` by default, or to the `--out=<path>` target when that flag was set (resolved and sanitised per Phase 1 "Parameter sanitization"). Only this `.md` report is redirected by `--out`; `.claude/health.json` (Save health snapshot) and `.claude/audit-history.json` (Save audit history) are always written under `.claude/`.
 
-**Default (no `--out`)** (unchanged behaviour). **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/audit-report-YYYY-MM-DD.md` (with the concrete date). Core command: `git ls-files --error-unmatch ".claude/audit-report-YYYY-MM-DD.md" 2>/dev/null` — warn if tracked; if the glob `.claude/audit-report-*.md` is not in `.gitignore` (`git check-ignore -q` returns non-zero), append the glob and inform the user. Per-site reason if tracked: "Audit reports contain finding descriptions, code excerpts, and potentially redacted secret locations — these should not be committed to the repository." Then write the audit report to `.claude/audit-report-YYYY-MM-DD.md`.
+**Default (no `--out`)** (unchanged behaviour). **Security check (enforced)**: cache-write protocol for `.claude/audit-report-YYYY-MM-DD.md` (with the concrete date; command + reason: "Cache-write security checks"). One site-specific deviation from the table's generic form: the tracked-check uses the concrete dated filename, but the `.gitignore` append uses the **glob** `.claude/audit-report-*.md` (test with `git check-ignore -q`) so tomorrow's report is covered too. Then write the audit report to `.claude/audit-report-YYYY-MM-DD.md`.
 
 **When `--out=<path>` is set**: let `$OUT` be the sanitised absolute target; if `$OUT` names an existing directory or ends with `/`, append the default `audit-report-YYYY-MM-DD.md` inside it. Run `mkdir -p "$(dirname "$OUT")"` (grant `Bash(mkdir -p *)`), then resolve the repo root with `git rev-parse --show-toplevel` and branch:
 - **`$OUT` inside the repo tree**: apply the same `.gitignore`-enforcement protocol as the default case, but against `$OUT`. Run `git ls-files --error-unmatch "$OUT" 2>/dev/null` and warn if tracked (same secret-leak reason); if `git check-ignore -q "$OUT"` returns non-zero, inform the user and offer to add the path to `.gitignore`.
@@ -428,67 +425,15 @@ The human-readable report goes to `.claude/audit-report-YYYY-MM-DD.md` by defaul
 
 Then write the audit report to `$OUT` verbatim (overwrite if it exists). Phase 7 report item 18 ("Report file") prints the actual saved path.
 
-### Save audit history
+### Save audit history  ·  Save health snapshot
 
-Update `.claude/audit-history.json` per the canonical schema in `../shared/audit-history-schema.md`. Create the file with the empty four-key shape if it doesn't exist; tolerate older array-only formats by upgrading them in place per the shared file's "Schema upgrade" rules.
+Both bodies live in `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` (already Read at Phase 1 Track A
+under the hard-fail + smoke-parse guard) under their own `### Save audit history` and
+`### Save health snapshot` headings. Apply them here, in that order.
 
-Per-run appends with `skill: "audit"`:
-- One entry to `runs[]` per (dimension, category) rejection from Phase 4 OR Phase 3 step 0 hallucination rejection, **excluding `statsExempt` rejections** (excerpt-mismatches on a pass whose reviewed tree moved — `../shared/audit-history-schema.md` "Skip stats-exempt rejections when the reviewed tree moved during a pass"). Only rejection records are appended.
-- One entry to `runSummaries[]` keyed by a fresh UUIDv4 `runId`.
-- One entry per producing dimension to `reviewerStats[]` (skip dimensions with `totalFindings == 0`). `rejectedFindings` counts Phase 3 step 0 + Phase 4 rejections together; **`statsExempt` rejections (and the findings they came from) are excluded from both `rejectedFindings` and `totalFindings`** (excerpt-mismatches on a tree-moved pass carry no accuracy signal; same canonical section as the `runs[]` bullet), so a dimension whose every finding was exempt hits the `totalFindings == 0` skip. When any dimension had rejections excluded this way, note it in the report under `[REVIEWERSTATS EXEMPTED — tree moved during pass]`.
-- `lastPromptedAt` is owned by Phase 4.5 only.
-
-**Atomic-write + per-session-filename fallback** rules apply per `../shared/secret-warnings-schema.md` "Atomic write" section (the `flock(1)` probe and post-flock fallback are shared between secret-warnings.json and audit-history.json).
-
-**Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/audit-history.json`. Core command: `git ls-files --error-unmatch .claude/audit-history.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol. Per-site reason if tracked: "A committed history with manipulated false-positive rates could bias reviewer calibration in future audits."
-
-### Save health snapshot
-
-Compute `healthScore` (0–100) per the **Health score (canonical formula)** in
-`${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` from the **remaining** findings (exclude `info` and
-the standardisation map). Write a compact latest-run snapshot to `.claude/health.json` so
-`/jr-rollup` can aggregate this app's health across the estate.
-
-**Incomplete-run gate (mandatory)**: when `unreportedCount > 0` (the run-level `unreported` set, which every roll-call in the run appends to — `../shared/subagent-reporting.md`), write `"healthScore": null` and populate `"unreported"` with **every member of that set, by name** — lost reviewer dimensions and lost implementers alike. `|unreported|` MUST equal `unreportedCount`: the null score alone is what stops `bin/jr-rollup` rendering this run as `fresh`, but it says only *that* the swarm went partly silent, never *what* was lost — a member that is counted but not listed renders estate-wide as `incomplete(unscored)`, leaving nobody able to tell which dimension went unchecked without re-running the audit. **Never publish a numeric score for a run whose swarm went partly silent.** This is the roll-call's rule 3 ("blocks every clean-result path") applied to the one path that *persists* the result: the report is prose a human re-reads, but `health.json` is a machine-read artifact consumed by `/jr-rollup` across the estate, where nobody re-reads the audit. A lost `security-reviewer` yields zero findings, hence a fabricated `100`, hence a GREEN band on an app nobody checked. `healthScore: null` is already a first-class state in `bin/jr-rollup` (rendered `-`, excluded from the bands/criticals/worst lines), so this needs no `schemaVersion` bump — `unreported` is additive and `.schemaVersion==1` still validates.
-
-**Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (`../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/health.json`. Core command: `git ls-files --error-unmatch .claude/health.json 2>/dev/null` — then apply the shared file's warn/append-and-inform protocol. Per-site reason if tracked: "A committed or poisoned health snapshot could misrepresent this app's score / finding counts in the /jr-rollup estate view, hiding real risk."
-
-Write **atomically** (`.claude/health.json.tmp` + `mv`) — a latest-snapshot overwrite (NOT append-only), so no `flock` is needed, but tmp+rename avoids a torn file if interrupted. Canonical shape (`schemaVersion: 1`):
-
-```json
-{
-  "schemaVersion": 1,
-  "app": "<repo dir or package name>",
-  "path": "<path audited, repo-relative or absolute>",
-  "commit": "<git rev-parse --short HEAD, or null>",
-  "date": "<ISO 8601>",
-  "scope": "<scope description>",
-  "mode": "audit | nofix",
-  "healthScore": 0,
-  "scoreReasoning": "<the arithmetic, e.g. '62 = 70 - 2*3 - 0.5*4 (band 41-70)'>",
-  "counts": { "critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0 },
-  "standardisation": { "offTarget": 0, "components": 0 },
-  "unreported": [],
-  "runId": "<the same UUIDv4 as this run's audit-history runSummaries entry>"
-}
-```
-
-`counts` are the **remaining** findings (post-fix in fix mode; all findings in `nofix`). Set
-`standardisation` to `null` when the lens is off. `unreported` names **every member of the run-level
-`unreported` set** — each reviewer dimension and each implementer that returned nothing this run
-(`[]` on a complete run). Entries are **flat strings** (`bin/jr-rollup` rejects anything else as
-`bad-schema`), short, comma-free, and **self-identifying by kind**: `bin/jr-rollup` renders them
-comma-joined in its estate STATUS cell, recomputed from `unreported` itself and prefixed `lost:`
-(`incomplete(lost:security-reviewer,p1/impl-2)`; its `--json` `reason` carries the bare join), and
-`protocols/phase7-report.md` item 4 expands each into its kind-specific line, so a name a reader
-cannot place serves neither. A
-dimension name already carries `-reviewer`; name an implementer so it reads as one AND qualify it by
-pass (e.g. `p1/impl-2`) — the set spans the whole run, so a pass-agnostic `impl-2` lost in two
-different passes collapses to one member and under-reports the count.
-When it is non-empty, `healthScore` MUST be `null` per the incomplete-run gate above, and `counts`
-describe only the dimensions that did report.
-`runId` links the snapshot to `audit-history.json` `runSummaries[]`. Overwrite the file each run
-(latest snapshot only).
+Note this is a **ceiling** extraction, not a token saving: `phase7-report.md` is read on every run, so
+the content cost is unchanged. It exists to keep `SKILL.md` under the 500-line guideline
+(`https://code.claude.com/docs/en/skills`) with room for the next change.
 
 ### Report contents
 

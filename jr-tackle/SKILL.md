@@ -10,7 +10,13 @@ user-invocable: true
 
 <!-- Frontmatter notes:
 - This skill is intentionally minimal: a prompt wrapper, not an audit-class skill.
-  No shared/*.md references, no Phase 1 Track A guard, no protocols/ or scripts/.
+  No Phase 1 Track A read of `shared/*.md`, no protocols/ or scripts/ — the Rigor
+  protocol carries `(canonical: …)` pointers only, which are comments, not deps.
+- `effort: max` + `model: opus` on every invocation is deliberate and is NOT a sizing
+  estimate to be re-derived from task size. Maximum rigor IS this skill's product — the
+  body opens with `ultrathink` and the whole rigor protocol exists to spend depth on
+  verification. `bin/tackle` invokes it uniformly, so a trivial task draws the same tier
+  as a refactor; that is the intended trade, not an oversight. Do not "right-size" it.
 - "in plan mode" in the body is declarative text only — a skill body cannot engage
   Claude Code's harness plan mode (user action only: Shift+Tab or
   --permission-mode plan). The body declares an explicit scope split: tackle
@@ -38,11 +44,15 @@ This skill cannot engage Claude Code's harness plan mode from its body — that'
 
 ## Rigor protocol
 
-1. **Ask clarifications early.** Before substantive work, surface task ambiguities via `AskUserQuestion`. Do not assume — ask.
-2. **Verify everything.** Any claim about code, files, behavior, APIs, or library features must be verified (Read / Grep / Bash / WebFetch / `advisor()`) before stating it. Cite `file:line` for code claims. For external claims (library APIs, docs, current versions), prefer a current authoritative source over training knowledge — fetch raw markdown (`gh api …/contents/<path>`, or the doc's raw `.md`) rather than a rendered page, and cross-check any load-bearing or verbatim claim against a second fetch or `advisor()`. A single `WebFetch` summarization can fabricate text (it has reported a non-existent `ultra` effort value as real), so never rest a load-bearing claim on one WebFetch.
+The summaries below are deliberate restatements, kept inline because this skill has no Phase 1 read
+step. Each names its canonical so a change there is traceable here (`../shared/` is the source of
+truth; if the two disagree, the canonical wins).
+
+1. **Ask clarifications early.** Before substantive work, surface task ambiguities via `AskUserQuestion`. Do not assume — ask. (canonical: `../shared/advisor-criteria.md` "When to call advisor")
+2. **Verify everything.** Any claim about code, files, behavior, APIs, or library features must be verified (Read / Grep / Bash / WebFetch / `advisor()`) before stating it. Cite `file:line` for code claims. For external claims (library APIs, docs, current versions), prefer a current authoritative source over training knowledge — fetch raw markdown (`gh api …/contents/<path>`, or the doc's raw `.md`) rather than a rendered page, and cross-check any load-bearing or verbatim claim against a second fetch or `advisor()`. A single `WebFetch` summarization can fabricate text (it has reported a non-existent `ultra` effort value as real), so never rest a load-bearing claim on one WebFetch. (canonical: `../shared/claim-verification.md` "Tier 2 behavior")
 3. **Investigate to definite.** When a claim is uncertain, investigate until you can confirm or refute. Do not leave findings as "might be", "could potentially", or "I'm not sure if". State definite findings or state explicitly what's blocking investigation.
-4. **Smallest viable change.** Before adding infrastructure (new types, files, abstractions, API surface), check whether existing call sites, callbacks, return values, or hooks can carry the load. State the requirement first, derive the minimum, then ask "what existing capability can I compose?" before "what new thing should I build?". And don't pad what you *do* write: no speculative abstraction, placeholder stubs, defensive guards for states that can't occur, comments that restate the code, or emoji/marketing language.
-5. **Advisor before declaring done.** Call `advisor()` before reporting the task complete. Make the deliverable durable (write the file or save the result) BEFORE the call so a session interruption mid-call doesn't lose work. **The file write is the durability — do NOT commit.** Per the scope rules above, `/jr-ship` owns all git mutations.
+4. **Smallest viable change.** Before adding infrastructure (new types, files, abstractions, API surface), check whether existing call sites, callbacks, return values, or hooks can carry the load. State the requirement first, derive the minimum, then ask "what existing capability can I compose?" before "what new thing should I build?". And don't pad what you *do* write: no speculative abstraction, placeholder stubs, defensive guards for states that can't occur, comments that restate the code, or emoji/marketing language. (canonical: `../shared/code-edit-discipline.md` "Do NOT")
+5. **Advisor before declaring done.** Call `advisor()` before reporting the task complete. Make the deliverable durable (write the file or save the result) BEFORE the call so a session interruption mid-call doesn't lose work. (canonical: `../shared/advisor-criteria.md` "When to call advisor") **The file write is the durability — do NOT commit.** Per the scope rules above, `/jr-ship` owns all git mutations.
 
 ---
 

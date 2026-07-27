@@ -2,21 +2,30 @@
 name: jr-mermaid
 description: Generate a valid Mermaid diagram from a written source (e.g. an architecture, lifecycle, flow, sequence, or ER description) through a plan → confirm → generate → review loop. Confirms the plan with you before drawing and never invents nodes or relationships you did not approve. Outputs a fenced mermaid block; writes it into a target file only on your explicit confirmation. Not for non-Mermaid formats or image rendering.
 argument-hint: "[source text | @file] [--type=<kind>] [--out=<file>]"
-effort: medium
+effort: high
 model: opus
 disable-model-invocation: true
 user-invocable: true
 allowed-tools: Read Glob Grep AskUserQuestion advisor Bash(grep *) Bash(find . *) Bash(cat *) Bash(ls *) Bash(test *) Bash(command -v *) Bash(npx --no-install mmdc *) Bash(mmdc *)
+disallowed-tools: Edit
 ---
 
 <!-- Frontmatter notes (load-bearing):
-- `model: opus` (lead) is deliberate headroom: faithfully turning prose into a diagram
-  without inventing nodes/edges is judgment-heavy, and the whole plan→confirm→generate→review
-  loop is lead-side (no swarm). Same rationale its opus-lead sibling skills document.
-- `allowed-tools` deliberately OMITS Write/Edit. The skill writes a diagram into a
+- `model: opus` + `effort: high` (lead) is deliberate headroom: faithfully turning prose into a
+  diagram without inventing nodes/edges is judgment-heavy, and the whole plan→confirm→generate→review
+  loop is lead-side (no swarm), so there is nothing to delegate the reasoning to. The two fields are
+  set together on purpose — paying for the premium tier and then capping reasoning depth would buy
+  headroom the skill declines to use.
+- `allowed-tools` deliberately OMITS Write. The skill writes a diagram into a
   target file ONLY when you pass --out, and the resulting Write is left to Claude
   Code's per-call permission prompt — that prompt IS the "explicit confirmation"
-  the design requires. Do not pre-authorize Write/Edit here.
+  the design requires. Do NOT pre-authorize Write here, and do not rely on omission
+  alone for anything stronger: per the skills doc, `allowed-tools` "does not restrict
+  which tools are available: every tool remains callable".
+- `disallowed-tools: Edit` is what actually removes Edit from the pool. Edit has no role
+  in this skill — the only write path is the single confirmed `--out` Write — so leaving it
+  reachable would let the model bypass the one-confirmed-write model entirely. The restriction
+  is turn-scoped and clears on your next message.
 - `Bash(... mmdc *)` is an OPTIONAL render/syntax check (Mermaid CLI) used in Phase 4
   if available; the skill degrades to a structural self-check when mmdc is absent.
   CAVEAT — unguarded write: `mmdc -o <path>` writes a file directly (no per-call Write

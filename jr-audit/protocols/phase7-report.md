@@ -120,3 +120,81 @@ severity; deterministic given the counts, so it is comparable across apps and ac
 a **heuristic, not a metric** — always show the arithmetic in the *Health verdict* line and in
 `.claude/health.json`. The identical value is written to `.claude/health.json` (see `SKILL.md`
 Phase 7 "Save health snapshot") so `/jr-rollup` can aggregate it across apps.
+
+
+### Save audit history
+
+Update `.claude/audit-history.json` per the canonical schema in `../../shared/audit-history-schema.md`. Create the file with the empty four-key shape if it doesn't exist; tolerate older array-only formats by upgrading them in place per the shared file's "Schema upgrade" rules.
+
+Per-run appends with `skill: "audit"`:
+- One entry to `runs[]` per (dimension, category) rejection from Phase 4 OR Phase 3 step 0 hallucination rejection, **excluding `statsExempt` rejections** (excerpt-mismatches on a pass whose reviewed tree moved — `../../shared/audit-history-schema.md` "Skip stats-exempt rejections when the reviewed tree moved during a pass"). Only rejection records are appended.
+- One entry to `runSummaries[]` keyed by a fresh UUIDv4 `runId`.
+- One entry per producing dimension to `reviewerStats[]` (skip dimensions with `totalFindings == 0`). `rejectedFindings` counts Phase 3 step 0 + Phase 4 rejections together; **`statsExempt` rejections (and the findings they came from) are excluded from both `rejectedFindings` and `totalFindings`** (excerpt-mismatches on a tree-moved pass carry no accuracy signal; same canonical section as the `runs[]` bullet), so a dimension whose every finding was exempt hits the `totalFindings == 0` skip. When any dimension had rejections excluded this way, note it in the report under `[REVIEWERSTATS EXEMPTED — tree moved during pass]`.
+- `lastPromptedAt` is owned by Phase 4.5 only.
+
+**Atomic-write + per-session-filename fallback** rules apply per `../../shared/secret-warnings-schema.md` "Atomic write" section (the `flock(1)` probe and post-flock fallback are shared between secret-warnings.json and audit-history.json).
+
+**Security check (enforced)**: cache-write protocol for `.claude/audit-history.json` (command + reason: SKILL.md "Cache-write security checks").
+
+### Save health snapshot
+
+Compute `healthScore` (0–100) per the **Health score (canonical formula)** in
+`${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` from the **remaining** findings (exclude `info` and
+the standardisation map). Write a compact latest-run snapshot to `.claude/health.json` so
+`/jr-rollup` can aggregate this app's health across the estate.
+
+**Incomplete-run gate (mandatory)**: when `unreportedCount > 0` (the run-level `unreported` set, which every roll-call in the run appends to — `../../shared/subagent-reporting.md`), write `"healthScore": null` and populate `"unreported"` with **every member of that set, by name** — lost reviewer dimensions and lost implementers alike. `|unreported|` MUST equal `unreportedCount` — a member counted but not listed renders estate-wide as `incomplete(unscored)`, so nobody can tell which dimension went unchecked without re-running the audit. **Never publish a numeric score for a run whose swarm went partly silent**: this is the roll-call's rule 3 applied to the one path that *persists* the result, where a lost `security-reviewer` would yield zero findings, a fabricated `100`, and a GREEN band on an app nobody checked. `healthScore: null` is already first-class in `bin/jr-rollup`, so no `schemaVersion` bump is needed.
+
+**Security check (enforced)**: cache-write protocol for `.claude/health.json` (command + reason: SKILL.md "Cache-write security checks").
+
+Write **atomically** (`.claude/health.json.tmp` + `mv`) — a latest-snapshot overwrite (NOT append-only), so no `flock` is needed, but tmp+rename avoids a torn file if interrupted. Canonical shape (`schemaVersion: 1`):
+
+```json
+{
+  "schemaVersion": 1,
+  "app": "<repo dir or package name>",
+  "path": "<path audited, repo-relative or absolute>",
+  "commit": "<git rev-parse --short HEAD, or null>",
+  "date": "<ISO 8601>",
+  "scope": "<scope description>",
+  "mode": "audit | nofix",
+  "healthScore": 0,
+  "scoreReasoning": "<the arithmetic, e.g. '62 = 70 - 2*3 - 0.5*4 (band 41-70)'>",
+  "counts": { "critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0 },
+  "standardisation": { "offTarget": 0, "components": 0 },
+  "unreported": [],
+  "runId": "<the same UUIDv4 as this run's audit-history runSummaries entry>"
+}
+```
+
+`counts` are the **remaining** findings (post-fix in fix mode; all findings in `nofix`). Set
+`standardisation` to `null` when the lens is off. `unreported` names **every member of the run-level
+`unreported` set** — each reviewer dimension and each implementer that returned nothing this run
+(`[]` on a complete run). Entries are **flat strings** (`bin/jr-rollup` rejects anything else as
+`bad-schema`), short, comma-free, and **self-identifying by kind**: `bin/jr-rollup` renders them
+comma-joined in its estate STATUS cell, recomputed from `unreported` itself and prefixed `lost:`
+(`incomplete(lost:security-reviewer,p1/impl-2)`; its `--json` `reason` carries the bare join), and
+`protocols/phase7-report.md` item 4 expands each into its kind-specific line, so a name a reader
+cannot place serves neither. A
+dimension name already carries `-reviewer`; name an implementer so it reads as one AND qualify it by
+pass (e.g. `p1/impl-2`) — the set spans the whole run, so a pass-agnostic `impl-2` lost in two
+different passes collapses to one member and under-reports the count.
+When it is non-empty, `healthScore` MUST be `null` per the incomplete-run gate above, and `counts`
+describe only the dimensions that did report.
+`runId` links the snapshot to `audit-history.json` `runSummaries[]`. Overwrite the file each run
+(latest snapshot only).
+
+### Base-anchor temp cleanup (mandatory)
+
+Delete the three `mktemp` baseline files captured at Phase 5 (`SKILL.md` → "Base commit anchor"):
+
+```bash
+if [ -n "${untrackedBaseline:-}" ]; then
+  rm -f -- "$untrackedBaseline" "$untrackedBaselineAll" "$symlinkBaseline"
+fi
+```
+
+Run **unconditionally regardless of `abortMode`** — these are transient state, not an audit trail, so an
+aborted run must clean them up too. The `[ -n … ]` guard makes this a no-op on `nofix` runs, where Phase 5
+never executed and the variables are unset. Without this step every non-`nofix` run leaks three temp files,
+and `--converge` leaks them per run. Mirrors `jr-review/protocols/phase7-cleanup-report.md`.
