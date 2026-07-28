@@ -2,7 +2,7 @@
 name: jr-skill-audit
 description: Audit Claude Code skill files (SKILL.md) for 2026-feature alignment, advisor coverage, frontmatter validity, token efficiency, shared-file drift, safety-protocol consistency, and model-tier routing. Reviewers cite live Anthropic docs + changelog (fetched at runtime, cached) so findings are grounded, not hallucinated. Reports a prioritized improvements list with file:line citations. Findings-only — never modifies skill files.
 argument-hint: "[skill-name] [--scope=<glob>] [--scope-only=personal|project|both] [--plugin=<name>] [--only=<dims>] [--model=<tier>] [--auto-approve] [--refresh-refs] [--report] [--report-path=<path>]"
-effort: high
+effort: max
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
@@ -427,7 +427,7 @@ Phase 5 (auto-fix) and Phase 6 (validation) are intentionally **skipped in v1** 
 
 Before rendering the final report, call `advisor()` IF ANY of these non-triviality predicates is true (otherwise skip — `shared/advisor-criteria.md`'s "Unconditional advisor on every run" anti-pattern says trivially-clean small runs shouldn't burn budget):
 
-- `findingCount >= 5`, OR
+- `findingCount >= 5` (lowered at `xhigh`/`max` effort by the Phase 2 effort-adaptive overlay), OR
 - `dimensionCount >= 3` (i.e., `--only=` was not narrow), OR
 - `rejectionCount >= 1` (Phase 3 codeExcerpt or citation validation rejected at least one finding — reviewer-quality signal worth a second opinion), OR
 - An abort condition fired in any earlier phase.

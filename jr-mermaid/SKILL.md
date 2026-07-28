@@ -2,7 +2,7 @@
 name: jr-mermaid
 description: Generate a valid Mermaid diagram from a written source (e.g. an architecture, lifecycle, flow, sequence, or ER description) through a plan → confirm → generate → review loop. Confirms the plan with you before drawing and never invents nodes or relationships you did not approve. Outputs a fenced mermaid block; writes it into a target file only on your explicit confirmation. Not for non-Mermaid formats or image rendering.
 argument-hint: "[source text | @file] [--type=<kind>] [--out=<file>]"
-effort: high
+effort: max
 model: opus
 disable-model-invocation: true
 user-invocable: true
@@ -11,7 +11,7 @@ disallowed-tools: Edit
 ---
 
 <!-- Frontmatter notes (load-bearing):
-- `model: opus` + `effort: high` (lead) is deliberate headroom: faithfully turning prose into a
+- `model: opus` + `effort: max` (lead) is deliberate headroom: faithfully turning prose into a
   diagram without inventing nodes/edges is judgment-heavy, and the whole plan→confirm→generate→review
   loop is lead-side (no swarm), so there is nothing to delegate the reasoning to. The two fields are
   set together on purpose — paying for the premium tier and then capping reasoning depth would buy
