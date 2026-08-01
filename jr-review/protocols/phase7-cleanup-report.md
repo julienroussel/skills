@@ -58,7 +58,7 @@ If `FLOCK_AVAILABLE=false`, append to the Phase 7 report a banner: `To avoid per
 
    **Skip this write entirely when `abortMode=true`** — same rationale as step 3: a reverted run has no honest accuracy signal. Note in the Phase 7 report under `[AUDIT-HISTORY SKIPPED — abort mode]`.
 
-   **Security check (enforced)**: Apply the `.gitignore`-enforcement protocol (see `../../shared/gitignore-enforcement.md`, read at Phase 1 Track A) for path `.claude/audit-history.json`. Core command: `git ls-files --error-unmatch .claude/audit-history.json 2>/dev/null` — warn if tracked; if absent from `.gitignore`, append it and inform the user. Per-site reason if tracked: "audit-history holds per-run rejection counts and timestamps used to drive global memory promotion — committing it would conflate one user's preference signals with other contributors' and could silently silence findings for all users."
+   **Security check (enforced)**: cache-write protocol for `.claude/audit-history.json` (command + reason: SKILL.md "Cache-write security checks").
 
 6. **Cleanup base-commit-anchor temp files**:
 

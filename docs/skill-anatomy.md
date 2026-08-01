@@ -199,7 +199,7 @@ Skills that grant `allowed-tools` pre-authorize the listed tools without per-cal
    -->
    ```
    This is documentation for future-you: a year from now, you'll wonder why some destructive op isn't pre-authorized. The note explains the omission was intentional.
-4. **Auto-authorize agent-management + scoped writes.** `AskUserQuestion`, `Agent`, `advisor`, `Write(.claude/**)`, `Edit(.claude/**)`, `Write(.gitignore)`, `Edit(.gitignore)` are needed by every documented phase; absent these the skill stalls on permission prompts. Do **not** grant `TaskCreate`/`TaskList`/`TaskGet`/`TaskUpdate`: the lead does not have them, the repo-local `jr-reviewer`/`jr-implementer` types grant no task tools, and granting them in `allowed-tools` advertises a reporting channel that silently loses findings.
+4. **Auto-authorize agent-management + scoped writes.** `AskUserQuestion`, `Agent`, `advisor`, `Write(.claude/**)`, `Edit(.claude/**)`, `Write(.gitignore)`, `Edit(.gitignore)` are needed by every documented phase; absent these the skill stalls on permission prompts. **CWD-anchoring caveat (`changelog:2.1.214`)**: a single-segment `dir/**` allow rule matches only `<cwd>/dir`, not any depth — so `Write(.claude/**)` pre-authorises the cache writes only when the skill is invoked from the repo root. From a subdirectory each `.claude/*` write falls through to a per-call prompt, which under `--auto-approve`/headless degrades silently. This is accepted rather than widened: the any-depth spelling `**/dir/**` is documented in that release for hook `if:` conditions, **not** for allow rules `[unverified for allow rules]`, and a grant that silently never matches is worse than a prompt (see `/jr-rollup`'s note on the same hazard). `/jr-audit`, `/jr-review` and `/jr-skill-audit` all carry this constraint. Do **not** grant `TaskCreate`/`TaskList`/`TaskGet`/`TaskUpdate`: the lead does not have them, the repo-local `jr-reviewer`/`jr-implementer` types grant no task tools, and granting them in `allowed-tools` advertises a reporting channel that silently loses findings.
 5. **Spawn work-producing subagents WITHOUT `name:`** (canonical: `shared/subagent-reporting.md`). A subagent's final response returns to the lead only when it is unnamed; `name:` makes it a persistent teammate that goes idle instead of returning, and its findings are lost with no error anywhere (issue #70). `name:` buys mid-flight addressability, which no documented phase needs. Give each spawn a distinct `description` instead — that is what the progress display renders. The lead must also **roll-call** its spawn list against the results actually returned: a subagent that returns nothing is `UNREPORTED`, never a clean dimension, and that state must be rendered, must set a non-zero exit, and must block every clean-result path. `TeamCreate`/`TeamDelete` were removed in 2.1.178 and must not be re-introduced.
 
 ---
@@ -340,6 +340,15 @@ pointer here. The `Dependencies` comment block stays in each `SKILL.md` — it i
   builds the symlink baseline, and `sed`/`awk`/`base64` parse tool output and decode `gh api`
   payloads. The omits-list above is an accurate account of what is withheld; this bullet keeps it
   a complete account of what is granted. Treat both as one list when auditing the grant surface.
+- **Forge grants are `Bash(gh api *)` and nothing else.** `/jr-audit` has no user-repo forge call-site:
+  no Phase 8, no PR/MR read, no issue creation. Its single forge use is the external-authority `gh api`
+  doc fetch for claim verification, which stays `gh` even on a GitLab repo (the carve-out in
+  `../shared/forge-detection.md`). The former `gh repo view` / `gh pr list|view` / `gh|glab issue
+  list|create` / `glab repo view` / `glab mr list|view` / `glab api` / `gh|glab auth status` rules were
+  removed after each was verified to appear nowhere in `SKILL.md`, `protocols/`, or
+  `convergence-protocol.md`. Pre-authorising an external-state mutation like `gh issue create` in a
+  skill that never creates an issue is exactly the shape `/jr-review`'s rationale below rejects. If a
+  glab mirror later needs them, add them back alongside the call-site, not in advance.
 - `WebFetch` is included for claim verification (Tier 2, see `../shared/claim-verification.md`), which is
   **on by default**: fetching authoritative docs to confirm or refute external-authority findings. It is
   invoked whenever an external-authority claim needs a doc lookup (skipped only under `--no-verify-claims` or
@@ -355,14 +364,22 @@ pointer here. The `Dependencies` comment block stays in each `SKILL.md` — it i
   subagents. Mirrors `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern.
 - `when_to_use` is omitted on purpose: with `disable-model-invocation: true` the description is not
   loaded into context (skills doc), so `when_to_use` would only affect the `/` menu listing. Don't re-add.
-- `allowed-tools` deliberately PROMPTS for: arbitrary `rm`, destructive git (checkout/reset/clean/
-  commit/rm/add) outside the implementer-managed revert sequence, gh pr comment/create/merge (+ glab `mr note`/`mr create`/`mr merge`), gh issue
+- `allowed-tools` deliberately PROMPTS for: `rm` other than `rm -f --`, destructive git (`commit`/`rm`/
+  `add`, and any `checkout` other than the hardened `-c core.symlinks=false` form), gh pr comment/create/merge (+ glab `mr note`/`mr create`/`mr merge`), gh issue
   create (+ glab `issue create`), and Write/Edit outside `.claude/**` + `.gitignore` — these mutate user code or external state
   and stay a per-call decision. Phase 5 implementer subagents spawn their own scoped allowlists; the
   lead does NOT. Agent-management tools + scoped `.claude/**`/`.gitignore` writes ARE granted (every
   phase needs them; absent these the skill stalls on prompts in `--auto-approve`). `flock` is absent —
   the permission system always prompts for it (exec wrapper).
 - The list above is what is *withheld*; this bullet keeps the account of what is *granted* complete.
+  The Combined-revert commands (`protocols/base-anchor.md`) ARE granted — `Bash(git clean -fd *)`,
+  `Bash(rm -f -- *)`, `Bash(git -c core.symlinks=false checkout *)`, `Bash(git reset *)` — matching
+  `/jr-audit`'s scoped spellings, so only the hardened `checkout` form is pre-approved. `Bash(tr *)` is
+  granted for the same sequence: step 3's `NUL_SORT_AVAILABLE=false` arm falls back to `tr '\0' '\n'`,
+  and that arm is the *default* on stock macOS, whose `comm` lacks `-z`. These grants are **necessary
+  but not sufficient** for a fully unattended revert — anchor *capture* still prompts through the
+  bundled script (see the next bullet), so `--auto-approve`/CI additionally needs a user-side allow
+  rule for it. What they buy is that the revert's own commands no longer prompt.
   `Bash(perl *)`, `Bash(xargs *)`, `Bash(find . *)` and `Bash(awk *)` are general-purpose execution
   surfaces that reach past the withheld list (`perl -e 'system(...)'`, `xargs rm -rf`, `find -exec`).
   They are granted knowingly: the revert sequence pipes NUL-delimited baselines through `xargs`,

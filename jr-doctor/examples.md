@@ -109,6 +109,30 @@ Global setup
             jr-review/scripts/install-pre-commit-secret-guard.sh per its 4-step maintenance contract.
 ```
 
+## Fix pass
+
+Printed after the Phase 4 fix loop completes (`--fix`). The count reflects the lines actually
+appended, so it tracks the list beneath it.
+
+```
+Phase 4 — Fix pass
+  ✓ Applied 12 / 12 fixable changes to /tmp/doctor-test/.gitignore
+    + .claude/review-profile.json
+    + .claude/review-baseline.json
+    + .claude/review-config.md
+    + .claude/audit-history.json
+    + .claude/health.json
+    + .claude/audit-report-*.md
+    + .claude/secret-warnings*.json
+    + .claude/secret-hook-patterns.txt
+    + .claude/secret-warnings*.json.tmp
+    + .claude/secret-warnings*.json.lock
+    + .claude/secret-warnings*.json.corrupt-*
+    + .claude/worktrees/
+
+Re-check: ✓ Gitignore coverage
+```
+
 ## Optional tunables reference
 
 Moved out of `SKILL.md` (Group H's "Optional tunables" subsection points here). These env vars are NOT required for /jr-audit, /jr-review, /jr-ship, or tackle. /jr-doctor surfaces them on the report **only if explicitly set** — otherwise the report stays terse. All defaults are reasonable; raise/lower deliberately.
