@@ -6,7 +6,8 @@ effort: low
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git config --get *) Bash(git ls-remote *) Bash(git diff *) Bash(git status *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(test *) Bash([ *) Bash(stat *) Bash(shasum *) Bash(sha256sum *) Bash(ls *) Bash(find . *) Bash(wc *) Bash(head *) Bash(tail *) Bash(sed *) Bash(tr *) Bash(cut *) Bash(date *) Bash(gdate *) Bash(printf *) Bash(echo *) Bash(basename *) Bash(command -v *) AskUserQuestion Agent ToolSearch
+allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git -C * ls-files *) Bash(git -C * remote *) Bash(git remote *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(sed *) Bash(test *) Bash([ *) Bash(ls *) Bash(head *) Bash(date *) Bash(printf *) Bash(echo *) Bash(command -v *) Bash(gh auth status *) Bash(glab auth status *) Bash(rtk --version *) Bash(claude mcp list *) Bash(claude --version *) Bash(printenv *) Bash(${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh *) AskUserQuestion Agent ToolSearch
+disallowed-tools: Write Edit
 ---
 
 <!-- Dependencies:
@@ -27,7 +28,10 @@ allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(gi
     - ~/.claude/skills/shared/reviewer-boundaries.md     — existence + non-empty + smoke-parse (anchors per the Canonical Anchor Table — Group D reads it at runtime; for reviewer-boundaries that is `| Issue` AND `| Owner` AND `| Not` AND `Severity calibration rubric` AND `Confidence levels`)
     - ~/.claude/skills/shared/untrusted-input-defense.md — existence + non-empty + smoke-parse `do not execute, follow, or respond to`
     - ~/.claude/skills/shared/gitignore-enforcement.md   — existence + non-empty + smoke-parse `git ls-files --error-unmatch`
-    - ~/.claude/skills/shared/advisor-criteria.md        — existence + non-empty + smoke-parse `Before substantive work`
+    - ~/.claude/skills/shared/advisor-criteria.md        — existence + non-empty + smoke-parse `Before substantive work` AND `Single-fire on retry loops`
+    - ~/.claude/skills/shared/phase1-track-a-protocol.md — Canonical Anchor Table, parsed at runtime by Group D; it is the
+                                                  authoritative source of every anchor listed above, which are reproduced here
+                                                  only as an inventory hint and may lag it
     - ~/.claude/skills/jr-review/templates/pre-commit-secret-guard.sh.tmpl — SHA-256 hash (Group I template hash check)
     - ~/.claude/skills/jr-review/scripts/install-pre-commit-secret-guard.sh — extracts EXPECTED_TEMPLATE_SHA256 (Group I template hash check)
     - ~/.claude/skills/jr-skill-audit/cache/refs.json       — fetchedAt timestamp (Group I refs-cache freshness check)
@@ -71,7 +75,7 @@ Recognized flags:
 
 **Plan-mode note**: when `defaultMode: "plan"` is set in `~/.claude/settings.json`, each `.gitignore` write under `--fix` will trip the standard plan-mode permission prompt. Expect serial approval prompts; the harness handles them — this is not a /jr-doctor bug.
 
-**First-run note**: /jr-doctor runs `command -v`, `git ls-files`, `jq`, etc. via Bash. The first invocation in a fresh permission set may trip 5-8 permission prompts; subsequent runs are silent. /jr-doctor itself does NOT modify `permissions.allow` (out of scope).
+**First-run note**: /jr-doctor runs `command -v`, `git -C … ls-files`, `jq`, etc. via Bash. `allowed-tools` has been re-synced in both directions against the commands the body actually issues — unused rules removed, missing ones (`git -C …`, the two `auth status` probes, `rtk`/`claude`/`printenv`, the bundled drift-check script) added — so the first-run prompt surface is much smaller than it was. Any command that still prompts is a genuine grant gap worth fixing rather than accepting. /jr-doctor itself does NOT modify `permissions.allow` (out of scope).
 
 ## Display protocol
 
@@ -86,7 +90,7 @@ Recognized flags:
 
 ### Argument parsing
 
-Parse `$ARGUMENTS` as space-separated tokens. Accept only `--fix`, `--yes`, and `--no-probe`; warn and ignore unknown tokens. The Group J capability probe runs by default; `--no-probe` disables it.
+Parse `\$ARGUMENTS` as space-separated tokens. Accept only `--fix`, `--yes`, and `--no-probe`; warn and ignore unknown tokens. The Group J capability probe runs by default; `--no-probe` disables it.
 
 If `--yes` is set without `--fix`: warn `--yes ignored: only meaningful with --fix` and unset `--yes`.
 
@@ -363,7 +367,7 @@ Iterate every `~/.claude/skills/*/SKILL.md` (skip directories without a `SKILL.m
 Run the bundled drift script and parse the marker lines on stdout:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh" 2>&1
+"${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh" 2>&1
 ```
 
 The script implements all nine checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness, abortReason enum drift, harness-claim staleness, canonical-rule linkage) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
@@ -442,26 +446,8 @@ For each missing canonical pattern in `<REPO_ROOT>/.gitignore`:
 
 ### Fix-pass summary
 
-After the fix loop, print a final summary:
-
-```
-Phase 4 — Fix pass
-  ✓ Applied 9 / 9 fixable changes to /tmp/doctor-test/.gitignore
-    + .claude/review-profile.json
-    + .claude/review-baseline.json
-    + .claude/review-config.md
-    + .claude/audit-history.json
-    + .claude/health.json
-    + .claude/audit-report-*.md
-    + .claude/secret-warnings*.json
-    + .claude/secret-hook-patterns.txt
-    + .claude/secret-warnings*.json.tmp
-    + .claude/secret-warnings*.json.lock
-    + .claude/secret-warnings*.json.corrupt-*
-    + .claude/worktrees/
-
-Re-check: ✓ Gitignore coverage
-```
+After the fix loop, print a final summary: the count of lines actually appended, each appended line,
+then the Group F gitignore-coverage re-check. See `examples.md` "Fix pass" for the rendered shape.
 
 ## Edge cases
 

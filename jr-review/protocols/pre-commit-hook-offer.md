@@ -18,7 +18,7 @@ When the 'Continue' path is taken and `secret-warnings.json` has been written:
 
 If the offer is accepted:
 
-1. **Write patterns file** (BEFORE invoking the install script): write the list of detected secret regexes (one per line, no shell interpolation) to `.claude/secret-hook-patterns.txt`. Apply the `.gitignore`-enforcement protocol from `../../shared/gitignore-enforcement.md` to that path before write — warn if tracked, append to `.gitignore` if absent. Per-site reason if tracked: "A committed patterns file could be tampered to weaken or disable specific secret-detection rules across all future commits — the additive baseline patterns hardcoded in the hook template still fire, but extension patterns (the broader Phase 1 set) would silently regress."
+1. **Write patterns file** (BEFORE invoking the install script): write the list of detected secret regexes (one per line, no shell interpolation) to `.claude/secret-hook-patterns.txt`. **Security check (enforced)**: cache-write protocol for `.claude/secret-hook-patterns.txt`, applied before the write (command + reason: SKILL.md "Cache-write security checks").
 
 2. **Invoke the install script**:
 

@@ -1,12 +1,12 @@
 ---
 name: jr-mermaid
-description: Generate a valid Mermaid diagram from a written source (e.g. an architecture, lifecycle, flow, sequence, or ER description) through a plan → confirm → generate → review loop. Confirms the plan with you before drawing and never invents nodes or relationships you did not approve. Outputs a fenced mermaid block; writes it into a target file only on your explicit confirmation. Not for non-Mermaid formats or image rendering.
+description: Generate a valid Mermaid diagram from a written source (e.g. an architecture, lifecycle, flow, sequence, or ER description) through a plan → confirm → generate → review loop. Confirms the plan with you before drawing and never invents nodes or relationships you did not approve. Outputs a fenced mermaid block; writes into a target file only when you pass `--out`, subject to Claude Code's per-call Write prompt. Not for non-Mermaid formats or image rendering.
 argument-hint: "[source text | @file] [--type=<kind>] [--out=<file>]"
 effort: max
 model: opus
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Grep AskUserQuestion advisor Bash(grep *) Bash(find . *) Bash(cat *) Bash(ls *) Bash(test *) Bash(command -v *) Bash(npx --no-install mmdc *) Bash(mmdc *)
+allowed-tools: Read Glob Grep AskUserQuestion advisor Bash(command -v *) Bash(npx --no-install mmdc *) Bash(mmdc *)
 disallowed-tools: Edit
 ---
 

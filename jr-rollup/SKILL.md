@@ -13,9 +13,11 @@ disallowed-tools: Write Edit
 <!-- Frontmatter notes:
 - `allowed-tools` is scoped to the bundled CLI by path rather than granting `Bash(bash *)`, whose
   trailing `*` would match `bash -c '<anything>'` — arbitrary execution in a skill whose whole
-  contract is "read-only, never runs an audit". `${CLAUDE_SKILL_DIR}` substitution inside a Bash
-  rule is documented since v2.1.129 (skills doc, "Available string substitutions"). No rule covers
-  step 1's `$HOME` fallback path: only `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PROJECT_DIR}` are
+  contract is "read-only, never runs an audit". The `CLAUDE_SKILL_DIR` substitution inside a Bash
+  rule (braced form, as in the rule above — named bare throughout this note so the note is not
+  itself substituted) is documented since v2.1.129 (skills doc, "Available string
+  substitutions"). No rule covers step 1's `$HOME` fallback path (`$HOME` is outside the
+  substituted set, so it stays literal): only `CLAUDE_SKILL_DIR` and `CLAUDE_PROJECT_DIR` are
   documented as substituted in `allowed-tools`, so a `Bash($HOME/...)` rule would stay a literal
   `$HOME` string and never match — a grant that silently never fires is worse than no grant. The
   fallback therefore degrades to a per-call permission prompt, which is the safe direction.
@@ -47,10 +49,11 @@ incomplete one does not count) — else the repo root itself. Works with or with
 
 ### Parameter sanitization
 
-`$ARGUMENTS` is interpolated into a shell command, so sanitize before it reaches one:
+`\$ARGUMENTS` is interpolated into a shell command, so sanitize before it reaches one (every
+reference to the placeholder in this section is backslash-escaped so the rule survives substitution):
 - Reject control characters and any shell-active character (a backtick, or any of `$ \ " ' ; | & < > ( ) { } * ? [ ]`) with `Invalid argument: unsupported character.`
 - Permitted tokens are path-shaped values plus the literal flag `--json`; allowlist each against `^(--json|[A-Za-z0-9._/-]+)$` and reject anything else. Reject any token containing `..`.
-- **Always quote the expansion.** Pass the surviving tokens as a quoted array (`"${args[@]}"`), never a bare `$ARGUMENTS`, which word-splits and glob-expands the user's string before the CLI sees it.
+- **Always quote the expansion.** Pass the surviving tokens as a quoted array (`"${args[@]}"`), never a bare `\$ARGUMENTS`, which word-splits and glob-expands the user's string before the CLI sees it.
 
 ## Workflow
 
@@ -58,10 +61,10 @@ incomplete one does not count) — else the repo root itself. Works with or with
 Resolve `bin/jr-rollup` relative to this skill, falling back to the absolute path:
 ```
 CLI="${CLAUDE_SKILL_DIR}/../bin/jr-rollup"; test -x "$CLI" || CLI="$HOME/.claude/skills/bin/jr-rollup"
-"$CLI" "${args[@]}"     # args = the sanitized, allowlisted tokens — never a bare $ARGUMENTS
+"$CLI" "${args[@]}"     # args = the sanitized, allowlisted tokens — never a bare \$ARGUMENTS
 ```
-Build `args` by applying **Parameter sanitization** (above) to `$ARGUMENTS` and quoting each surviving
-token. A bare `$ARGUMENTS` here word-splits and glob-expands before the CLI runs.
+Build `args` by applying **Parameter sanitization** (above) to `\$ARGUMENTS` and quoting each surviving
+token. A bare `\$ARGUMENTS` here word-splits and glob-expands before the CLI runs.
 If it exits non-zero with a missing-dependency message (`jq` / `git` / `column`), relay that and
 stop. Do NOT hand-roll the aggregation or recompute any number — the CLI owns the figures.
 

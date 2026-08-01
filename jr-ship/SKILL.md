@@ -1,7 +1,7 @@
 ---
 name: jr-ship
 description: Ship working-tree changes via a pull request (PR) / merge request (MR) — forge auto-detected per repo. Analyzes changes for coherent splitting into sub-PRs/MRs. Handles branching, CI wait, and (with --merge) squash-merge + cleanup. Default stops after CI without merging — `--merge` is opt-in. Use `--dry-run` to preview or `--draft` to open the PR/MR as a draft.
-argument-hint: "[message] [--draft|--base|--no-split|--merge|--dry-run|--split-only|--validate|--label|--no-overlap-check]"
+argument-hint: "[message] [--draft|--base|--no-split|--merge|--dry-run|--split-only|--validate|--label|--no-overlap-check|--model=<tier>]"
 effort: medium
 model: sonnet
 disable-model-invocation: true
@@ -135,7 +135,7 @@ Run **all of the following in parallel**:
 - `cat "$(git rev-parse --git-dir)/info/scratch-session" 2>/dev/null` (scratch-session marker from `tackle --scratch`)
 - `git rev-parse --show-toplevel` (current worktree path)
 - `git rev-parse --git-dir` and `git rev-parse --git-common-dir` (for primary-vs-secondary detection)
-- `git worktree list --porcelain | awk '/^worktree /{print $2; exit}'` (primary worktree path — first entry)
+- `git worktree list --porcelain | awk '/^worktree /{print \$2; exit}'` (primary worktree path — first entry; `\$2` is backslash-escaped so the harness leaves it literal instead of substituting the third positional argument — do not strip the backslash)
 - Read `../shared/untrusted-input-defense.md` (passed verbatim to the split-analysis sub-agent in Phase 2 and the CI-fix sub-agent)
 - Read `../shared/code-edit-discipline.md` (passed verbatim to the CI-fix sub-agent with a CI-fix-specific lead-in + opening-paragraph elision — see `protocols/ci-failure-handling.md`)
 - Read `../shared/secret-scan-protocols.md` (consumed by step 4 secret-halt protocol — `isHeadless` predicate, advisory-tier classification, User-continue path)
@@ -201,7 +201,7 @@ After the above complete:
 
    **Halt protocol** (mandatory — `/jr-ship` is the highest-blast-radius secret-leak vector in this skill set; warn-only is unsafe before push/PR/merge):
    - **Headless mode** (per `../shared/secret-scan-protocols.md` "Headless/CI detection"): abort unconditionally with non-zero exit, listing the detected pattern types (NOT the matched values). Do NOT proceed to commit/push.
-   - **Interactive mode**: AskUserQuestion `Strict-tier secret patterns detected: [pattern types]. Options: [Abort and remove the secret] / [Continue — accept responsibility]`. On **Abort**, exit non-zero. On **Continue**, apply the `/jr-ship`-relevant User-continue path behaviors from `../shared/secret-scan-protocols.md`: ACTION REQUIRED logging, the final `⚠ SECRET STILL PRESENT` warning, and the non-zero exit latch. `/jr-ship` does **not** perform the audit-trail write to `.claude/secret-warnings.json`: per `../shared/secret-warnings-schema.md`, `/jr-ship` is a future *reader* of that file, not a writer — the `/jr-review`→`/jr-ship` enforcement contract (the audit trail read to block re-attempts) is marked NOT IMPLEMENTED. Until it lands, `/jr-ship`'s secret-halt protection is the loud warning plus the non-zero exit latch, not a persisted record. Do NOT proceed to commit/push without explicit acknowledgment.
+   - **Interactive mode**: AskUserQuestion `Strict-tier secret patterns detected: [pattern types]. Options: [Abort and remove the secret] / [Continue — accept responsibility]`. On **Abort**, exit non-zero. On **Continue**, apply the `/jr-ship`-relevant User-continue path behaviors from `../shared/secret-scan-protocols.md`: ACTION REQUIRED logging, the final `⚠ SECRET STILL PRESENT` warning, and the non-zero exit latch. **Behavior 3 (pre-commit hook offer) cannot be executed here** — the installer and template ship only under `jr-review/`, and `/jr-ship` has no `scripts/` or `templates/` directory — so per that canonical it MUST be reported as unavailable rather than skipped silently. Log under ACTION REQUIRED: `Pre-commit hook offer unavailable in /jr-ship — no automated commit-blocker was installed; install it via /jr-review, or remove the secret before committing.` The compensating control is the operator knowing the commit is unguarded. Behavior 6 (suppression-list snapshot) genuinely does not apply: there is one scan site and no re-scan loop, so nothing can re-prompt. `/jr-ship` does **not** perform the audit-trail write to `.claude/secret-warnings.json`: per `../shared/secret-warnings-schema.md`, `/jr-ship` is a future *reader* of that file, not a writer — the `/jr-review`→`/jr-ship` enforcement contract (the audit trail read to block re-attempts) is marked NOT IMPLEMENTED. Until it lands, `/jr-ship`'s secret-halt protection is the loud warning plus the non-zero exit latch, not a persisted record. Do NOT proceed to commit/push without explicit acknowledgment.
 
 #### Phase 2: Split Analysis (skip if `--no-split` or `RESUME_MODE=true` — no diff to split)
 
