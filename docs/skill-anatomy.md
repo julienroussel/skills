@@ -165,7 +165,7 @@ This is the right default for content > 30 lines. The hard-fail guard ensures th
 
 ### Pattern C: deferred read at the consumer phase
 
-Read at the point of use, not pre-loaded at Phase 1. Use this tier when the consumer phase is **optional and often skipped**, so a Phase-1 pre-load would pay the token cost on every run that never reaches it. The `/jr-review` and `/jr-audit` **fix path** is the repo's Pattern-C case: `protocols/fix-secret-validate.md` (the Phase 5.6 + Phase 6 bodies) is skipped whenever no implementer runs (`nofix`, a clean review with zero findings, or a pre-Phase-5 abort), so it is Read only at Phase 5 entry, saving its ~1K tokens on every non-fix run (issue #66).
+Read at the point of use, not pre-loaded at Phase 1. Use this tier when the consumer phase is **optional and often skipped**, so a Phase-1 pre-load would pay the token cost on every run that never reaches it. The `/jr-review` and `/jr-audit` **fix path** is the repo's Pattern-C case: `protocols/fix-secret-validate.md` (the Phase 5.6 + Phase 6 bodies) is skipped whenever no implementer runs (`nofix`, a clean review with zero findings, or a pre-Phase-5 abort), so it is Read only at Phase 5 entry, saving its ~1K tokens on every non-fix run (issue #66). `/jr-skill-audit`'s `protocols/phase7-report.md` is a second case, deferred for body size rather than for a phase that is often skipped: Phase 7 always runs, so only the template's token cost is deferred, while its presence and both anchors stay grep-guarded at Phase 1 (`grep -Fq`, no body load). Its anchors are body-only, which is what makes a plain fixed-string guard safe there; the two conventions compose, and the rule below is about picking the right matcher for each, not about a file being barred from both.
 
 The naive risk of Pattern C is that the file is missing exactly when needed (see Pattern B). The fix-path case neutralizes this: Phase 1 still runs a **grep-only** existence + anchor check (`[ -f ]` plus `grep -Eq` on the two **line-anchored** `^## Phase` headings, without loading the body), so a missing or truncated file hard-fails at Phase 1, before any reviewer runs. The `^` line-anchor is load-bearing: the protocol file quotes its own anchor strings in its header prose (the self-declaration convention), so a plain substring `grep -Fq` would false-pass a truncation that kept only the header; anchoring to line-start matches the real body headings only.
 
@@ -349,11 +349,14 @@ pointer here. The `Dependencies` comment block stays in each `SKILL.md` — it i
   `convergence-protocol.md`. Pre-authorising an external-state mutation like `gh issue create` in a
   skill that never creates an issue is exactly the shape `/jr-review`'s rationale below rejects. If a
   glab mirror later needs them, add them back alongside the call-site, not in advance.
-- `WebFetch` is included for claim verification (Tier 2, see `../shared/claim-verification.md`), which is
-  **on by default**: fetching authoritative docs to confirm or refute external-authority findings. It is
-  invoked whenever an external-authority claim needs a doc lookup (skipped only under `--no-verify-claims` or
-  when offline), and the doctrine forbids resting a load-bearing claim on a single WebFetch summary
-  (cross-check against a `gh api` raw fetch or a second source).
+- `WebFetch` is **not** granted. Tier-2 claim verification (`../shared/claim-verification.md`) is still
+  **on by default** and still reaches a GitHub-hosted authority through `Bash(gh api *)`, which that
+  doctrine ranks above a lone WebFetch summary anyway. The loss is narrower than "no Tier 2" but wider
+  than "no HTML pages": `curl` and `wget` are not granted either, so **any authority not hosted in a
+  GitHub repository has no fetch path here, HTML page and standalone raw `.md` alike**. A raw `.md`
+  served from a docs host is as unreachable as the HTML version of the same page. Such a claim degrades
+  to the Tier-1 cap-and-defer route (capped to `speculative`, routed to the user or deferred, never
+  auto-applied) instead of being confirmed or refuted.
 
 ### `/jr-review`
 
@@ -386,6 +389,14 @@ pointer here. The `Dependencies` comment block stays in each `SKILL.md` — it i
   `find . -type l -print0` builds the symlink baseline, and `perl`/`awk` do the NUL-safe parsing the
   shell cannot. `Bash(mv *)` was narrowed to `Bash(mv .claude/*)` — the only `mv` this skill performs
   is the `.claude/secret-warnings.json.tmp` atomic rename — matching `/jr-audit`'s scoped rule.
+  `Bash(git remote get-url *)` was **added** in that scoped read-only form rather than narrowed: no
+  `git remote` grant existed here before it. Both call sites only read `origin` (forge detection at
+  `SKILL.md:167`, the same-repo guard at `protocols/pr-url-mode.md:27`), and the bare
+  `Bash(git remote *)` was deliberately not taken, because it would also pre-authorise
+  `git remote set-url`, silently redirecting the `origin` that forge detection and every later
+  `gh`/`glab` call resolve against. The scoping covers `git remote` only; `Bash(git symbolic-ref *)`
+  beside it deliberately keeps its bare wildcard, so do not read this as parity with `/jr-ship`,
+  which scoped both.
 - **The two bundled scripts prompt, and that is accepted.** No `allowed-tools` rule matches
   `scripts/establish-base-anchor.sh` or `scripts/install-pre-commit-secret-guard.sh`, so each
   invocation raises a per-call permission prompt. The documented prompt-free pattern needs a braced
@@ -393,10 +404,12 @@ pointer here. The `Dependencies` comment block stays in each `SKILL.md` — it i
   runtime, where no skill-content substitution applies — so adopting it would mean relocating the
   invocations, not adding a rule. Known and accepted, like `flock` above; do not read the omission
   as an oversight.
-- `WebFetch` is granted for claim verification (Tier 2, `../shared/claim-verification.md`), which is **on by
-  default**: fetching authoritative docs to confirm or refute external-authority findings. Invoked whenever an
-  external-authority claim needs a doc lookup (skipped only under `--no-verify-claims` or offline); the
-  doctrine forbids resting a load-bearing claim on one WebFetch summary.
+- `WebFetch` is **not** granted. Tier-2 claim verification (`../shared/claim-verification.md`) is still
+  **on by default**, served by `Bash(gh api *)` and, for a gitlab-hosted authority, `Bash(glab api *)`.
+  The doctrine prefers both to a lone WebFetch summary. As in `/jr-audit`, and with no `curl` or `wget`
+  granted either, the loss covers **any authority not hosted in a GitHub or GitLab repository, HTML page
+  and standalone raw `.md` alike**: those have no fetch path here, so their claims take the Tier-1
+  cap-and-defer route rather than being confirmed or refuted.
 
 ### `/jr-ship`
 
@@ -421,19 +434,82 @@ pointer here. The `Dependencies` comment block stays in each `SKILL.md` — it i
   force-push or delete remote branches on failure"). That prohibition is enforced by the body,
   NOT by the grant — do not read the pre-authorisation as permission. `Bash(git push origin HEAD:*)`
   is fully subsumed by this rule and is retained only for readability at the call sites.
-- `allowed-tools` grants no `Write`/`Edit`: `/jr-ship` mutates the repo only through `git`/`gh` and
-  reads with `Read` — it has no file-write site of its own. The former `Write(.claude/**)` (the
+- The eight grants `Bash(git remote get-url *)`, `Bash(git worktree *)`, `Bash(git rev-list *)`,
+  `Bash(git symbolic-ref --short *)`, `Bash(cat *)`, `Bash(awk *)`, `Bash(sed 's@^origin/@@')` and
+  `Bash(gh auth status *)` each pin to one body site: forge detection (`SKILL.md:135`), the
+  primary-worktree probe and its `awk` tail plus the cleanup `remove --force` (`SKILL.md:140`,
+  `protocols/worktree-cleanup.md:47`), the commits-ahead count (`SKILL.md:167`), the default-branch
+  fallback and its `sed` tail (`SKILL.md:68`, `:173`), the scratch-session marker read
+  (`SKILL.md:137`), and the step-1c auth pre-check (`SKILL.md:184`). `git remote` and `git symbolic-ref` are scoped to their read form,
+  because the bare wildcards also authorise `git remote set-url` (which silently redirects every later
+  `git push origin *`) and the two-argument `git symbolic-ref` (which rewrites HEAD). `sed` is scoped to
+  the fallback's exact substitution, because `Bash(sed *)` pre-authorises `sed -i`, an in-place file
+  write, in the one skill that commits, pushes and merges. `awk` keeps its bare wildcard and is
+  accounted for here on the same basis as `/jr-audit`'s above. Pinning its one site means reaching
+  into the awk program text, and both spellings rest on something unverified: a prefix stopping short
+  of `$2` leaves an unbalanced quote inside the rule, which YAML tolerates but Claude Code's own rule
+  tokeniser was not tested against, while the full-program form embeds `$2`, whose substitution
+  behaviour inside a Bash `allowed-tools` rule is undocumented. A rule that silently never matches
+  would prompt on the Phase 1 batch of every run, so the bare form is the safer trade. `Bash(cat *)`
+  is kept rather than dropped as redundant: `cat` is in the permissions doc's built-in read-only set,
+  but its one site wraps the path in a `$(…)` substitution, and the doc says only that a command the
+  analysis cannot fully parse loses read-only treatment, without placing `$(…)` on either side of
+  that line. Read all of these as scoping, not as a security boundary: Anthropic's permissions doc
+  warns that argument-constraining Bash patterns are fragile, and the body remains the enforcement
+  layer.
+- `allowed-tools` grants no `Write`/`Edit`: the lead mutates tracked files only through `git`/`gh` and
+  reads with `Read`, so no documented phase needs a file-write **tool**. That is narrower than "no
+  file-write site at all", which this section's first bullet already contradicts: the step-4 scan and
+  the CI-fix Clean-tree guarantee capture NUL-delimited baselines to `mktemp` files
+  (`protocols/ci-failure-handling.md:28`), and the granted `Bash(awk *)` reaches an in-place write
+  through a redirect. Both write outside the repo, or on the body's explicit instruction; neither
+  needs `Write`/`Edit`. The former `Write(.claude/**)` (the
   step-4 `.claude/secret-warnings.json` audit-trail write) was removed when that write was deferred
   to the not-yet-implemented `/jr-review`→`/jr-ship` enforcement contract — see issue #32.
+
+#### `/jr-ship`: harness-claim date stamp
+
+<!-- harness-claim-verified: 2026-08-08 -->
+
+Verified 2026-08-08 against the live permissions doc (https://code.claude.com/docs/en/permissions,
+"Tool-specific permission rules" then "Bash"): a wildcard may sit at any position in a rule; a rule
+with no wildcard matches that exact command; `Bash(ls *)` enforces a word boundary, so it matches
+`ls -la` and a bare `ls` but not `lsof`; and `|` is a recognised command separator, with each
+subcommand of a compound command matched independently. Together those settle that the scoped `sed`
+rule above can fire from inside the step-1 pipeline, and that the trailing `*` on
+`Bash(gh auth status *)` still covers the argument-less step-1c call. Re-verify on a Claude Code
+upgrade.
 
 ### `/jr-skill-audit`
 
 - `model: sonnet` (lead): Phase 3 source-citation verification is a mechanical match against the
   Track C refs cache, and Phase 4 synthesis (plus the lead-emitted scope-resolution dimension) is
   structured orchestration, not open-ended agentic coding. The genuinely judgment-heavy work (spec
-  review across the 7 reviewer dimensions) is delegated to opus subagents. Mirrors `/jr-ship`'s
-  validated lead-sonnet + opus-delegated-judgment pattern.
+  review) is delegated to opus subagents on **six of the seven** reviewer dimensions. The seventh,
+  `frontmatter`, routes to `model: "sonnet"`: its work is mechanical field validation against a doc
+  table. Mirrors `/jr-ship`'s validated lead-sonnet + opus-delegated-judgment pattern. The
+  per-dimension split, and the rule for changing it (verify a lowered tier by differential re-run,
+  never by watching the rejection rate, which counts only findings a reviewer did report), live in
+  `SKILL.md` "Model requirements".
 - `Write` targets: (1) `~/.claude/skills/jr-skill-audit/cache/**` — the refs.json live-references cache (Phase 1 Track C); (2) `.claude/skill-audit-*` (the report `.md` plus its atomic `.md.tmp` sidecar) and (3) `~/.claude/skill-audit-reports/**` — the `--report` archival report (Phase 7; `protocols/report-write.md`). The skill is still findings-only and never modifies skill files. Any further write site must extend the path scope explicitly. **`Write(.claude/skill-audit-*)` is CWD-anchored** (Claude Code file-tool grants follow gitignore semantics relative to the current directory, and frontmatter `allowed-tools` scoping is itself undocumented): it pre-authorises a project-scope report write to the repo-root `.claude/` **only when the run is invoked from the repo root** — from a subdirectory the Write prompts, and under `--auto-approve`/headless it is skipped (non-fatal) unless the user adds `Write(/.claude/**)` to their own project/user settings. `Write(~/.claude/skill-audit-reports/**)` is the reliably prompt-free grant (absolute `~/`-anchored, like the cache grant) and covers the personal/both/plugin + out-of-repo default. NOTE — the literal `~/.claude/skills/jr-skill-audit/cache/**` is intentional and is NOT switched to `${CLAUDE_SKILL_DIR}/cache/**` to match the body's substitution. The reason is narrower than it looks: the skills doc ("Available string substitutions") DOES document `${CLAUDE_SKILL_DIR}` substitution in `allowed-tools`, since v2.1.129 — but scoped to **Bash rules** ("the skill's markdown content, and Bash rules in the `allowed-tools` frontmatter"). This grant is a `Write(...)` rule, which is outside that documented surface, so substituting here would risk a never-matching grant (every cache write would then prompt). The `~/`-anchored literal is correct for the personal install (the skill's by-design home); it only diverges from the body under a project/plugin install, where the write degrades to a per-call prompt rather than failing. Revisit if Anthropic documents substitution for non-Bash `allowed-tools` rules.
+- `mv` is granted in three narrow forms, one per atomic-rename site, and never as a bare `Bash(mv *)`:
+  `Bash(mv ${CLAUDE_SKILL_DIR}/cache/*)` for the Track C `refs.json.tmp` → `refs.json` rename, plus
+  `Bash(mv .claude/skill-audit-*)` and `Bash(mv ~/.claude/skill-audit-reports/*)` for the Phase 7
+  `--report` archival write's `.md.tmp` → `.md` rename. **The latter two do not in fact match their own
+  call site** (`jr-skill-audit/protocols/report-write.md` "Atomic write" records the analysis): the rename's
+  operands both derive from a `reportPath` that is `~`-expanded and resolved absolute before use, so the
+  command string matches neither the `~`-prefixed nor the repo-relative literal, and the archival write
+  prompts interactively and is skipped, non-fatally, under `--auto-approve`/headless. They are retained
+  rather than removed so a future narrowing pass does not read the gap as an invitation to widen `mv`.
+  A findings-only skill has no call for a general
+  rename surface, and `disallowed-tools: Edit` would be hollow beside one, since `mv` over an arbitrary
+  path mutates a file by another name. Unlike the `Write` grant above, these are **Bash** rules, so
+  `${CLAUDE_SKILL_DIR}` is inside the documented substitution surface (see the date stamp below) and the
+  literal-vs-substituted problem does not arise. Two consequences of the narrowing are load-bearing at
+  the call site and spelled out in `jr-skill-audit/protocols/report-write.md` "Atomic write": no `--`
+  separator may precede the operands (a leading `--` matches none of the three literals), and a
+  destination outside all three degrades to a per-call prompt, which under `--auto-approve`/headless
+  becomes a skipped, non-fatal archival write.
 
 #### `/jr-skill-audit` — harness-claim date stamp
 

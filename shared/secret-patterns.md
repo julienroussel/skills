@@ -6,9 +6,46 @@
 
 Apply these BEFORE invoking the regex on any input:
 
-- **POSIX ERE smoke probe** (run once at first-use site): `printf 'foo\n' | grep -E '^f{1,3}o+$' >/dev/null 2>&1`. On failure, abort with `[ABORT — GREP -E INCOMPATIBLE] Detected grep that lacks POSIX ERE quantifier support. Install GNU grep or set GREP=ggrep before re-running.`
+- **POSIX ERE smoke probe** (run once at first-use site): `printf 'foo\n' | grep -E '^f{1,3}o+$' >/dev/null 2>&1`. On failure, abort with `[ABORT — GREP -E INCOMPATIBLE] Detected grep that lacks POSIX ERE quantifier support. Install GNU grep or set GREP=ggrep before re-running.` This probe proves grep supports ERE quantifiers; it does NOT prove the union below compiles on that grep, and it passes on a host where the real scan errors out (see the repetition-bound rule below). Every scan site MUST therefore treat a grep exit status **above 1** as a scan failure and never as a clean result, using the **Scan-status check** below.
+- **Scan-status check (mandatory at every scan site)**: branch on grep's **exit status**, never on its output alone. A grep that rejects the union (repetition-bound rule below) or cannot read a file exits 2 and prints nothing, so an output-only test reads a total scan failure as "no secrets found".
+
+  **Grep must be the sole command whose status you read.** Hand it a file, a here-string, or a temp file you materialised first, never the tail of a pipe:
+
+  ```bash
+  out=$(grep -Ei -- "$pattern" "$file"); ec=$?      # a file on disk
+  out=$(grep -Ei -- "$pattern" <<< "$body"); ec=$?  # an in-memory body
+  case "$ec" in
+    0) ;;   # match: the site's detection path
+    1) ;;   # no match: the ONLY clean outcome
+    *) ;;   # scan failure: the site's halt path, never a clean result
+  esac
+  ```
+
+  Under `set -e`, wrap each capture in `set +e` / `set -e`, the producer capture below included, or the status check never runs.
+
+  **Why never a pipe** (`git diff | grep …`, `printf … | grep …`): `$?` is the **tail's** status, so a producer that fails hands grep empty input and grep exits 1, which is the one status arm `1` calls clean. `set -o pipefail` does not close this: it yields the *rightmost* non-zero status, and grep's own `1` is the rightmost. When the input is a command's output, capture it first and check the producer's own status before scanning (`blob=$(git diff); pec=$?`, then route any non-zero `pec` to the `*)` halt path), or write it to a temp file and scan that. Do not reach for `PIPESTATUS` as the escape hatch: it is a bash array whose spelling is not portable across the shells these sites run under, and the wrong spelling expands to nothing, reproducing the same silent pass.
+
+  Working exemplar: `jr-review/templates/pre-commit-secret-guard.sh.tmpl`. What makes it safe is not the `case` arms alone: every scan in it is the sole-command shape above (grep reads a file, or a staged blob already materialised by a separately status-checked `git show`), its enumeration pipelines run under `set -e -o pipefail`, and its pattern-validity probe tests `[ "$ec" -gt 1 ]`. A reader who lifts the arms into a pipeline inherits none of that. **Never let grep print its matches**: the matching line *is* the credential, and `grep -nEi` echoes it verbatim into whatever surface the caller is writing to. Keep the `out=` capture, take the locations from its `<lineno>:` prefix (as the exemplar does), and report the line number and pattern type, never the matched text. **Halt route, by site kind** (named here so every consumer cites one dialect instead of inventing its own): a **pre-scan** site aborts with the same `[ABORT — GREP -E INCOMPATIBLE]` marker as the smoke probe, quoting the exit status; a **post-write redaction-verification** site treats the artifact as uncertified rather than clean and takes its own redaction-failure route; a **pre-publication redaction** site, which redacts a body immediately before an irreversible post to a possibly-public forge, treats that body as uncertified rather than redacted, does NOT publish it, and surfaces the exit status through the consumer's own operator-escalation route (a status above 1 makes the redaction a silent no-op, so publishing on it posts the unredacted body).
 - **Per-line length cap (10000 bytes)**: lines exceeding the cap are flagged in the Phase 7 report under `[OVERSIZED LINE — MANUAL REVIEW]` with file path and line number — they are NOT regex-evaluated. Bounds regex evaluation time and prevents pathological backtracking against adversarial long lines.
+- **No repetition bound above 255 — use an open-ended `{n,}` instead.** 255 is a *floor*, not a ceiling: POSIX only requires a conforming implementation to support bounds up to `RE_DUP_MAX`, whose minimum is 255. GNU grep allows far higher, which is why an oversized bound runs fine on Linux and fails only once it reaches a BSD host. macOS's stock `grep` (BSD grep 2.6.0-FreeBSD) implements exactly the floor: one bound of 256 makes grep print `grep: maximum repetition exceeds 255` and **exit 2**, which rejects the *whole* union, not just the offending alternative. Every scan on that host then returns no matches, and any caller that treats "no output" as "no secrets" reads a total scan failure as a clean bill of health. Open-ended bounds (`{10,}`, `{1,}`, `{0,}`) are accepted by BSD grep and are what the patterns below use. Do NOT "fix" a too-large bound by capping it at 255: that silently converts the error into a false negative, since a 400-character JWT payload matches an open-ended bound but not a capped one (the pattern is anchored at `eyJ` and must reach the following `.`). Input length is already bounded by the per-line cap above, so an open upper bound costs nothing. **This rule is deliberately written without any literal over-255 brace form**, so that `grep -oE '\{[0-9]+,[0-9]+\}' shared/secret-patterns.md` with an "upper bound > 255" filter is a clean regression guard for this file rather than one with a permanent known false positive.
 - **POSIX ERE constraint on every pattern below**: no Perl-style shorthand (`\s`/`\d`/`\w`/`\b`), no Perl-style grouping (`(?:...)`/`(?=...)`/`(?<!...)`). Use POSIX character classes (`[[:space:]]`/`[[:digit:]]`/`[[:alnum:]]`). Non-boundary checks (e.g., the `dapi` prefix check) MUST be implemented as post-match line inspection in the consuming code, NOT as lookbehinds inside the regex.
+
+<!-- harness-claim-verified: 2026-08-08 -->
+<!-- Live probe 2026-08-08 on macOS (/usr/bin/grep, BSD grep 2.6.0-FreeBSD): an upper bound of 256
+     printed "maximum repetition exceeds 255" and exited 2, rejecting the entire union; 255 was
+     accepted; open-ended {10,} / {1,} / {0,} were all accepted. A 400-character JWT payload matched
+     the open-ended form and did NOT match a 255-capped one, which is why the fix opens the bound
+     rather than capping it. Re-verify if the patterns below gain a new bounded quantifier or if the
+     supported grep set changes. -->
+<!-- Live probe 2026-08-08, same session, on the pipe shape behind the Scan-status check:
+     `false | grep -Ei <pattern>` exited 1 both with and without `pipefail`, under bash 3.2.57 AND
+     zsh 5.9, so by `$?` alone a failed producer is indistinguishable from a clean no-match. `pipefail`
+     returns the RIGHTMOST non-zero status (bash 3.2.57: `exit 42 | exit 7` = 7, `exit 42 | exit 0`
+     = 42), so grep's own 1 masks the producer. Under zsh 5.9 `${PIPESTATUS[@]}` expanded EMPTY while
+     `${pipestatus[@]}` read `1 1`, which is why the rule above is "do not pipe into grep" rather
+     than "read PIPESTATUS". The sole-command shapes were confirmed to propagate all three statuses:
+     `grep -nEi -- <pat> <<< "$body"` returned 0 on a hit, 1 when clean, and 2 on a pattern the host
+     grep rejects. Re-verify if a consumer moves to a shell not covered here. -->
 
 ## Invocation flag
 
@@ -17,15 +54,15 @@ Invoke with `grep -Ei`. The `-i` is mandatory — the case-insensitivity is anno
 ## Token-prefix patterns (regex union)
 
 ```
-(AKIA[0-9A-Z]{16}|sk_live_[a-zA-Z0-9]{20,200}|rk_live_[a-zA-Z0-9]{20,200}|sk_test_[a-zA-Z0-9]{20,200}|rk_test_[a-zA-Z0-9]{20,200}|sk-ant-[a-zA-Z0-9_-]{20,200}|sk-[a-zA-Z0-9_-]{20,200}|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|ghs_[a-zA-Z0-9]{36}|ghu_[a-zA-Z0-9]{36}|ghr_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22,200}|xox[bpaes]-[a-zA-Z0-9-]{1,200}|xoxe\.xox[bp]-[a-zA-Z0-9-]{1,200}|-----BEGIN .{0,50} PRIVATE KEY|SG\.[a-zA-Z0-9_-]{1,200}\.[a-zA-Z0-9_-]{1,200}|AIza[0-9A-Za-z_-]{35}|npm_[a-zA-Z0-9]{36}|eyJ[A-Za-z0-9_-]{10,2000}\.eyJ[A-Za-z0-9_-]{10,2000}\.[A-Za-z0-9_-]{10,2000}|AccountKey=[a-zA-Z0-9+/=]{44,200}|SK[a-fA-F0-9]{32}|pypi-[A-Za-z0-9_-]{16,200}|sbp_[a-zA-Z0-9]{20,200}|hvs\.[a-zA-Z0-9_-]{24,200}|dop_v1_[a-zA-Z0-9]{43}|dp\.st\.[a-zA-Z0-9_-]{1,200}|dapi[a-fA-F0-9]{32}|shpat_[a-fA-F0-9]{32}|GOCSPX-[a-zA-Z0-9_-]{28}|https://hooks\.slack\.com/services/T[A-Z0-9]{8,15}/B[A-Z0-9]{8,15}/[a-zA-Z0-9]{24}|https://(discord|discordapp)\.com/api/webhooks/[0-9]{1,25}/[a-zA-Z0-9_-]{1,200}|"private_key":[[:space:]]*"-----BEGIN|vc_[a-zA-Z0-9]{24,200}|glpat-[a-zA-Z0-9_-]{20,200}|dckr_pat_[a-zA-Z0-9_-]{20,200}|nfp_[a-zA-Z0-9]{20,200})
+(AKIA[0-9A-Z]{16}|sk_live_[a-zA-Z0-9]{20,200}|rk_live_[a-zA-Z0-9]{20,200}|sk_test_[a-zA-Z0-9]{20,200}|rk_test_[a-zA-Z0-9]{20,200}|sk-ant-[a-zA-Z0-9_-]{20,200}|sk-[a-zA-Z0-9_-]{20,200}|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|ghs_[a-zA-Z0-9]{36}|ghu_[a-zA-Z0-9]{36}|ghr_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22,200}|xox[bpaes]-[a-zA-Z0-9-]{1,200}|xoxe\.xox[bp]-[a-zA-Z0-9-]{1,200}|-----BEGIN .{0,50} PRIVATE KEY|SG\.[a-zA-Z0-9_-]{1,200}\.[a-zA-Z0-9_-]{1,200}|AIza[0-9A-Za-z_-]{35}|npm_[a-zA-Z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|AccountKey=[a-zA-Z0-9+/=]{44,200}|SK[a-fA-F0-9]{32}|pypi-[A-Za-z0-9_-]{16,200}|sbp_[a-zA-Z0-9]{20,200}|hvs\.[a-zA-Z0-9_-]{24,200}|dop_v1_[a-zA-Z0-9]{43}|dp\.st\.[a-zA-Z0-9_-]{1,200}|dapi[a-fA-F0-9]{32}|shpat_[a-fA-F0-9]{32}|GOCSPX-[a-zA-Z0-9_-]{28}|https://hooks\.slack\.com/services/T[A-Z0-9]{8,15}/B[A-Z0-9]{8,15}/[a-zA-Z0-9]{24}|https://(discord|discordapp)\.com/api/webhooks/[0-9]{1,25}/[a-zA-Z0-9_-]{1,200}|"private_key":[[:space:]]*"-----BEGIN|vc_[a-zA-Z0-9]{24,200}|glpat-[a-zA-Z0-9_-]{20,200}|dckr_pat_[a-zA-Z0-9_-]{20,200}|nfp_[a-zA-Z0-9]{20,200})
 ```
 
 ## Connection-string variants (apply after the prefix union)
 
-- **URL-form basic auth** (`scheme://user:pass@host`): `(mongodb\+srv://|postgres://|postgresql://|mysql://|mariadb://|mssql://|redis://|rediss://|amqp://|amqps://)[^[:space:]:/@]{1,500}:[^[:space:]@]{0,500}@`
-- **Query-parameter credentials**: `(mongodb\+srv://|postgres://|postgresql://|mysql://|mariadb://|mssql://|redis://|rediss://|amqp://|amqps://)[^[:space:]?#]{0,500}[?&](password|passwd)=[^[:space:]&]{1,500}`
-- **JDBC**: `jdbc:(postgresql|mysql|mariadb|sqlserver|oracle|sqlite):[^[:space:]?#]{0,500}[?&](password|passwd)=[^[:space:]&]{1,500}`
-- **Generic URL-scheme credentials**: `[a-z]{1,20}://[^[:space:]?#]{0,500}[?&](password|passwd)=[^[:space:]&]{1,500}`
+- **URL-form basic auth** (`scheme://user:pass@host`): `(mongodb\+srv://|postgres://|postgresql://|mysql://|mariadb://|mssql://|redis://|rediss://|amqp://|amqps://)[^[:space:]:/@]{1,}:[^[:space:]@]{0,}@`
+- **Query-parameter credentials**: `(mongodb\+srv://|postgres://|postgresql://|mysql://|mariadb://|mssql://|redis://|rediss://|amqp://|amqps://)[^[:space:]?#]{0,}[?&](password|passwd)=[^[:space:]&]{1,}`
+- **JDBC**: `jdbc:(postgresql|mysql|mariadb|sqlserver|oracle|sqlite):[^[:space:]?#]{0,}[?&](password|passwd)=[^[:space:]&]{1,}`
+- **Generic URL-scheme credentials**: `[a-z]{1,20}://[^[:space:]?#]{0,}[?&](password|passwd)=[^[:space:]&]{1,}`
 
 ## Quoted-assignment and env-assignment patterns (case-insensitive — `-i` mandatory)
 

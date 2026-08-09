@@ -6,78 +6,22 @@ effort: max
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Write(.claude/skill-audit-*) Write(~/.claude/skill-audit-reports/**) Glob Grep WebFetch AskUserQuestion Agent advisor Bash(grep *) Bash(wc *) Bash(find . *) Bash(ls *) Bash(stat *) Bash(awk *) Bash(sed *) Bash(jq *) Bash(test *) Bash([ *) Bash(shasum *) Bash(sha256sum *) Bash(cut *) Bash(head *) Bash(tail *) Bash(sort *) Bash(printf *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv ${CLAUDE_SKILL_DIR}/cache/*) Bash(mv .claude/skill-audit-*) Bash(mv ~/.claude/skill-audit-reports/*) Bash(echo *)
+allowed-tools: Read Write(~/.claude/skills/jr-skill-audit/cache/**) Write(.claude/skill-audit-*) Write(~/.claude/skill-audit-reports/**) Glob Grep WebFetch AskUserQuestion Agent advisor Bash(grep *) Bash(wc *) Bash(ls *) Bash(jq *) Bash([ *) Bash(head *) Bash(date *) Bash(basename *) Bash(dirname *) Bash(command -v *) Bash(realpath *) Bash(git -C * check-ignore *) Bash(git -C * rev-parse *) Bash(git -C * ls-files *) Bash(gh api repos/anthropics/claude-code/contents/CHANGELOG.md *) Bash(base64 *) Bash(mkdir -p *) Bash(mv ${CLAUDE_SKILL_DIR}/cache/*) Bash(mv .claude/skill-audit-*) Bash(mv ~/.claude/skill-audit-reports/*)
 disallowed-tools: Edit
 ---
 
 <!-- Frontmatter rationale (model/effort/allowed-tools/disallowed-tools): see
      docs/skill-anatomy.md "Grant and model rationale, by skill" -> /jr-skill-audit. Read it before
-     changing any frontmatter field here. -->
+     changing any frontmatter field here.
+     `effort: max` is PINNED, downstream effects: Phase 2, "No effort-adaptive overlay".
+     `allowed-tools` is minimised to what the body and its `protocols/*.md` actually issue; 12
+     unexercised grants were removed. The two `[` sites are `protocols/personal-project-scope.md:10`
+     (scope predicate) and `protocols/plugin-scope.md:27` (repo-root guard). Do not re-add a grant without
+     a body site needing it: sed/awk in particular reopen the file-mutation path `disallowed-tools: Edit` closes. -->
 
-<!-- Dependencies:
-  Required agent types (repo-local native `.claude/agents/`, no plugin):
-    - jr-reviewer  — reviewer agents (Phase 2); .claude/agents/jr-reviewer.md installed at ~/.claude/agents/
-                     (see README install), spawned via the Agent tool WITHOUT `name:` (see shared/subagent-reporting.md Spawn rule)
-  Required CLI:
-    - gh                                        — Phase 1 Track C: `gh api repos/anthropics/claude-code/contents/CHANGELOG.md`
-                                                  for changelog content (gh handles GitHub auth + redirects;
-                                                  preferred over WebFetch per WebFetch's own guidance for github.com URLs)
-  Files read:
-    - ~/.claude/skills/*/SKILL.md               — every repo-owned personal skill (gitignored / externally-maintained skills excluded — see Phase 1 Track B)
-    - <walked-dir>/.claude/skills/*/SKILL.md    — project-scoped skills, walked from $PWD up to repo root.
-                                                  An unfiltered run from a foreign repo that has its own skills audits
-                                                  these ALONE (auto-scope); elsewhere they are audited alongside personal.
-                                                  Pin with --scope-only=personal|project|both
-    - ~/.claude/skills/<name>/scripts/*.sh      — referenced helper scripts (existence + executable bit)
-    - ~/.claude/skills/<name>/templates/*       — referenced templates (existence)
-    - ~/.claude/plugins/marketplaces/<mp>/<source>/skills/*/SKILL.md
-                                                — git-tracked plugin skills, opt-in via --plugin=<name> (resolved from
-                                                  known_marketplaces.json + each marketplace's .claude-plugin/marketplace.json)
-    - ${CLAUDE_SKILL_DIR}/cache/refs.json       — cached Anthropic docs + changelog (Phase 1 Track C);
-                                                  refreshed on stale (>7 days) or --refresh-refs
-    - ${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md — Track B `--plugin` scope-resolution procedure;
-                                                  read at Phase 1 Track A ONLY when --plugin is set (conditional)
-    - ${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md — Track B personal/project scope-resolution procedure; read at Phase 1 Track A ONLY when --plugin is NOT set (complementary conditional to plugin-scope.md)
-    - ${CLAUDE_SKILL_DIR}/protocols/phase7-report.md — Phase 7 findings-report template; read at Phase 1 Track A (unconditional, hard-fail + smoke-parse)
-    - ${CLAUDE_SKILL_DIR}/protocols/finding-validation.md — Phase 3 step 1 + step 2 bodies (file containment,
-                                                  codeExcerpt sanity-check, source-citation validation); read at
-                                                  Phase 1 Track A (unconditional, hard-fail + smoke-parse)
-    - ${CLAUDE_SKILL_DIR}/protocols/report-write.md — Phase 7 --report archival write procedure; read at Phase 1 Track A ONLY when --report/--report-path is set (conditional, hard-fail + smoke-parse)
-    - ${CLAUDE_SKILL_DIR}/edge-cases.md         — case→behavior reference table; loaded on demand (NOT Track-A-read)
-  Out of scope in v1: auto-fix (#15), Phase 8 follow-up issues (#16)
-  Shared protocol references (read at Phase 1 Track A; see ../shared/):
-    - shared/reviewer-boundaries.md             — severity rubric (`critical|high|medium|low`) + confidence
-                                                  levels (`certain|likely|speculative`); the dimension-ownership
-                                                  table is `/jr-audit`/`/jr-review`-specific and replaced inline below
-                                                  for skill-audit's seven dimensions
-    - shared/untrusted-input-defense.md         — passed verbatim into every reviewer prompt
-    - shared/display-protocol.md                — phase headers, timeline, silent-reviewers, compact tables
-    - shared/abort-markers.md                   — Phase 7 abortReason → marker mapping
-    - shared/advisor-criteria.md                — canonical advisor-call rules; passed to advisor-coverage-reviewer
-                                                  verbatim. Portable spec extracted from Anthropic's published
-                                                  advisor guidance (NOT from any user's personal CLAUDE.md, which
-                                                  would tie findings to whoever ran the skill last)
-    - shared/gitignore-enforcement.md           — passed to safety-protocols-reviewer so it can flag missing
-                                                  applications of the protocol in audited skills; ALSO applied
-                                                  lead-side at Phase 7 `### Save report` for the `--report` write
-    - shared/secret-scan-protocols.md           — passed to safety-protocols-reviewer to verify secret-scan tier semantics where applicable
-    - shared/claim-verification.md              — anti-hallucination doctrine; skill-audit's Track C + Phase 3
-                                                  source-validation are its reference Tier-2 implementation
-    - shared/phase1-track-a-protocol.md         — hard-fail guard algorithm + Canonical Anchor Table (self-reference)
-    - shared/model-override.md                  — --model=<tier> per-run subagent model override (Phase 2 spawns)
-    - shared/subagent-reporting.md              — Spawn rule (reviewers spawned WITHOUT `name:`, so their final
-                                                  response returns to the lead); subagent-facing block passed
-                                                  verbatim into every reviewer prompt; lead-side roll-call at Phase 3
-  Files written:
-    - ${CLAUDE_SKILL_DIR}/cache/refs.json       — Track C live-references cache (timestamp + URL → content map)
-    - <repo>/.claude/skill-audit-<date>.md      — --report archival report (project scope; inside the audited repo)
-    - ~/.claude/skill-audit-reports/skill-audit-<scope>-<date>.md — --report archival report (personal/both/plugin; outside any repo)
-  Required tools:
-    - Agent, AskUserQuestion, advisor
-    - Bash, Read, WebFetch, Glob, Grep, Write
-  Tools deliberately NOT used (unavailable to the lead, or a lossy channel — see ../shared/subagent-reporting.md):
-    - TaskCreate, TaskList, TaskGet, TaskUpdate, SendMessage
--->
+<!-- Dependency manifest (agent types, CLI, files read/written, shared-protocol inventory, tool
+     grants): see DEPENDENCIES.md. Design rationale behind the rules below: protocols/rationale.md.
+     Neither is read at runtime. Phase 1 Track A below is the authoritative read list. -->
 
 Audit Claude Code skill files (`SKILL.md`) for quality, 2026-feature alignment, and drift against the canonical `shared/*.md` protocols. Reviewers cite **live Anthropic documentation** (skills doc, env-vars doc, release notes) fetched at runtime so findings stay current as Claude Code ships new features. **Findings-only** — never modifies skill files. Complements `/jr-doctor`'s narrow factual drift checks (Group I) with opinionated, dimension-scoped review.
 
@@ -92,7 +36,7 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--auto-approve` — Skip the Phase 4 approval gate. Lists all findings in Phase 7 without filtering. Useful for CI / scripted reports. Skips the [Clarify] flow too — `clarify`-flagged findings render in their original tier with a `[CLARIFICATION SKIPPED — auto-approve]` qualifier.
 - `--refresh-refs` — Force a fresh Phase 1 Track C fetch even if `cache/refs.json` is within its 7-day TTL. Use after Anthropic publishes a release that adds substitution variables, frontmatter fields, or skill features.
 - `--model=<tier>` — Override the model for **every subagent spawned this run** (`sonnet|opus|haiku|fable`); nested spawns inherit it. Does NOT change the lead (frontmatter applies before argument parsing — run `/model <tier>` first for a uniform run). Compatible with all other flags. Canonical semantics: `../shared/model-override.md`.
-- `--report` — Also write the rendered Phase 7 report to an archival markdown file (opt-in; default is console-only). Path is chosen by `effectiveScope` (canonical: `protocols/report-write.md`): **project** scope writes to the audited repo's `<repo-root>/.claude/skill-audit-<date>.md`; **personal**/**both** and **`--plugin`** runs write to `~/.claude/skill-audit-reports/skill-audit-<scope>-<date>.md` (outside any repo). Personal/both/plugin writes are prompt-free; a project-scope write is prompt-free only from the repo root — from a subdirectory Claude Code prompts once, and under `--auto-approve`/headless it is skipped (non-fatal) unless you add `Write(/.claude/**)` to your project/user settings. A write failure never aborts the run (the console report is the record). Applies `shared/gitignore-enforcement.md` (advisory) when the resolved path lands inside a git repo.
+- `--report` — Also write the rendered Phase 7 report to an archival markdown file (opt-in; default is console-only). Path is chosen by `effectiveScope` (canonical: `protocols/report-write.md`): **project** scope writes to the audited repo's `<repo-root>/.claude/skill-audit-<date>.md`; **personal**/**both** and **`--plugin`** runs write to `~/.claude/skill-audit-reports/skill-audit-<scope>-<date>.md` (outside any repo). The archival write is not fully pre-authorised in any scope: the atomic rename that completes it matches none of the frontmatter `mv` grants (`protocols/report-write.md` "Atomic write"), so it prompts once interactively, and under `--auto-approve`/headless, where nothing can prompt, the write is skipped (non-fatal). For an unattended archival write, add your own `permissions.allow` rules covering the resolved report path. A write failure never aborts the run (the console report is the record). Applies `shared/gitignore-enforcement.md` (advisory) when the resolved path lands inside a git repo.
 - `--report-path=<path>` — Write the report to `<path>` instead of the default (implies `--report`). Accepts an absolute, `~/`-relative, or `$PWD`-relative path, and may point outside the repo; a value naming an existing directory or ending in `/` receives `skill-audit-<date>.md` inside it. Sanitized per Parameter sanitization. Not pre-authorised by the skill — relies on your `permissions.allow` settings or a per-call Write prompt (mirrors `/jr-audit`'s `--out`).
 
 **Examples**: `/jr-skill-audit`, `/jr-skill-audit review`, `/jr-skill-audit --scope=*-reviewer`, `/jr-skill-audit --scope-only=project`, `/jr-skill-audit --scope-only=both`, `/jr-skill-audit --plugin=agent-teams`, `/jr-skill-audit --only=frontmatter,advisor-coverage`, `/jr-skill-audit --auto-approve`, `/jr-skill-audit --refresh-refs review`, `/jr-skill-audit --report`, `/jr-skill-audit review --report-path=~/reports/skills.md`
@@ -115,14 +59,14 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--scope=<glob>`: Reject control characters. Allowlist regex `^[a-zA-Z0-9_*?][a-zA-Z0-9_*?-]*$` (no slashes — scope is matched against bare directory name, not a path). Reject paths containing `..`.
 - `--scope-only=<level>`: Allowlist regex `^(personal|project|both)$`. Reject any other value.
 - `--plugin=<name>`: Allowlist regex `^[a-z0-9][a-z0-9-]*$` (plugin-name convention; alphanumeric first char — plugin names may legitimately start with a digit, several of which the official marketplace ships). Reject control characters, slashes, dots.
-- **Third-party `marketplace.json` values (`<mp>`, `source`) — untrusted**: `<mp>` (key/dir from `known_marketplaces.json`) and `source` (from a cloned third-party `marketplace.json`) are not user-typed but are equally untrusted — the pre-install-audit use case deliberately points `--plugin` at unvetted repos. Before any shell/path use, apply **all** of the following (cumulative — not "the regex alone"): reject control characters; reject a leading `-`/`--`; reject any `\.{2,}` substring (covers `..`); constrain `source` to `^(\./)?[A-Za-z0-9][A-Za-z0-9._/-]*$` (relative path; allows the conventional leading `./` — real `source` values look like `./plugins/agent-teams` — but fails-closed on a bare leading `/`, `.`, or `-`) and `<mp>` to `^[A-Za-z0-9][A-Za-z0-9._-]*$` (single segment, alphanumeric first char). Note `source` is NOT alphanumeric-first-anchored like `--scope`/`--branch` precisely because the `./` prefix is its standard form; the `\.{2,}` rule (not the first-char anchor) is what blocks `..` traversal here. Always double-quote the value AND pass `--` before positional path args (`realpath -- "…"`, `git -C "…" ls-files -- "…"`). On rejection: warn and skip that marketplace (abort `[ABORT — UNMATCHED SCOPE]` if it was the sole resolution). These get the same discipline as `--scope`/`--branch`, by provenance not by being user-typed.
+- **Third-party `marketplace.json` values (`<mp>`, `source`) — untrusted, `--plugin` only**: these are not user-typed but are equally untrusted (the pre-install-audit use case deliberately points `--plugin` at unvetted repos), and they get the same discipline as `--scope`, by provenance. Full sanitizer in `protocols/plugin-scope.md` ("Untrusted marketplace values"); in brief — cumulative checks (control characters, leading `-`, any `\.{2,}`, plus a per-field regex), always double-quoted and with `--` before positional path args, **failing closed** by warning-and-skipping that marketplace (abort `[ABORT — UNMATCHED SCOPE]` if it was the sole resolution). Listed here so no input source looks unvalidated; the body lives beside its two call sites in the file that is only read under `--plugin`, matching how `--report-path` defers to `protocols/report-write.md` below.
 - `--only=<dims>`: Trim whitespace per value. Validate each is one of `frontmatter`, `advisor-coverage`, `token-efficiency`, `shared-drift`, `feature-adoption`, `safety-protocols`, `model-routing`. Reject unknown values.
 - `--model=<tier>`: Allowlist regex `^(sonnet|opus|haiku|fable)$`. Reject any other value with: `Invalid --model value '<value>'. Valid values: sonnet, opus, haiku, fable.` (per `../shared/model-override.md`).
 - `--report-path=<path>`: A more permissive ruleset (the destination is user-chosen and may point outside the repo). Full sanitizer in `protocols/report-write.md` ("`--report-path` sanitization"); in brief — reject control characters and any shell/glob-active character (a backtick, or any of `$ \ " ' ; | & < > ( ) { } * ? [ ] !`) with `Invalid --report-path: unsupported character.`; expand a leading `~`/`~/` to `$HOME` by string-prefix replacement; resolve a non-absolute result against `$PWD`; permit `..`; hand the resolved absolute path (double-quoted in any shell) to Write. Mirrors `/jr-audit`'s `--out` sanitizer.
 
 ### Model requirements
 
-- **Reviewer agents** (Phase 2): Spawn with `model: "opus"` (or the `--model` override when set — `../shared/model-override.md`). Each reviewer receives the full `SKILL.md` content, the inline dimension scope, the `shared/untrusted-input-defense.md` block verbatim, and the **per-dimension reference excerpt** from Track C (see Phase 2). Reviewers do **not** receive the live skill's runtime context — they read the file as a specification document, not as executable behavior.
+- **Reviewer agents** (Phase 2): Spawn with `model: "opus"` for `advisor-coverage`, `token-efficiency`, `feature-adoption`, `safety-protocols`, `model-routing` and `shared-drift`; **`model: "sonnet"` for `frontmatter` alone**, whose work is genuinely mechanical (field validation against a doc table). `shared-drift` is on `opus` because its charter (dimension table below) includes recognising **inline duplicates** of canonical prose and judging where a shared file *applies* — semantic comparison across two documents, not anchor-substring presence. **The 25%-rejection escalation does NOT guard this tier split**: Phase 3 step 4 counts only genuine rejections among findings a reviewer actually *reported*, whereas an under-powered tier fails as false negatives that never enter that numerator. If you lower a dimension's tier, verify it by differential (re-run at `--model=opus` and compare finding counts), not by watching the rejection rate. A `--model` override, when set, replaces the tier for **every** reviewer regardless of dimension (`../shared/model-override.md`). Each reviewer receives the full `SKILL.md` content, the inline dimension scope, the `shared/untrusted-input-defense.md` block verbatim, the severity/confidence rubric sections of `shared/reviewer-boundaries.md` verbatim, and the **per-dimension reference excerpt** from Track C (see Phase 2). Reviewers do **not** receive the live skill's runtime context — they read the file as a specification document, not as executable behavior.
 - **All other phases**: Default model is fine — discovery, dedup, reporting are mechanical. Any agent spawned in these phases also honors a `--model` override (the override is total, not premium-sites-only).
 
 ## Display protocol
@@ -154,9 +98,9 @@ Read **all** shared files in parallel using multiple Read tool calls in a single
 
 **Skill-local protocol files (conditional — exactly one per run)**: when `--plugin=<name>` is set, also Read `${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md` into lead context (parallel with the shared files above) and apply the same hard-fail + non-empty + smoke-parse discipline — abort with `[ABORT — SHARED FILE MISSING]` if it is absent, empty, or fails its anchors `Locate the marketplace` AND `Enumerate git-tracked skills` (case-sensitive `grep -F`). When `--plugin` is NOT set, Read `${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md` instead (same discipline; anchors `Scope roots` AND `Gitignore exclusion`) — the two are mutually exclusive, so exactly one is read per run (mirrors `/jr-review`'s conditional `convergence-protocol.md` read under `--converge`).
 
-**Skill-local phase-body files (unconditional)**: Read BOTH of the following into lead context (parallel with the shared files above) under the same hard-fail + non-empty + smoke-parse discipline. Abort with `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if either is absent, empty, or fails its anchors (case-sensitive `grep -F`):
-- `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` — anchors `Findings Report` AND `Summary: N findings across M skills`. Holds the Phase 7 findings-report template, rendered at Phase 7.
-- `${CLAUDE_SKILL_DIR}/protocols/finding-validation.md` — anchors `Contain before opening` AND `Source-citation validation`. Holds the Phase 3 step 1 + step 2 bodies (`file` containment, `codeExcerpt` sanity-check, source-citation validation), applied at Phase 3. Both are unconditional because Phase 3 and Phase 7 run on every non-aborting run.
+**Skill-local phase-body files — body load deferred to point of use, NOT read at Track A.** Each is read at the phase that applies it, under the same hard-fail + non-empty + smoke-parse discipline (abort `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if absent, empty, or failing its anchors, case-sensitive `grep -F`). Deferring matches how `report-write.md`, `plugin-scope.md` and `shadow-detection.md` are already handled. What is deferred is the **body load**; one of the two also carries a Phase 1 presence check that costs no context, per its entry below.
+- `${CLAUDE_SKILL_DIR}/protocols/finding-validation.md` — anchors `Contain before opening` AND `Source-citation validation`. Read **at Phase 3, before step 1**. Holds the step 1 + step 2 bodies (`file` containment, `codeExcerpt` sanity-check, source-citation validation). **No Phase 1 presence check, an accepted trade-off**: a missing or truncated copy surfaces *after* the reviewer swarm has been paid for, rather than before dispatch. That is the cost of the budget saving, and it is bounded: the abort is still a hard fail, so a corrupt file never degrades silently into a partial run.
+- `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` — anchors `Findings Report` AND `Summary: N findings across M skills`. Read **at Phase 7, before rendering**. Holds the findings-report template. **Presence IS verified here at Phase 1 Track A, WITHOUT loading the body** (grep-guard; the pattern `/jr-review` and `/jr-ship` already use for their deferred protocols): run `grep -Fq` for each of the two anchors above against the file. If either fails (file absent, empty, or the anchor missing: all three make `grep -Fq` exit non-zero), abort Phase 1 with `[ABORT — SHARED FILE MISSING]` (`abortReason="shared-file-missing"`), before any reviewer is dispatched. `grep` alone suffices, so no separate existence probe is needed. Use `grep -F`, **not** a line-anchored `grep -E`: the title line is indented inside that file's fenced template, so `^Findings Report` would never match; a plain substring match is safe here because its header deliberately does not restate its own anchors, so a body-stripped truncation cannot false-pass. Why this file does not take its sibling's trade-off: it is the **only** render path for the run's deliverable, so its failure mode is not late detection but **total loss**. Discovering it broken at Phase 7 has already bought seven `opus` reviewers plus Phase 3 validation and Phase 4 approval, and then renders nothing, with no second path to fall back on; under `--auto-approve` the run would end with nothing shown and nothing written. The Phase 7 Read still applies the full guard; this is a cheap early duplicate of it, not a replacement.
 
 **Skill-local report-write file (conditional — only when `--report` or `--report-path` is set)**: Read `${CLAUDE_SKILL_DIR}/protocols/report-write.md` into lead context (parallel with the shared files above) under the same hard-fail + non-empty + smoke-parse discipline. Abort with `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if it is absent, empty, or fails its anchors `Derive the report path` AND `Atomic write` (case-sensitive `grep -F`). It holds the Phase 7 `--report` archival write procedure (path derivation, dynamic gitignore-enforcement, atomic write, non-fatal failure, and `--report-path` sanitization), applied at Phase 7 `### Save report`. Skip the read entirely when neither report flag is set (mirrors the conditional `plugin-scope.md` read above).
 
@@ -166,13 +110,13 @@ Enumerate skill directories matching the argument set, across personal and proje
 
 **Plugin scope** (when `--plugin=<name>` is set): short-circuit the personal/project discovery below and follow the plugin-scope resolution procedure (marketplace location, git-tracking enumeration, symlink/containment canonicalization, tagging) in `${CLAUDE_SKILL_DIR}/protocols/plugin-scope.md` — read into lead context at Phase 1 Track A **only when `--plugin` is set** (mirrors how `/jr-review` reads `convergence-protocol.md` only under `--converge`). On success it tags each surviving target `scope=plugin` and skips to "For each surviving target" below; the personal/project discovery, gitignore filtering, and shadow detection are all bypassed (plugin scope is exclusive).
 
-**Personal/project scope** (when `--plugin` is NOT set): follow the discovery procedure in `${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md` — read into lead context at Phase 1 Track A under the non-`--plugin` conditional (hard-fail + non-empty + smoke-parse anchors `Scope roots` AND `Gitignore exclusion`; abort `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if absent/empty/invalid; the complementary conditional to `plugin-scope.md`). It computes the personal + project scope roots (`realpath` probe, parent-walk with the under-`personalRoot` / equals-`personalRoot` skip conditions) plus the auto-scope default (project-only for an unfiltered run from a git repo other than the personal skills repo that has skills of its own; `both` everywhere else — including the skills repo, where project scope is empty, so that run is unchanged), enumerates and dedupes SKILL.md candidates tagged `scope=personal|project`, applies the argument-set filter then the scope filter (with the cross-scope conflict probe in between), resolves the bare positional when one was provided (0 → "Available skills" abort; 1 → audit; ≥ 2 → audit all), drops gitignored (externally-maintained) skills per scope, then applies the auto-narrow fallback — returning the surviving target set plus `effectiveScope`, `autoNarrowed`, `autoNarrowFallbackFired`, and `excludedCandidates` (consumed by the Phase 1 `Scope:` line and its fallback variant, the Empty-discovery guard, and the Phase 7 `Roots:` line). The bare-positional-gitignored abort and the silent `--scope`/no-filter exclusion-with-listing both live in that protocol.
+**Personal/project scope** (when `--plugin` is NOT set): follow the discovery procedure in `${CLAUDE_SKILL_DIR}/protocols/personal-project-scope.md` — read into lead context at Phase 1 Track A under the non-`--plugin` conditional (hard-fail + non-empty + smoke-parse anchors `Scope roots` AND `Gitignore exclusion`; abort `[ABORT — SHARED FILE MISSING]` per `../shared/abort-markers.md` if absent/empty/invalid; the complementary conditional to `plugin-scope.md`). It computes the scope roots and the auto-scope default, enumerates and tags SKILL.md candidates, applies the argument-set then scope filters (cross-scope conflict probe between), resolves a bare positional, drops gitignored skills per scope, and applies the auto-narrow fallback. It returns the surviving target set plus `effectiveScope`, `autoNarrowed`, `autoNarrowFallbackFired`, `excludedCandidates`, and the canonicalized roots — consumed by the `Scope:` line, the Empty-discovery guard, the Phase 7 `Roots:` line, and Phase 3 step 1a's containment.
 
 For each surviving target, read the `SKILL.md` plus enumerate `<skill>/scripts/*.sh` and `<skill>/templates/*` as supplementary inputs (existence + executable bit only — content reads only when a reviewer cites them). For plugin scope these paths are under the resolved `~/.claude/plugins/marketplaces/<mp>/<source>/`.
 
 **Empty-discovery guard**: if zero skills resolve (e.g., `--scope=foo*` matches nothing, `--scope-only=project` from a dir with no `.claude/skills/` in the walk, or `--plugin=<name>` whose marketplace is non-git or whose `<source>/skills/` has no tracked SKILL.md), abort with `[ABORT — UNMATCHED SCOPE]` per the canonical mapping. The abort message includes the active `--scope-only`, `--plugin`, or `--scope` value (if set) so the user can correct or drop the argument and retry — a mistyped glob must report the glob that matched nothing, not a scope diagnosis. An auto-scope narrowing can never reach this guard with candidates still standing (the auto-narrow fallback in `protocols/personal-project-scope.md` un-narrows first), so reaching it on a **fully unfiltered run** — no `--scope-only`, no `--plugin`, no `--scope`, no bare positional — means nothing survived in either scope; say that, rather than naming an argument the user never passed.
 
-**Report the cause, not just the absence.** On an unfiltered run the dominant way to arrive here is not that no skills exist: it is that every candidate was dropped as gitignored (the fallback restores personal, its step 2 excludes them, and the set empties again). The `Excluded (gitignored):` segment that would explain this prints only in the discovery summary after all tracks, so it is unreachable from this abort. On that fully-unfiltered run only, branch on `excludedCandidates` (returned by `protocols/personal-project-scope.md`), keeping `abortReason=unmatched-scope` either way (the canonical mapping in `../shared/abort-markers.md` recognises no other value here, and an unrecognised one renders `[ABORT — UNLABELED]` as a contract violation). With any filter present the argument-naming rule above still owns the message, and these two cases stop being exhaustive: `--scope=foo*` can match nothing having excluded nothing, so a count of 0 would no longer mean the enumeration was empty.
+**Report the cause, not just the absence.** On a **fully-unfiltered** run only, branch on `excludedCandidates` (returned by `protocols/personal-project-scope.md`), keeping `abortReason="unmatched-scope"` on both branches. With any filter present the argument-naming rule above owns the message instead. Rationale: `protocols/rationale.md` "Empty-discovery guard".
 - **Excluded count > 0**: name them, e.g. `Nothing auditable: N skill(s) found but all excluded as gitignored (externally maintained): <names with [personal]/[project] tags>.` Externally-maintained skills are not repo-owned, so this is a scope outcome the user can act on, not a missing-file error.
 - **Excluded count == 0**: the enumeration really was empty; keep the flat "nothing is auditable in either scope" wording.
 
@@ -180,14 +124,18 @@ For each surviving target, read the `SKILL.md` plus enumerate `<skill>/scripts/*
 
 Reviewers cite live documentation so findings stay current as Claude Code ships features. The cache lives at `${CLAUDE_SKILL_DIR}/cache/refs.json` with a 7-day TTL.
 
-> **Doctrine anchor**: this Track C live-references cache plus the Phase 3 step 2 source-citation validation are the reference **Tier 2** implementation of `../shared/claim-verification.md` — fetching authoritative sources (here, `gh api` raw changelog + WebFetch docs) and refusing to surface a finding whose cited source cannot be confirmed. verification is always-on for `/jr-skill-audit` with no opt-out (active verification is its whole purpose; `--no-verify-claims` is not offered here). The doctrine's outcomes map as: source key present in `refs.json` with `ok:true` (or a confirmed `changelog:`/shared-file line) → `confirmed`; `[REJECTED — citation broken]` → `refuted`; `ACTION REQUIRED` (source not in cache, missing, or an off-target `<skill>/SKILL.md` citation naming a sibling or other non-target skill) → `unverifiable`, routed to the user rather than silently dropped.
+**Apply `shared/gitignore-enforcement.md` to the cache path** (advisory, no mutation — `Edit` is disallowed) **on entry to this track, before the Refresh logic branches**, so both arms are covered. `cache/refs.json` is the run's **validation oracle**, not an output artifact, so a committed or poisoned copy silently governs which citations pass (`protocols/rationale.md` "Track C cache"). That risk is live on the within-TTL arm, which *loads* the cache without rewriting it, so the probe cannot sit on the refresh arm alone. Let `cacheRepo=$(git -C "${CLAUDE_SKILL_DIR}" rev-parse --show-toplevel 2>/dev/null)`; if non-empty, with `rel` the cache path relative to it. **Anchor `-C` on the skill directory, never on `cache/`**: `cache/` does not exist until the Refresh procedure's `mkdir -p` (step 1) and this probe deliberately precedes that branch, so `git -C` on it exits 128 with empty output, leaves `cacheRepo` empty and silently skips **both** advisories, on a first run and on every fresh clone, exactly when the advice matters most. `${CLAUDE_SKILL_DIR}` always exists, and both checks below take the cache path as an argument, so neither needs it on disk (`ls-files` and `check-ignore --no-index` answer for paths that do not exist yet).
+- **Tracked check** — `git -C "$cacheRepo" ls-files --error-unmatch "$rel"`. Exit 0 → **warn** that the cache is committed and a stale copy governs validation. Do NOT untrack.
+- **Ignored check** — `git -C "$cacheRepo" check-ignore -q --no-index "$rel"`. Non-zero → **inform**: add `<skill-dir-relative>/cache/` to `.gitignore` (one glob covers the JSON and its `.tmp`). **`--no-index` is mandatory**: without it `check-ignore` skips *tracked* files and exits non-zero whatever the rules say — i.e. it fails on exactly the file this check exists to catch.
+
+> **Doctrine anchor**: this cache plus Phase 3 step 2 are the reference **Tier 2** implementation of `../shared/claim-verification.md`. Always-on, no opt-out. Outcome mapping: cached key with `ok:true` (or a confirmed `changelog:`/shared-file line) → `confirmed`; `[REJECTED — citation broken]` → `refuted` (dropped); source missing, uncached, or outside the finding's own skill directory → **`unverifiable`** — capped to `speculative` but **still rendered** in its original tier tagged `[unverified — needs confirmation]`, with a note in `Audit integrity`. Unverifiable ≠ dropped; see `protocols/finding-validation.md` "What a routing actually does to the finding".
 
 **Cache schema**:
 
 ```json
 {
   "fetchedAt": "2026-05-09T12:34:56Z",
-  "refsSpecVersion": 2,
+  "refsSpecVersion": 3,
   "refs": {
     "skills-doc":     { "url": "https://code.claude.com/docs/en/skills",     "content": "...", "ok": true },
     "env-vars-doc":   { "url": "https://code.claude.com/docs/en/env-vars",   "content": "...", "ok": true },
@@ -198,24 +146,39 @@ Reviewers cite live documentation so findings stay current as Claude Code ships 
 ```
 
 **Refresh logic**:
-1. If `--refresh-refs` is set OR the cache file is missing OR `fetchedAt` is older than 7 days OR the cache is **missing any ref key the schema above declares** OR its `refsSpecVersion` differs from the current spec version (**`2`** — bump this integer, here and in the schema, whenever you add/remove a ref key or change a fetch prompt in step 2) → refresh. A ref-set or fetch-prompt change therefore self-heals on the next run instead of silently serving a stale/incomplete set within the TTL.
+1. If `--refresh-refs` is set OR the cache file is missing OR `fetchedAt` is older than 7 days OR the cache is **missing any ref key the schema above declares** OR **any declared key fails the content-shape assertion in step 4** OR its `refsSpecVersion` differs from the current spec version (**`3`** — bump this integer, here and in the schema, whenever you add/remove a ref key or change a fetch prompt in step 2) → refresh. A ref-set or fetch-prompt change therefore self-heals on the next run instead of silently serving a stale/incomplete set within the TTL.
 2. Otherwise → load from cache silently.
 
 **Refresh procedure** (best-effort; partial-success is allowed):
 1. `mkdir -p "${CLAUDE_SKILL_DIR}/cache"`.
-2. WebFetch `https://code.claude.com/docs/en/skills`, `https://code.claude.com/docs/en/env-vars`, and `https://code.claude.com/docs/en/sub-agents`. Each prompt asks for specific sections (WebFetch summarizes — see the limitation note below): skills doc → the **frontmatter reference table** + **substitution variables table** + the **`Skill content lifecycle`** + the **500-line tip**; env-vars → the **named env-var table**, explicitly including the subagent controls (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`, `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`, `CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`), not a vague 'full content' ask; sub-agents → the **supported-frontmatter-fields table** + the **model-resolution order** + the **available-tools / background-default** rules + the **concurrency / session / spawn-depth caps**.
+2. **Fetch the `.md` raw variant of each doc, not the HTML page**: `https://code.claude.com/docs/en/skills.md`, `…/env-vars.md`, `…/sub-agents.md`. The raw variant returns the full document instead of a small-model summary, which is what makes the content trustworthy (see the limitation note below for why the previous prompt-targeted approach was abandoned). **Record the canonical URL without the `.md` suffix as the `url` key** in `refs.json` — Phase 3 step 2's URL branch matches on that key, so the suffix must not leak into it.
+
+   Sections that must survive, and are asserted in step 4: skills doc → **frontmatter reference table** + **substitution variables table** + **`Skill content lifecycle`** + the **500-line tip**; env-vars → the **complete named env-var table**, including the subagent controls (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`, `CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, `CLAUDE_EFFORT`) — note `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` was **removed in v2.1.224 and is now a no-op**, so it is deliberately not required here and a reviewer should flag any audited skill still relying on it; sub-agents → **supported-frontmatter-fields table** + **model-resolution order** + **available-tools / background-default** rules + **concurrency / spawn-depth caps**.
 3. `gh api repos/anthropics/claude-code/contents/CHANGELOG.md --jq .content | base64 -d | head -c 60000` for the latest changelog. (gh is preferred over WebFetch for github.com URLs per WebFetch's own guidance.) Trim to 60 KB so the cache stays bounded; the most recent ~30 versions easily fit.
-4. Write `cache/refs.json` atomically (write to `cache/refs.json.tmp`, then `mv`), including the current `refsSpecVersion`. Set `ok: false` for any source that failed and surface the failure in the Phase 7 report under "Reference fetch status".
+4. **Assert content shape BEFORE writing** (mandatory — a confidently-wrong cache is more dangerous than a missing one, see the limitation note). For each fetched source, require every substring below to be present (case-sensitive, `grep -F`); on failure set that source's `ok: false` and `content: ""` rather than caching a truncated or summarised fetch:
 
-**Known limitation — WebFetch summarization**: WebFetch returns AI-summarized content extracted by a small model from the prompt, not raw HTML. Citation validation by URL key works regardless (the URL is in the cache or it isn't), but `feature-adoption-reviewer`'s reasoning over content fidelity has a ceiling — if the small model summarized away a feature mention, the reviewer won't see it. The `gh api` path for the changelog returns raw markdown without this limitation. For the skills/env-vars/sub-agents docs, the prompt asks for the specific tables/sections, which works around most of the lossy-summarization risk in practice.
+   | Key | Required substrings |
+   |---|---|
+   | `skills-doc` | `\$ARGUMENTS` AND `CLAUDE_SKILL_DIR` AND `Skill content lifecycle` AND `disable-model-invocation` |
+   | `env-vars-doc` | `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` AND `CLAUDE_CODE_SUBAGENT_MODEL` AND `CLAUDE_EFFORT` |
+   | `sub-agents-doc` | `permissionMode` AND `maxTurns` AND `initialPrompt` |
+   | `claude-code-changelog` | `## 2.1.` |
 
-**Fallback to stale cache**: if the refresh fails entirely (no network, gh unauth, etc.) AND a previous `cache/refs.json` exists, use it and prepend `[STALE: cache from <fetchedAt>]` to every reviewer prompt that consumes it. Reviewers must add `[Source: cached YYYY-MM-DD]` to any finding citing a source from the stale cache so the user can judge freshness.
+   `ok: true` over content that fails these anchors is the failure mode; neither the flag nor Phase 3's URL-key check detects it.
 
-**Fallback to no cache**: if the refresh fails AND no prior cache exists, mark `feature-adoption-reviewer` as **skipped** in Phase 2 (its findings would be ungrounded), warn in the Phase 7 report (`Reference fetch failed and no prior cache exists. feature-adoption-reviewer skipped.`), and continue with the other five dimensions. Do NOT abort the run — the other dimensions don't need live refs.
+5. Write `cache/refs.json` atomically (write to `cache/refs.json.tmp`, then `mv`), including the current `refsSpecVersion`. Surface any `ok: false` source in the Phase 7 report under "Reference fetch status".
+
+**Known limitation — WebFetch summarization. Prompt-targeting is NOT a mitigation**: WebFetch on an HTML page returns a small-model summary, not raw markup, and naming the tables to preserve does not reliably keep them (measured and refuted — `protocols/rationale.md` "Track C cache"). Hence the `.md` raw variant (step 2) and the fail-closed content assertion (step 4). The `gh api` changelog path returns raw markdown and never had this problem.
+
+**Fallback to stale cache**: if the refresh fails entirely (no network, gh unauth, etc.) AND a previous `cache/refs.json` exists, use it and prepend `[STALE: cache from <fetchedAt>]` to every reviewer prompt that consumes it. Reviewers must add `[Source: cached YYYY-MM-DD]` to any finding citing a source from the stale cache so the user can judge freshness. **Re-apply the step-4 content assertions to the stale content before use**, and treat any key that fails them as `ok: false` for this run, surfacing it under "Reference fetch status" exactly as step 5 does. `[STALE: …]` is an *age* marker, not a *shape* one, and a failed step-4 assertion is itself one of the triggers that sent this run to a refresh (step 1), so the key that landed here is frequently the unusable one; without the re-check a reviewer receives empty content and reasons over nothing.
+
+**Fallback to no cache**: if the refresh fails AND no prior cache exists, mark `feature-adoption-reviewer` as **skipped** in Phase 2 (its findings would be ungrounded), warn in the Phase 7 report (`Reference fetch failed and no prior cache exists. feature-adoption-reviewer skipped.`), and continue with the other **six** dimensions. Do NOT abort the run — the other dimensions don't need live refs.
+
+**Same rule per key, governing EVERY load path (within-TTL, stale-fallback, and post-refresh alike), not just the no-cache fallback**: `ok: false` is not usable content, so **skip** every dimension whose `Receives` cell below names that key (a failed `skills-doc` skips three), report each in `Audit integrity` as skipped for a missing reference, and count it in `refSkippedCount`, which qualifies the Phase 7 summary line (`protocols/phase7-report.md`) without changing the exit code. These skips compose with `--only=`, so they can empty the reviewer set outright; Phase 2's zero-dimension guard catches that. Rationale for making it path-independent: a missing cache is safe because the reviewer is skipped, whereas a confidently-wrong one is not, because the reviewer runs (`protocols/rationale.md` "Track C cache"), so the remedy has to attach to the key's usability, never to which branch loaded it.
 
 ### After all tracks complete
 
-**Shadow detection (lead-side synthesis)**: group the **enumerated** discovery candidates by directory basename — the set *before* the argument-set filter, the scope filter, **and gitignore exclusion**. A shadow is a property of the directory you are standing in, not of what you chose to audit, so grouping the surviving set would blind the check whenever a filter narrowed the run. **Gitignored candidates are deliberately included**: Claude Code's runtime does not consult `.gitignore`, so an externally-maintained personal skill still loads and still shadows a same-named project skill — the collision is real and renaming the project skill is actionable, even though that skill's own contents stay out of the audit. For each basename in BOTH scopes the lead synthesizes one `scope-resolution` finding (spec: the "Shadow detection" subsection below), which flows into Phase 3 alongside reviewer findings. It fires even when only one side is audited, anchoring on the personal SKILL.md, which stays readable either way.
+**Shadow detection (lead-side synthesis)**: group the **enumerated** discovery candidates by directory basename — the set *before* the argument-set filter, the scope filter, **and gitignore exclusion** (all three exclusions are deliberate; see `protocols/rationale.md` "Shadow detection"). For each basename present in BOTH scopes the lead synthesizes one `scope-resolution` finding (spec: the "Shadow detection" subsection below), which flows into Phase 3 alongside reviewer findings. It fires even when only one side is audited, anchoring on the personal SKILL.md.
 
 **Scope line** — the auto-scope default makes the same bare command audit different skills in different directories, so a run whose scope turned on `$PWD` MUST say so on its own line above the summary. Exactly one variant can fire (the fallback sets `autoNarrowed=false` at the same step it sets `autoNarrowFallbackFired=true`):
 
@@ -228,21 +191,26 @@ Both flags are set by `protocols/personal-project-scope.md` at "Resolve `effecti
 
 Print a one-line summary. Omit scope segments that are empty (e.g., a personal-only run drops the `project=` segment, and `Shadowed: none` is omitted when both scopes have zero overlap):
 ```
-Discovered N skill(s): personal=<p-list> project=<j-list>   |   Shadowed: <colliding-names>   |   Excluded (gitignored): <names with [personal]/[project] tags | "none">   |   M reviewer dimensions selected   |   Refs: <fresh|cached YYYY-MM-DD|partial (<missing-keys>)|stale|missing>
+Discovered N skill(s): personal=<p-list> project=<j-list>   |   Shadowed: <colliding-names>   |   Excluded (gitignored): <names with [personal]/[project] tags | "none">   |   M reviewer dimensions selected   |   Reviewer tier: <default (opus; sonnet for frontmatter) | Model override: <tier>>   |   Refs: <fresh|cached YYYY-MM-DD|partial (<missing-keys>)|stale|missing>
 ```
-For a `--plugin` run, render `Discovered N skill(s): plugin=<name> (skills: <s-list>)   |   M reviewer dimensions selected   |   Refs: <…>` instead — the `personal=`/`project=`/`Shadowed:` segments are bypassed.
 
-If a skill exceeds **2,000 lines**, warn before dispatch: huge skills cost reviewer-token budget and convergence-quality drops. Recommend the user narrow with `--only=<dims>` to focus on a single dimension first.
+**`Reviewer tier:` is mandatory, never omitted**, on this line and on the `--plugin` variant `Discovered N skill(s): plugin=<name> (skills: <s-list>)   |   M reviewer dimensions selected   |   Reviewer tier: <…>   |   Refs: <…>`, which bypasses only the `personal=`/`project=`/`Shadowed:` segments. With `--model` set it renders `Model override: <tier>` per `../shared/model-override.md`'s display rule; otherwise it names the default split. Without it a `--model=haiku` run is indistinguishable from a default one in its own header and in any `--report` archive.
+
+If a skill exceeds **60,000 characters** (`wc -c`, not `wc -l`), warn before dispatch: huge skills cost reviewer-token budget and review quality drops. Recommend the user narrow with `--only=<dims>` to focus on a single dimension first. Rationale: `protocols/rationale.md` "Token budget".
 
 ### Shadow detection (lead-side synthesis)
 
 When the Track-B grouping above yields a basename present in both scopes, the lead synthesizes the finding directly — no Phase 2 reviewer agent is involved. The finding routes through Phase 3 (sanity-check + dedup) and Phase 4 ([Clarify] flow) like any other finding.
 
-**Finding shape + rationale**: read `${CLAUDE_SKILL_DIR}/protocols/shadow-detection.md` on demand (only when a cross-scope collision is detected — it is reference material, NOT a Phase 1 Track A hard-fail read, mirroring `edge-cases.md`). It carries the exact `scope-resolution` finding shape (anchor field, `clarify: true`, `source` as a `cache/refs.json` key, `scope: personal` as the runtime winner) and the design rationale.
+**Finding shape + rationale**: read `${CLAUDE_SKILL_DIR}/protocols/shadow-detection.md` on demand (only when a cross-scope collision is detected — not a Phase 1 Track A read, since most runs never need it). It carries the exact `scope-resolution` finding shape (anchor field, `clarify: true`, `source` as a `cache/refs.json` key, `scope: personal` as the runtime winner) and the design rationale.
+
+**It IS guarded, unlike `edge-cases.md`.** Apply non-empty + smoke-parse at this read site — anchors `Finding shape` AND `scope-resolution` — aborting `[ABORT — SHARED FILE MISSING]` on failure. `edge-cases.md` is case→behavior reference; this file is the canonical shape of a finding the lead machine-emits into Phase 3 validation, so truncating it degrades that finding silently. Conditional loading rules it out of *Track A*, not out of a guard.
 
 ## Phase 2 — Spawn reviewer swarm
 
 Spawn each selected reviewer dimension as a `jr-reviewer` agent. Reviewers run **in parallel** within a single tool-use message.
+
+**Zero-dimension guard (mandatory, before the spawn).** `--only=` and Track C's per-key skips compose, so the surviving set can reach **zero** (`--only=frontmatter,token-efficiency` plus a failed `skills-doc`; `--only=feature-adoption` with no cache and no network). Zero reviewers is not a clean audit: **do not dispatch**. Skip to Phase 7, render the **zero-dimension summary form** in place of the base summary line, name every skipped dimension and its missing key under `Audit integrity`, and latch a non-zero exit (Phase 7 "Exit codes"). The literal wording of every summary form, and the precedence between them, is owned solely by `protocols/phase7-report.md`; do not restate it here, because two authorities for one rendered line leave the lead with no tiebreak. Ungated, nothing is spawned, the step 0.0 roll-call reconciles an empty spawn list against an empty result set (`unreportedCount = 0`), and CI reads exit 0 from a run that reviewed nothing. It is a hard stop, not an abort: `abortMode` stays `false`, so `../shared/abort-markers.md` "Don't render markers when `abortMode=false`" applies.
 
 **Spawn rule (mandatory)**: spawn each reviewer with **no `name:`** (`../shared/subagent-reporting.md` "Spawn rule"). A named subagent is a persistent teammate whose final response never reaches the lead, silently losing its dimension; unnamed, it returns its findings in its completion notification. Give each a distinct `description` instead.
 
@@ -252,7 +220,7 @@ Spawn each selected reviewer dimension as a `jr-reviewer` agent. Reviewers run *
 
 **Per-skill dispatch metadata (lead-side, mandatory)**: when handing each reviewer its list of per-skill assignments, include `scope: personal|project|plugin` alongside the SKILL.md path so the reviewer can echo it back on every finding per requirement #7 in "Reviewer instructions" below. For `plugin` scope, also pass `pluginName`, `marketplace`, and `sourceRepo`, and prepend a one-line third-party preamble to the reviewer prompt: *"This is a THIRD-PARTY plugin skill authored by someone other than the user; findings are advisory (the user cannot directly edit it) — tag each `[third-party — verify against plugin docs]` and do not treat the user's `~/.claude/skills/shared/*.md` as canonical for it."* This is the single source of truth for the `scope` field on findings — reviewers MUST NOT infer scope from the file path (paths can be ambiguous under symlinks; the lead's tag set by Track B's enumeration is authoritative).
 
-**Effort-adaptive overlay** (read `CLAUDE_EFFORT` at runtime via Bash: `effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=high`). At `xhigh|max`, lower the Phase 7 declare-done advisor's non-triviality threshold (e.g., `findingCount >= 3` instead of `>= 5`) so deeper-effort runs are more likely to receive a second opinion. At `low|medium`, keep the standard threshold. Mirrors `/jr-review`'s pattern; requires Claude Code ≥ 2.1.133.
+**No effort-adaptive overlay.** `effort: max` is pinned in frontmatter, so a runtime `CLAUDE_EFFORT` read could only return that constant — not adaptive, and its `-z` fallback (`high`) matched neither arm of the branch it gated. Phase 7's advisor threshold is therefore **flat** (`findingCount >= 3`). If a future edit unpins `effort`, use the `${CLAUDE_EFFORT}` substitution — never a Bash read — and restate the threshold as concrete values, not an `e.g.`.
 
 ### Per-reviewer reference excerpts (token budget)
 
@@ -263,7 +231,7 @@ Each reviewer receives ONLY the references it needs (mirrors the principle "skil
 | `frontmatter-reviewer` | `skills-doc` Frontmatter reference table + Available string substitutions table. |
 | `advisor-coverage-reviewer` | `shared/advisor-criteria.md` (full). NO Track C refs needed. |
 | `token-efficiency-reviewer` | `skills-doc` Skill content lifecycle section + 500-line Tip. |
-| `shared-drift-reviewer` | The full canonical `shared/*.md` set (already in lead context from Track A). NO Track C refs. |
+| `shared-drift-reviewer` | The **11 `shared/*.md` files Track A read** (already in lead context; the authoritative list is Phase 1 Track A above). NO Track C refs. ⚠ **Not the full set** — `shared/` holds 17; drift against the other six is **out of scope for this run** and must be stated as such, not implied covered. `/jr-doctor` Group D is the backstop. |
 | `feature-adoption-reviewer` | `skills-doc` (Frontmatter reference + Substitutions tables) + `sub-agents-doc` (subagent frontmatter / model-resolution / background-default / caps) + `env-vars-doc` (subagent + effort env vars) + `claude-code-changelog` (head ~30 versions). |
 | `safety-protocols-reviewer` | `shared/untrusted-input-defense.md` + `shared/gitignore-enforcement.md` + `shared/secret-scan-protocols.md` + `shared/subagent-reporting.md` (all already in lead context from Phase 1 Track A reads; gitignore-enforcement and secret-scan-protocols so it can flag missing gitignore-enforcement applications and verify secret-scan tier semantics, subagent-reporting for the spawn-correctness check). NO Track C refs. |
 | `model-routing-reviewer` | NO Track C refs — reasons over the audited skill's own phase descriptions + frontmatter `model`/`effort` fields (already in the full `SKILL.md` content every reviewer receives per Phase 2). |
@@ -272,47 +240,64 @@ Each reviewer receives ONLY the references it needs (mirrors the principle "skil
 
 | Dimension | Owns | Stays out of |
 |-----------|------|--------------|
-| `frontmatter-reviewer` | Required fields (`description` per [skills doc](https://code.claude.com/docs/en/skills)); allowed values for `effort` and `model` (verified against the live doc); contradictions (`disable-model-invocation: true` → `description` is NOT in context, making `when_to_use` and `paths` inert per the doc's invocation-control table); `description + when_to_use` exceeding the 1,536-character cap; missing `name` falling through to directory-name fallback when explicit naming would aid clarity. | Body content (token-efficiency dimension); model-tier appropriateness (model-routing dimension). |
+| `frontmatter-reviewer` | Required fields (`description` per [skills doc](https://code.claude.com/docs/en/skills)); allowed values for `effort` and `model` (verified against the live doc); contradictions (`disable-model-invocation: true` → `description` is NOT in context, making `when_to_use` and `paths` inert per the doc's invocation-control table); `description + when_to_use` exceeding the skill-listing cap — which is **`skillListingMaxDescChars`, user-configurable**, so report it as "exceeds the default" and never as a fixed breach; missing `name` falling through to directory-name fallback when explicit naming would aid clarity. **`model:` legality is not verifiable from the allotted refs** (the skills-doc delegates it to `model-config`, which is not a cached key) — own `effort` legality, and report `model:` as unverifiable rather than asserting it. | Body content (token-efficiency dimension); model-tier appropriateness (model-routing dimension). |
 | `advisor-coverage-reviewer` | `advisor()` call sites against `../shared/advisor-criteria.md`: substantive-edit boundaries, declare-done points, stuck-loop signals; gating quality (single-fire guards, conditional triggers based on finding count or skewed dimensions); placement (before substantive work, not after). Each finding MUST cite the violated rule by `shared/advisor-criteria.md:<line>`. | Other call sites' specific phrasing (token-efficiency dimension). |
 | `token-efficiency-reviewer` | Line count vs. live skills-doc 500-line tip; large inline blocks that should be `${CLAUDE_SKILL_DIR}/scripts/*` or `shared/*.md` extractions; per-phase prose density; redundant prose between phases; tables/code blocks that could collapse. **Skill content lifecycle** (the doc's section name): every line is a recurring token cost across the whole session — flag aggressively. | Frontmatter character cap (frontmatter dimension); model-tier cost (model-routing dimension). |
 | `shared-drift-reviewer` | Inline duplicates of `shared/*.md` content (every duplicate proves the shared/ pattern isn't doing its job); missing references where shared files apply (e.g., subagent prompt without `untrusted-input-defense.md` reference); smoke-parse substring presence at every Read site of a shared file. | Whether the shared file itself is the right design (architecture concern, out of scope here). |
-| `feature-adoption-reviewer` | 2026 substitutions used vs. **what the live skills-doc lists** (`CLAUDE_EFFORT`, `CLAUDE_SESSION_ID`, `CLAUDE_SKILL_DIR` — named bare, and `\$ARGUMENTS` backslash-escaped, so this cell is not itself substituted before the reviewer reads it; `$N` and `$name` need neither, being outside the substituted set); `allowed-tools` minimization (over-permissive grants like blanket `Bash(*)` without rationale); features adopted by Anthropic post-skill-creation that the skill could leverage (cross-reference the changelog). Every finding MUST cite the doc URL (`https://code.claude.com/docs/en/skills:<heading>`) or a changelog version (`changelog:<version>`). | Whether to add a feature at all if not present (advisor-coverage / token-efficiency may flag instead). |
-| `safety-protocols-reviewer` | Untrusted-input defense applied at **every** subagent prompt site (reviewer, implementer, simplifier, convergence, fresh-eyes); gitignore-enforcement applied at every `.claude/*` cache/audit-trail write site; secret-scan tier classification correctly referenced when applicable; explicit-consent gates on destructive operations (e.g., `git push --force`, `rm -rf`); abort markers used on irrecoverable failures; **subagent-spawn correctness** for any skill that spawns — read the skill's `protocols/*.md` and `scripts/` too, not only `SKILL.md`, since spawn sites and roll-calls are frequently extracted there, and confirm a roll-call or reporting-block is genuinely absent across all of them before flagging (canonical `../shared/subagent-reporting.md`): work-producing spawns carry no `name:` (a named one is a persistent teammate whose findings never reach the lead, issue #70), a lead-side roll-call consumes `UNREPORTED`, no `TaskCreate`/`TaskList`/`TaskGet`/`TaskUpdate`/`SendMessage` is granted or called, and the Subagent-facing block is passed verbatim into each spawn prompt. **Carve-out** (`clarify: true`, never a hard flag): a named spawn that is a documented capability self-test (a probe, not a work producer); a skill that by design substitutes per-call-site zero-return checks for a roll-call; and lead-only or findings-only skills lacking the relevant phase. | Specific finding text in shared files (shared-drift dimension); spawn `model:` tier (model-routing dimension). |
-| `model-routing-reviewer` | Model-tier appropriateness: frontmatter `model:` / `effort:` vs. the skill's actual workload — flag premium `opus` on a skill whose phases are predominantly mechanical (discovery / dedup / reporting / validation), or an under-powered tier on a heavy-reasoning skill; body-level subagent-spawn `model:` choices vs. the work each spawned agent does. Evidence is the skill's own phase descriptions; `source` cites `<skill>/SKILL.md:<line>` as a self-contradiction within the same skill. Set `clarify: true` when premium tier is a defensible headroom choice. Canonical good shape: `docs/skill-anatomy.md` "Grant and model rationale, by skill" → `/jr-skill-audit`. | Whether `model:` is a *legal enum value* (frontmatter dimension owns that); line-level prose cost (token-efficiency dimension). |
+| `feature-adoption-reviewer` | 2026 substitutions used vs. **what the live skills-doc lists** (the full substituted set per the live skills-doc table: `\$ARGUMENTS`, `\$ARGUMENTS[N]`, `$N`, `$name`, `CLAUDE_SESSION_ID`, `CLAUDE_EFFORT`, `CLAUDE_SKILL_DIR`, `CLAUDE_PROJECT_DIR` — the last four named bare here, `\$ARGUMENTS`/`\$ARGUMENTS[N]` backslash-escaped so this cell is not itself substituted before the reviewer reads it. `$N` and `$name` are **in** the substituted set and survive unescaped here only incidentally: a literal `N` is not a digit, and this skill declares no `arguments:` frontmatter. A reviewer MUST still flag a skill that uses `$0`/`$1` or a declared `$name`); `allowed-tools` minimization (over-permissive grants like blanket `Bash(*)` without rationale); features adopted by Anthropic post-skill-creation that the skill could leverage (cross-reference the changelog). Every finding MUST cite the doc URL (`https://code.claude.com/docs/en/skills:<heading>`) or a changelog version (`changelog:<version>`). | Whether to add a feature at all if not present (advisor-coverage / token-efficiency may flag instead). |
+| `safety-protocols-reviewer` | Untrusted-input defense at every subagent prompt site; gitignore-enforcement at every cache/audit-trail write site; secret-scan tier classification where applicable; explicit-consent gates on destructive operations; abort markers (and a mapped `abortReason`) on irrecoverable failures; **subagent-spawn correctness** — see the sub-section below the table. | Specific finding text in shared files (shared-drift dimension); spawn `model:` tier (model-routing dimension). |
+| `model-routing-reviewer` | Model-tier appropriateness: frontmatter `model:` / `effort:` vs. the skill's actual workload — flag premium `opus` on a skill whose phases are predominantly mechanical (discovery / dedup / reporting / validation), or an under-powered tier on a heavy-reasoning skill; body-level subagent-spawn `model:` choices vs. the work each spawned agent does. Evidence is the skill's own phase descriptions; `source` cites `<skill>/<path>:<line>` as a self-contradiction within the same skill. Set `clarify: true` when premium tier is a defensible headroom choice. Canonical good shape: `docs/skill-anatomy.md` "Grant and model rationale, by skill" → `/jr-skill-audit`. | Whether `model:` is a *legal enum value* (frontmatter dimension owns that); line-level prose cost (token-efficiency dimension). |
 | `scope-resolution` (lead-synthesized, not a reviewer) | Name collisions across personal and project scopes — emits one `medium`/`clarify:true` finding per colliding basename per the spec in "Shadow detection (lead-side synthesis)" above. Always fires when collisions exist (NOT filterable via `--only=` since it runs before reviewer dispatch). | Everything else; reviewer-dispatch dimensions own the rest. |
+
+### `safety-protocols-reviewer` — spawn-correctness sub-protocol
+
+Applies to any audited skill that spawns subagents; canonical `../shared/subagent-reporting.md`.
+
+**Read the skill's `protocols/*.md` and `scripts/` too, not only `SKILL.md`** — spawn sites and roll-calls are frequently extracted there. Confirm a roll-call or reporting block is genuinely absent **across all of them** before flagging. Check that:
+- work-producing spawns carry **no `name:`** (a named one is a persistent teammate whose findings never reach the lead, issue #70);
+- a lead-side roll-call **consumes** `UNREPORTED` — rendering it by name, latching a non-zero exit, and blocking every clean-result path;
+- no `TaskCreate`/`TaskList`/`TaskGet`/`TaskUpdate`/`SendMessage` is granted or called;
+- the Subagent-facing block is passed **verbatim** into each spawn prompt.
+
+**Carve-out** (`clarify: true`, never a hard flag): a named spawn that is a documented capability self-test (a probe, not a work producer); a skill that by design substitutes per-call-site zero-return checks for a roll-call; and lead-only or findings-only skills lacking the relevant phase.
 
 ### Reviewer instructions (passed to every dimension)
 
-Include this preamble verbatim in every reviewer prompt (after the `untrusted-input-defense.md` block):
+Include this preamble verbatim in every reviewer prompt, **after** the `untrusted-input-defense.md` block and the **"Severity calibration rubric" + "Confidence levels" sections of `../shared/reviewer-boundaries.md`, both passed verbatim**. Passing the rubric rather than naming the enums is what stops reviewers calibrating severity from training priors, and it keeps the preamble from forking the canonical's wording:
 
 ```
 You are reviewing a Claude Code SKILL.md file as a SPECIFICATION DOCUMENT. The file
 describes how a skill behaves at runtime, but you are NOT executing it — you are
 auditing the document for quality.
 
-Severity rubric (from shared/reviewer-boundaries.md): critical | high | medium | low
-Confidence: certain | likely | speculative.
+Apply the severity and confidence rubrics exactly as given in the
+shared/reviewer-boundaries.md sections reproduced above this preamble.
 
 Per-finding requirements:
-1. Cite file:line. The codeExcerpt MUST be 3 verbatim consecutive lines from the
-   file. The lead will re-read the cited range and reject mismatching findings.
+1. Cite file:line. The codeExcerpt MUST be **3 verbatim lines centered on `line` —
+   i.e. [line-1, line, line+1], clamped to [1, file-end]**. The lead re-reads exactly
+   that window, so a 3-line excerpt anchored elsewhere (starting AT the cited line,
+   say) fails validation even when every line is verbatim.
 2. **Cite an authoritative source for every claim**. Primary (the `source` field):
    - `https://code.claude.com/docs/en/skills:<heading>` (or env-vars / sub-agents doc)
    - `changelog:<version>` (e.g., `changelog:2.1.138`)
    - `~/.claude/skills/shared/<file>:<line>` (canonical shared protocol)
-   - `<skill>/SKILL.md:<line>` only when citing a self-contradiction within the SAME
-     audited skill (the `file` and `source` reference the same SKILL.md).
+   - `<skill>/<path>:<line>` — a self-contradiction within the SAME audited skill,
+     where `<path>` is ANY file under that skill's own directory (`SKILL.md`, a
+     `protocols/*.md`, `edge-cases.md`). `file` and `source` need not be the same
+     file, only the same skill — a contradiction between an extracted protocol file
+     and its parent SKILL.md is a common finding and needs a valid form.
    For `scope=plugin` findings, the valid forms are exactly the live-doc URL, the
-   `changelog:<version>`, or the plugin's OWN `<marketplace-skill-path>/SKILL.md:<line>`
-   self-contradiction. Do NOT cite `~/.claude/skills/shared/<file>` — those are the
+   `changelog:<version>`, or a path under the plugin's OWN marketplace skill
+   directory. Do NOT cite `~/.claude/skills/shared/<file>` — those are the
    auditing user's protocols, not canonical for a third-party skill.
    Cross-skill citations (e.g., a finding on `/jr-audit` whose `source` cites
    `/jr-review`'s line N) are NOT primary evidence — they're sibling-skill conventions
    and may themselves drift. If a finding is grounded in a sibling skill, cite the
    underlying authority (live doc OR shared protocol) as `source` and mention the
    sibling skill in `description` as supporting context. Findings whose `source`
-   is a sibling skill are routed to ACTION REQUIRED. Findings without any source
-   citation are routed to ACTION REQUIRED so reviewer-quality issues surface
+   is a sibling skill are routed to Audit integrity. Findings without any source
+   citation are routed to Audit integrity so reviewer-quality issues surface
    rather than being silently dropped.
 3. Stay within your dimension's ownership. If a finding belongs to another
    dimension, defer to that reviewer.
@@ -322,7 +307,8 @@ Per-finding requirements:
    iterative refinement"). Provide a one-sentence `clarificationQuestion` the
    user can answer in Phase 4. Use sparingly: clarify is for judgment calls, not
    for findings you weren't sure about technically (use `speculative` for those).
-6. Drop `low` severity unless the fix is trivial.
+6. Apply the rubric's own low-severity rule as written above; do not substitute a
+   different threshold.
 7. Set `scope` to `personal`, `project`, or `plugin` matching the audited
    SKILL.md's location. The lead injects this in your dispatch metadata; echo it
    back on every finding so the Phase 7 report can group by scope. When `scope`
@@ -352,31 +338,48 @@ Every finding travels in the reviewer's final response, which the lead receives 
 
 ## Phase 3 — Sanity-check + deduplicate + prioritize
 
+**First, read `${CLAUDE_SKILL_DIR}/protocols/finding-validation.md`** into lead context (deferred from Track A — see Phase 1). Apply the hard-fail + non-empty + smoke-parse discipline: anchors `Contain before opening` AND `Source-citation validation`, abort `[ABORT — SHARED FILE MISSING]` on failure.
+
 Findings arrive as the results returned in each reviewer's completion notification; there is no task list to read (`../shared/subagent-reporting.md`).
 
-0.0. **Reviewer roll-call** (canonical: `../shared/subagent-reporting.md` "Lead-side: reviewer roll-call"): reconcile the Phase 2 spawn list against the results actually returned. A reviewer that returned nothing, an empty result, or an error is `UNREPORTED` — a failure, never a clean dimension. Record `unreportedCount` and the dimension names, and render them by name in the Phase 7 **`Audit integrity`** section (NOT under an "ACTION REQUIRED" label — this skill bans that label outright; see the Naming contract in "Final report", which documents the 28-findings-un-rolled-up incident it caused). `Audit integrity` is the documented home for reviewer-quality issues, which is exactly what an unreported dimension is. This runs first because every later step (rejection rates, dedup, the report's completeness claim) is computed over the delivered set, and a silently-missing dimension would otherwise be indistinguishable from one with nothing to say. **Latch `unreportedCount` into a non-zero Phase 7 exit** (the canonical's rule 2): `Audit integrity` is a console channel a human may or may not read, whereas under headless the exit code is the only signal a machine gets, so rendering alone would leave this skill computing `UNREPORTED` and then dropping it — the exact anti-pattern the canonical names. The `Summary: N findings across M skills.` line is likewise barred from reading as a complete result while any dimension is `UNREPORTED`.
-1. **`file` containment + codeExcerpt sanity-check** — apply the step 1 body in `${CLAUDE_SKILL_DIR}/protocols/finding-validation.md` (read into lead context at Phase 1 Track A): a reviewer-supplied `file` is opened only after `realpath` resolves it under a dispatched skill's own directory (`realpath` unavailable ⇒ abort, never degrade), then the cited range is matched `line-1 … line+1` and the validated target `P` is handed to step 2.
-2. **Source-citation validation** — apply the step 2 body in that same file: the five `source` branches with their `[REJECTED]` vs `ACTION REQUIRED` routings, each reading the authoritative Track B scope tag of `P` rather than the reviewer-echoed `scope`.
+0.0. **Reviewer roll-call** (canonical: `../shared/subagent-reporting.md` "Lead-side: reviewer roll-call"): reconcile the Phase 2 spawn list against the results actually returned. A reviewer that returned nothing, an empty result, or an error is `UNREPORTED` — a failure, never a clean dimension. Record `unreportedCount` and the dimension names, then apply the canonical's three consumer rules:
+   1. **Render** every member by name in the Phase 7 `Audit integrity` section (`"<dimension>-reviewer returned nothing — its dimension was NOT audited"`).
+   2. **Latch a non-zero Phase 7 exit.**
+   3. **Block every clean-result path** — including the Phase 4 tier menu (see Phase 4) and the base summary line (`protocols/phase7-report.md`, sole owner of every summary form's wording), neither of which may read as a complete result while any dimension is `UNREPORTED`.
+
+   Runs first because every later step is computed over the delivered set. Rationale: `protocols/rationale.md` "Phase 3 step 0.0".
+1. **`file` containment + codeExcerpt sanity-check** — apply the step 1 body in `${CLAUDE_SKILL_DIR}/protocols/finding-validation.md`: a reviewer-supplied `file` is opened only after `realpath` resolves it under a dispatched skill's own directory (`realpath` unavailable ⇒ abort, never degrade), then the cited range is matched `line-1 … line+1` and the validated target `P` is handed to step 2. **Count `rejectionCount` and `unverifiableCount` as you route, across steps 1 AND 2**: 1a's containment failure and 1b's excerpt-window slip both increment `unverifiableCount`, so counting step 2 alone leaves a run whose only defects are step-1 routings at zero and fires neither advisor (`protocols/finding-validation.md` "What a routing actually does to the finding").
+2. **Source-citation validation** — apply the step 2 body in that same file: the five `source` branches with their `[REJECTED]` vs `Audit integrity` routings, each reading the authoritative Track B scope tag of `P` rather than the reviewer-echoed `scope`.
 3. **Dedup** — group findings by `(file, line, dimension)`. Cross-dimension duplicates on the same line are flagged with `[CROSS-DIM]` for the user.
-4. **Per-reviewer 25%-rejection escalation** — if any reviewer rejected ≥ 25% of its findings (excluding ACTION REQUIRED routings), flag a Phase 7 `ACTION REQUIRED`: `<dimension> reviewer had a high hallucination rate this run (N/M rejected). Consider re-running with --only=<other-dimensions> and treating <dimension> output cautiously.`
+4. **Per-reviewer 25%-rejection escalation** — if any reviewer had ≥ 25% of its findings **`[REJECTED]`** (count only genuine rejections: `codeExcerpt mismatch` and `citation broken`; **exclude every `Audit integrity` routing**, including out-of-set `file` citations, missing sources, and excerpt-window slips), flag a Phase 7 `Audit integrity` item: `<dimension> reviewer had a high hallucination rate this run (N/M rejected). Consider re-running with --only=<other-dimensions> and treating <dimension> output cautiously.` The exclusion is load-bearing — this counter is the skill's only hallucination signal, and folding contract slips into it manufactures false positives against reviewers whose findings are substantively correct.
 5. **Sort** by severity → confidence → file path.
 6. **Partition by `clarify`**: findings with `clarify: true` move to a "Needs clarification" tier. The remaining findings sort into the standard Critical/High/Medium/Speculative tiers.
 
 ## Phase 4 — User approval gate
 
-If `--auto-approve` is set, **skip this phase entirely** (and skip the [Clarify] flow) and proceed to Phase 7. Findings flagged `clarify: true` render in their original tier with a `[CLARIFICATION SKIPPED — auto-approve]` qualifier so the user can revisit them manually.
+**Roll-call gate (mandatory, first thing in this phase, `--auto-approve` included).** If `unreportedCount > 0`, print and carry into the report:
+`⚠ <n> dimension(s) UNREPORTED — <names>; the tiers below are NOT the complete finding set.`
+The tier menu is a clean-result path under `../shared/subagent-reporting.md` rule 3 — without this, a run that lost four of seven reviewers presents a two-finding menu as the whole audit.
 
 ### Conditional advisor (mandatory trigger)
 
-Before rendering the menu, call `advisor()` if EITHER:
+**Position: fires BEFORE the [Clarify] flow and before the `--auto-approve` exit below, on the full post-dedup finding set.** Both the Clarify flow and the tier menu can drop findings, so a call placed after either would report a distribution that no longer matches the set it is meant to sanity-check.
+
+Call `advisor()` if EITHER (interactive):
 - Total finding count ≥ 20, OR
 - Any single dimension contributes ≥ 60% of all findings (skewed-reviewer signal).
 
-Pass: total findings, per-dimension breakdown, top 3 critical/high titles, reference-fetch status (fresh/stale/missing). **Single-fire**: do not call advisor again in this phase.
+Under `--auto-approve` this call is **narrowed, NOT skipped**: instead call it if `rejectionCount`, `unreportedCount` or `unverifiableCount` is `>= 1`. That is the explicit decision `../shared/advisor-criteria.md` "Auto-approve compatibility" requires: a headless run has no human in the loop, so skipping both advisors would leave the least-supervised runs least verified.
+
+Pass: total findings (**the pre-drop count**), per-dimension breakdown, top 3 critical/high titles, reference-fetch status (fresh/stale/missing). **Single-fire**: do not call advisor again in this phase.
+
+**Consume the response.** Render the advisor's concerns immediately above the tier menu so the user sees them while deciding, and carry them into Phase 7's `ADVISOR NOTES:`. A call nothing reads meets the letter of criterion 1 and not its function. On conflict with evidence already gathered, apply the canonical's conflict-reconcile rule rather than silently switching.
 
 ### [Clarify] flow (before tier menu)
 
-If any findings have `clarify: true`, present them one at a time **before** the standard tier menu so the user resolves judgment calls in-line:
+**Only here may an `--auto-approve` run leave the phase**, both gates above having run: skip the [Clarify] flow and the tier menu and proceed to Phase 7. Findings flagged `clarify: true` render in their original tier with a `[CLARIFICATION SKIPPED — auto-approve]` qualifier so the user can revisit them manually.
+
+Otherwise, if any findings have `clarify: true`, present them one at a time **before** the standard tier menu so the user resolves judgment calls in-line:
 
 ```
 ━━━ Needs clarification (N findings) ━━━
@@ -397,7 +400,7 @@ Reviewer asks:
 - **Defer to Phase 7 with note** — render in Phase 7 with the clarification question shown so the user can decide later.
 - **Abort** — cancel the audit.
 
-After all clarify findings are resolved, proceed to the tier menu below. The clarify flow is **not** subject to the per-phase advisor single-fire guard above; the advisor fires (if it fires at all) once total findings cross the threshold, regardless of which tier they end up in.
+After all clarify findings are resolved, proceed to the tier menu below. The `clarify` partition does **not** re-evaluate the advisor trigger (single-fire, "Conditional advisor" above): this flow iterates per finding, and re-firing per finding is exactly the per-iteration re-fire `../shared/advisor-criteria.md` "Single-fire on retry loops" bars.
 
 ### Findings-first approval display (tier menu)
 
@@ -423,18 +426,29 @@ Phase 5 (auto-fix) and Phase 6 (validation) are intentionally **skipped in v1** 
 
 ## Phase 7 — Cleanup and report
 
+### Order of operations (durability first)
+
+**Read `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md`** into lead context (body load deferred from Track A, where its presence and both anchors were already grep-guarded), under the hard-fail + non-empty + smoke-parse discipline: anchors `Findings Report` AND `Summary: N findings across M skills`, abort `[ABORT — SHARED FILE MISSING]` on failure. Re-confirm rather than trusting the Phase 1 result: the file can change between the two points, and this is the read whose content is actually rendered. That abort must print without the template, the file that just failed to load.
+
+Then, in this order: **1.** render the console report · **2.** write the archival file if `--report`/`--report-path` is set · **3.** call the declare-done advisor · **4.** emit any advisor concerns under `ADVISOR NOTES:` (trailing on the console, prepended in the file), re-rendering that block and rewriting the file (same-day overwrite is already sanctioned in `protocols/report-write.md`).
+
+**Durable before the advisor call, not after** — `../shared/advisor-criteria.md` criterion 2. Advising first left a whole run existing only in lead context until the call returned.
+
 ### Declare-done advisor (gated on non-triviality)
 
-Before rendering the final report, call `advisor()` IF ANY of these non-triviality predicates is true (otherwise skip — `shared/advisor-criteria.md`'s "Unconditional advisor on every run" anti-pattern says trivially-clean small runs shouldn't burn budget):
+Call `advisor()` IF ANY of these non-triviality predicates is true (otherwise skip — `shared/advisor-criteria.md`'s "Unconditional advisor on every run" anti-pattern says trivially-clean small runs shouldn't burn budget):
 
-- `findingCount >= 5` (lowered at `xhigh`/`max` effort by the Phase 2 effort-adaptive overlay), OR
+- `findingCount >= 3`, OR
 - `dimensionCount >= 3` (i.e., `--only=` was not narrow), OR
-- `rejectionCount >= 1` (Phase 3 codeExcerpt or citation validation rejected at least one finding — reviewer-quality signal worth a second opinion), OR
+- `rejectionCount >= 1` OR `unverifiableCount >= 1` (Phase 3 rejected a finding, or could not check its source: reviewer-quality signals worth a second opinion), OR
+- `unreportedCount >= 1`, OR `dimensionCount == 0` (coverage was lost: the same reviewer-quality class as a rejection, and the worse one, since it is coverage rather than noise. The zero-dimension case is total loss, and every counter above reads `0` because nothing was ever spawned, so without naming it here the least-supervised failure would get no advisor at all), OR
 - An abort condition fired in any earlier phase.
 
-Pass: total findings, per-dimension breakdown, abort status (if any), and reference-fetch status. Skip entirely in `--auto-approve` mode where the user has already opted out of all gates. Phase 7 has no loop, so no single-fire flag is needed; the call site is reached at most once per run by construction.
+The `findingCount` threshold is **flat at 3**, not derived from effort, per Phase 2, "No effort-adaptive overlay".
 
-If the advisor flags concerns about reviewer drift or an over-narrow dimension mix, surface them inline at the top of the report under `ADVISOR NOTES:` so the user sees them alongside the findings.
+Pass: total findings, per-dimension breakdown, abort status (if any), unreported dimensions, and reference-fetch status. Under `--auto-approve` this call is **narrowed, not skipped**: fire it on the Phase 4 narrowing condition, on the Phase 2 zero-dimension guard, or when an abort fired. The guard needs naming here because it leaves every Phase 4 counter at `0` and sets no abort, so the narrowing would otherwise evaluate false on precisely the headless run that audited nothing. Phase 7 has no loop, so no single-fire flag is needed; the call site is reached at most once per run by construction.
+
+If the advisor flags concerns about reviewer drift or an over-narrow dimension mix, surface them under `ADVISOR NOTES:` so the user sees them alongside the findings. **Where that block lands differs by surface, and the durability-first order above is why**: the console report was printed at step 1 and a console stream cannot be rewritten, so on the console the notes follow it as a trailing block; in the archival file step 4 re-renders the report with `ADVISOR NOTES:` prepended at the top and rewrites the file (`protocols/report-write.md`, "Two writes, by design"). Same content, same single rendering, two placements.
 
 ### Final report
 
@@ -442,30 +456,37 @@ Print the report below (always). When `--report` (or `--report-path=<path>`) is 
 
 ### Report structure
 
-Render the findings report per the template in `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` (read into lead context at Phase 1 Track A). The scope-tag rendering rules and naming contract below modify how that template is filled.
+Render the findings report per the template in `${CLAUDE_SKILL_DIR}/protocols/phase7-report.md` (read at this phase's opening step). The scope-tag rendering rules and naming contract below modify how that template is filled.
 
 **Scope-tag rendering rules** (single-scope simplifications):
-- **`Roots` line**: always rendered on a personal/project run, never omitted — it is the report's only unconditional statement of which directories were audited, and under the auto-scope default the same command audits different skills in different directories, so a report without it is ambiguous. List the roots named by `effectiveScope` — the authoritative record of what was audited (`protocols/personal-project-scope.md`). Append the `[auto-scoped to project — …]` qualifier only when `autoNarrowed=true` **and the run did not abort**, never when `autoScope=project` was merely computed. The abort carve-out matters because the fallback's empty arm leaves `autoNarrowed=true` deliberately (`protocols/personal-project-scope.md`), and that arm is reached only after the fallback has already restored personal and found nothing auditable there: the qualifier's `--scope-only=both to include personal` advice would send the user to a scope this very run just tried and exhausted. On an aborting run the guard's own message states the cause, so the qualifier adds nothing but a false lead. Omit the line only on a `--plugin` run, where the `Plugin:` header already names the source.
+- **`Roots` line**: always rendered on a personal/project run — the report's only unconditional statement of which directories were audited. **Name only the roots that actually contributed an audited skill**: if `effectiveScope=both` but one side yielded none, name the contributing side alone, or `Roots:` prints a root the `Discovered:` line omitted as empty and the two halves of one report contradict each other. (The `both`-collapse rule in `personal-project-scope.md` cannot catch this — it fires only when a root is *absent*, not present-but-empty.) Append `[auto-scoped to project — …]` only when `autoNarrowed=true` **and the run did not abort** (`protocols/rationale.md` "`Roots:` line"). Omit the line only under `--plugin`.
 - **`By scope` rollup line**: render only when `count(distinct scopes in approved findings) > 1`. When a run produces findings in just one scope, drop the `By scope:` line entirely.
 - **Inline `[personal]` / `[project]` tag on each finding**: render only when the same scope-count check is `> 1`. When findings are single-scope, drop the bracket prefix (no ambiguity to disambiguate). Two-space pad after `[project]` keeps the column aligned with `[personal]`.
 - **`By skill` rollup in Action items**: only append `[personal]` / `[project]` to skill names when the same name appears in both scopes (collision case). Otherwise the bare name suffices.
 - **Plugin runs (`--plugin`) override the single-scope simplification**: always render the `Plugin: <name> (…, source repo: <url>) [third-party — verify against plugin docs]` header line (in place of `By scope:`) and an inline `[plugin: <name>]` prefix on every finding — even though a plugin run is single-scope — because the report must always surface which plugin the finding is about and that it is third-party. **Two-marketplace collision** (a `<name>` resolved in two marketplaces — the audit-both case): qualify every per-finding tag, the `Skills audited:` list, the `By skill` rollup, and the Phase 1 `plugin=<name> (skills: …)` discovery-summary segment as `<name>@<mp>` so same-named skills from different marketplaces stay distinguishable, and repeat the `Plugin:` header line once per marketplace.
 
-**Naming contract**: The "Action items" rollup is **mandatory** on every report — never omitted, never empty when findings > 0. It is the single answer to "what do I need to do?". The "Audit integrity" section is a meta-section about the audit run itself (reviewer-quality, citation validity); an empty Audit-integrity section means the audit was clean, NOT that the user has nothing to act on. Past versions of this skill conflated the two via an "ACTION REQUIRED" label that was scoped to the meta-section only — that conflation caused the lead to render "ACTION REQUIRED: None" while leaving 28 findings un-rolled-up. Do NOT reuse the "ACTION REQUIRED" label.
+**Naming contract**: The "Action items" rollup is **mandatory** on every report — never omitted, never empty when findings > 0. It is the single answer to "what do I need to do?". The "Audit integrity" section is a meta-section about the audit run itself (reviewer-quality, citation validity); an empty Audit-integrity section means the audit was clean, NOT that the user has nothing to act on.
+
+**Never emit the string "ACTION REQUIRED"** — not as a section heading, and not as the routing verb. Both are now `route to Audit integrity`, which names the destination an item actually reaches. The ban previously covered only the heading while the same string remained the live routing verb in the reviewer instructions and throughout `protocols/finding-validation.md`, so the skill simultaneously banned and used it. Rationale: `protocols/rationale.md` "Naming contract".
 
 ### Save report
 
-Only when `--report` or `--report-path=<path>` was parsed (else skip this step entirely). Follow `${CLAUDE_SKILL_DIR}/protocols/report-write.md` (read into lead context at Phase 1 Track A under its conditional guard): derive the destination from `effectiveScope` (or the sanitized `--report-path`), apply `../shared/gitignore-enforcement.md` against the resolved path (advisory write-side — warn if tracked, inform-with-glob if not ignored; no `.gitignore` mutation, since `Edit` is disallowed), then atomically write the **exact rendered report text** printed above (including the `Generated:` line, any `ADVISOR NOTES:` prepend, and any abort marker). A write failure is **non-fatal** — emit one advisory line and continue; the console report is the record. On success, print `Report written: <path>`.
+Only when `--report` or `--report-path=<path>` was parsed (else skip this step entirely). Follow `${CLAUDE_SKILL_DIR}/protocols/report-write.md` (read into lead context at Phase 1 Track A under its conditional guard): derive the destination from `effectiveScope` (or the sanitized `--report-path`), apply `../shared/gitignore-enforcement.md` against the resolved path (advisory write-side — warn if tracked, inform-with-glob if not ignored; no `.gitignore` mutation, since `Edit` is disallowed), then atomically write the **exact rendered report text** printed above (including the `Generated:` line and any abort marker). This step is step 2 of "Order of operations (durability first)" and therefore runs **before** the declare-done advisor, so the first write cannot carry an `ADVISOR NOTES:` block; step 4 re-runs it with that block prepended when the advisor returns concerns (`protocols/report-write.md`, "Two writes, by design"). A write failure is **non-fatal** — emit one advisory line and continue; the console report is the record. On success, print `Report written: <path>`.
 
 ### Abort-mode reporting
 
-On any abort condition, render the marker per `../shared/abort-markers.md` (the canonical source). The three `abortReason` values skill-audit emits are:
+On any abort condition, render the marker per `../shared/abort-markers.md` (the canonical source). The four `abortReason` values skill-audit emits are:
 
 | `abortReason` | Marker (rendered by canonical) | When |
 |---------------|--------------------------------|------|
-| `unmatched-scope` | `[ABORT — UNMATCHED SCOPE]` | Phase 1 Track B discovered zero skills |
-| `shared-file-missing` | `[ABORT — SHARED FILE MISSING]` | Phase 1 Track A hard-fail guard tripped |
+| `unmatched-scope` | `[ABORT — UNMATCHED SCOPE]` | Phase 1 Track B discovered zero skills; also the in-Track-B aborts in `protocols/personal-project-scope.md` (cross-scope conflict, bare-positional 0-match, bare-positional-gitignored) |
+| `shared-file-missing` | `[ABORT — SHARED FILE MISSING]` | A guarded protocol read failed — Track A, or a deferred read at Phase 3 / Phase 7, or `shadow-detection.md` |
+| `realpath-unavailable` | `[ABORT — REALPATH UNAVAILABLE]` | `realpath` is absent where containment depends on it: the Phase 1 Track B availability probe (personal/project), Phase 3 step 1a, and `--plugin` skills-dir resolution |
 | `user-abort` | `[ABORT — USER ABORT]` | User chose `[Abort]` at any approval gate |
+
+**Exit codes.** All four markers force a non-zero Phase 7 exit, as do `unreportedCount > 0` and the Phase 2 zero-dimension guard (both are lost coverage, and both are markerless: `abortMode` stays `false`); a report-write failure, `rejectionCount`, `unverifiableCount` and `refSkippedCount` do **not**. Those are caught defects rather than lost coverage: a rejected finding is dropped by design, and an unverifiable one is still rendered, except the containment-failure class, which surfaces as an `Audit integrity` note carrying its title instead of as a finding. `refSkippedCount` is the deliberate exception to that framing: it *is* lost coverage, but a reference the run could not fetch is documented graceful degradation (Track C, "Same rule per key"), so it qualifies the Phase 7 summary line and is named in `Audit integrity` instead of failing the run. `../shared/abort-markers.md` "Exit-code contribution" already declares the marker half; consumers own only the abort wording (`../shared/phase1-track-a-protocol.md` "Abort rendering") and the non-marker conditions here. Without this list an `unmatched-scope` or `user-abort` run that audited nothing could exit 0 and pass CI.
+
+**Argument-parse rejections are plain exits, not aborts** — they fire before Phase 1, where no Phase 7 state exists to render, so they emit their message and exit with no marker or `abortReason`.
 
 Track C failures do NOT trigger abort — they degrade gracefully (stale cache → warning; no cache → skip `feature-adoption-reviewer`).
 

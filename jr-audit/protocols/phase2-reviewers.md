@@ -10,7 +10,7 @@
 
 Override with `quick` (force small) or `full` (force large) flags.
 
-**Effort-adaptive overlay** (read `CLAUDE_EFFORT` at runtime via Bash: `effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=high`). When `effort` is `xhigh` or `max`, upgrade scope by one tier (Small→Medium, Medium→Large) so the user's explicit deeper-analysis choice is honored. When `effort` is `low` or `medium`, treat as if `quick` were also passed (cap reviewers at 3). Explicit `quick` / `full` flags still win. Mirrors `/jr-review`'s pattern (jr-review/SKILL.md "Effort-adaptive breadth"); requires Claude Code ≥ 2.1.133 for the env var to be exposed to Bash.
+**Effort-adaptive overlay** (read `CLAUDE_EFFORT` at runtime via Bash: `effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=max`; the fallback constant matches this skill's pinned `effort: max` frontmatter and the `--converge` default in `jr-audit/SKILL.md`, which reads the same variable. Keep the two in step). When `effort` is `xhigh` or `max`, upgrade scope by one tier (Small→Medium, Medium→Large) so the user's explicit deeper-analysis choice is honored. When `effort` is `low` or `medium`, treat as if `quick` were also passed (cap reviewers at 3). Explicit `quick` / `full` flags still win. Mirrors `/jr-review`'s pattern (jr-review/SKILL.md "Effort-adaptive breadth"); requires Claude Code ≥ 2.1.133 for the env var to be exposed to Bash.
 
 ### Select reviewers dynamically
 
