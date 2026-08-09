@@ -72,6 +72,8 @@ cumulative timeline).
 
 ## Phase 0 — Parse arguments
 
+**Arguments**: $ARGUMENTS
+
 - `source` (positional) — the written description, or `@path/to/file` to read it from a file.
 - `--type=<kind>` — optional Mermaid diagram kind: `flowchart` | `sequence` | `class` |
   `er` | `state` | `gantt` | `journey` | `mindmap` (default: infer from the source, and

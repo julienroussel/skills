@@ -56,7 +56,7 @@ For each approved candidate:
 
 **Public repository check** (PR mode only): Before posting findings as PR comments, check the **target repository's** visibility — NOT the local checkout's. (Under GitLab `--allow-remote`, where `remote=true` per `pr-url-mode.md`, the target repository is `TARGET_PROJECT`, a different and possibly-public project, and the local tree is an unrelated repo whose consumer files may appear in findings, so resolve visibility via `glab api "projects/<enc>" | jq -r '.visibility'` against `TARGET_PROJECT` and run the cross-repo consent prompt + public-repo security-finding omission below against `TARGET_PROJECT`, exactly as the GitHub fork→upstream path does.) `gh repo view --json visibility` reads the current-repo config, which is incorrect when the PR originates from a private fork against a public upstream; that path would return `PRIVATE` and leak security findings unredacted to the public upstream. Resolve the target repo first: `target=$(gh pr view <number> --json baseRepository -q '.baseRepository.owner.login + "/" + .baseRepository.name')`, then query visibility: `visibility=$(gh repo view "$target" --json visibility -q '.visibility')`. If the PR targets a different repo than the local checkout (e.g., fork → upstream), elevate the visibility check to the target repo and, in interactive mode, require explicit consent via AskUserQuestion before posting any findings: 'PR target repository (`$target`, visibility: `$visibility`) differs from the local checkout. Post findings to the target? Options: [Post all findings] / [Omit security findings] / [Skip PR comment]'. In headless/CI mode with a cross-repo PR, default to skipping the PR comment entirely and note the skip in the Phase 7 report. If the target repository is `PUBLIC` and any findings have dimension `security`, warn in interactive mode via AskUserQuestion: 'Target repository is public. Security findings in PR comments will be publicly visible. Options: [Post all findings] / [Omit security findings from comment] / [Skip PR comment]'. In headless/CI mode, automatically omit security-dimension findings from the PR comment body and append a note: 'N security finding(s) omitted from this public PR comment — see the local review report for details.'
 
-**In PR mode** (`--pr`): Use `gh pr comment <number>` to post a **single consolidated comment** on the PR with all findings formatted as a checklist. Do not create one comment per finding. Before posting, redact any strings matching the canonical pattern catalog from `../../shared/secret-patterns.md` from the comment body. Replace with `[REDACTED]`.
+**In PR mode** (`--pr`): Use `gh pr comment <number>` to post a **single consolidated comment** on the PR with all findings formatted as a checklist. Do not create one comment per finding. Before posting, redact any strings matching the canonical pattern catalog from `../../shared/secret-patterns.md` from the comment body. Replace with `[REDACTED]`. **Apply that file's Scan-status check at the invocation**: an exit status above 1 means the scan never ran, so the body is uncertified rather than redacted. Take the catalog's **pre-publication redaction** halt route: do NOT post the comment (posting is irreversible and the target may be public), and take the **withheld-publication escalation** below.
 
 **Incompleteness caveat**: when `unreportedCount > 0`, prepend a caveat to the comment body. **Every member of the run-level `unreported` set gets a line** — sourced from that set per rule 1 of `../../shared/subagent-reporting.md`, which owns that rule and the reason for it. Split the lines by the member's source and never collapse them — a lost implementer does not mean the dimension went unreviewed:
 - reviewer-sourced: `⚠ Incomplete review — the following dimensions returned nothing and were NOT reviewed: <names>. The findings below cover only the dimensions that reported.`
@@ -69,7 +69,15 @@ Never post a findings checklist that reads as complete coverage while any dimens
 **In normal mode**: Run `gh issue create --label review-followup` with:
 - A concise title describing the problem and desired outcome
 - A body containing: Context (which review, date), Problem description, Affected files, Suggested fix, and Priority
-- **Sanitize the title and body**: Before creating, redact any strings matching the canonical pattern catalog from `../../shared/secret-patterns.md` in both the title and body. Replace with `[REDACTED]`.
+- **Sanitize the title and body**: Before creating, redact any strings matching the canonical pattern catalog from `../../shared/secret-patterns.md` in both the title and body. Replace with `[REDACTED]`. **Apply that file's Scan-status check to each invocation**: on an exit status above 1 the title and body are uncertified, so take the catalog's **pre-publication redaction** halt route: do NOT create the issue, and take the **withheld-publication escalation** below.
+
+## Withheld-publication escalation (both withhold sites)
+
+Applies identically to the withheld PR comment (step 5, PR mode) and the withheld issue (step 5, normal mode); a withheld artifact that reaches no surface is the same defect either way. On each withhold:
+
+1. **Latch** `publicationWithheld=true` (run-scoped; declared at `phase7-cleanup-report.md` "Run-scoped flags initialization"). Phase 7's exit-code rules make the run exit non-zero on it. That is the only channel a headless `--pr` run has left, since Phase 8 posts nothing and Phase 7 already printed a report that says nothing is wrong.
+2. **Print it here, now**, in this phase's Display block below: `ACTION REQUIRED: PR comment withheld, redaction scan failed (exit <status>)` or `ACTION REQUIRED: issue creation withheld, redaction scan failed (exit <status>)` (name the candidate after it). Do NOT buffer it for the Phase 7 report: Phase 8 runs after Phase 7, so nothing routed there would ever render (`phase7-cleanup-report.md` → "Action required", which documents this as its one exception). The `ACTION REQUIRED` literal is retained because `../../shared/secret-scan-protocols.md` behavior 4 reads it by name; these lines carry no file paths, so that re-scan's input is unchanged.
+3. **Name the exit status**, never the body that failed to scan. An uncertified body may still contain the secret the redaction was meant to remove.
 
 ## Display
 
@@ -81,3 +89,10 @@ Phase 8 — Follow-up issues
   Duplicates: 9 already tracked
   Created:   2 new issues (#46, #47)
 ```
+
+**Mandatory when `publicationWithheld=true`**: append every withheld-publication line from the escalation above, unabbreviated, below that summary. This is the render surface for those lines, so dropping them here drops them from the run entirely:
+```
+  ACTION REQUIRED: PR comment withheld, redaction scan failed (exit 2)
+                   0 of 7 findings reached the PR; read the Phase 7 report above instead.
+```
+The second line is required whenever a withheld artifact was the run's primary output (`--pr` mode, where the PR comment *is* the deliverable): a `Created: 0` count otherwise reads as "nothing needed posting".

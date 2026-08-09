@@ -37,7 +37,7 @@ Design principles and key behaviors shared across `/jr-audit`, `/jr-review`, `/j
 - **Phased execution** — every skill runs in numbered phases, each with a prominent header and a cumulative timeline (`Phase 1 ✓ (3s) → Phase 2 ✓ (18s) → ...`).
 - **Parallel-first** — tracks within a phase run simultaneously; independent reads, greps, and bash calls are batched into a single message.
 - **Silent agents, noisy lead** — reviewer/implementer subagents only report via task messages; only the lead prints progress to the user.
-- **Declared effort**: a session `/effort` change does not move the effort-adaptive settings (reviewer breadth, convergence defaults, advisor thresholds and `/jr-review`'s `codebase-memory-mcp` graph probe). On Claude Code 2.1.133 and later, `CLAUDE_EFFORT` reaches Bash so each skill's declared frontmatter tier applies, and the three effort-adaptive skills (`/jr-audit`, `/jr-review`, `/jr-skill-audit`) all declare `max`. Below 2.1.133 the variable is not exposed and those settings fall back to their `high` behaviour. Where `max` applies, `/jr-review`'s probe is no longer gated on a 20-file diff, so any non-headless run may offer to index the whole repo.
+- **Declared effort**: a session `/effort` change does not move the effort-adaptive settings (reviewer breadth, convergence defaults and `/jr-review`'s `codebase-memory-mcp` graph probe). On Claude Code 2.1.133 and later, `CLAUDE_EFFORT` reaches Bash so each skill's declared frontmatter tier applies, and the two effort-adaptive skills (`/jr-audit`, `/jr-review`) both declare `max`. Below 2.1.133 the variable is not exposed; each read falls back to the skill's own pinned tier, so those settings behave as `max` there too rather than dropping a tier. `/jr-skill-audit` also declares `max` but reads the variable nowhere: it has no effort-adaptive overlay, and its advisor threshold is flat for that reason (see its entry under Advisor integration). Where `max` applies, `/jr-review`'s probe is no longer gated on a 20-file diff, so any non-headless run may offer to index the whole repo.
 
 ### Accuracy guardrails
 
@@ -68,8 +68,8 @@ The `advisor()` tool (stronger reviewer model that sees the full transcript) is 
 - `/jr-audit` Phase 4 pre-approval (skewed-dimension trigger as above).
 - `/jr-audit` Phase 5 pre-dispatch — multi-implementer parallel modifications across the full codebase are the highest blast radius.
 - `/jr-audit --converge` before iteration 2+ — lower bar than `/jr-review` because `/jr-audit`'s iteration cap is also lower.
-- `/jr-skill-audit` Phase 4 pre-approval (skewed-dimension trigger as above).
-- `/jr-skill-audit` Phase 7 declare-done — gated on non-triviality (`findingCount` over an effort-dependent threshold, OR `dimensionCount ≥ 3` OR `rejectionCount ≥ 1` OR an abort fired) so trivially-clean small runs don't burn budget. Per `shared/advisor-criteria.md`'s "Unconditional advisor on every run" anti-pattern.
+- `/jr-skill-audit` Phase 4 pre-approval (finding count ≥ 20 OR skewed-dimension, as above).
+- `/jr-skill-audit` Phase 7 declare-done — gated on non-triviality (`findingCount ≥ 3` (flat, not effort-derived, since `effort: max` is pinned), OR `dimensionCount ≥ 3` OR `rejectionCount ≥ 1` OR `unverifiableCount ≥ 1` OR `unreportedCount ≥ 1` OR `dimensionCount == 0` (total loss of coverage: every other counter reads `0` because nothing was ever spawned) OR an abort fired) so trivially-clean small runs don't burn budget. Per `shared/advisor-criteria.md`'s "Unconditional advisor on every run" anti-pattern.
 
 Advisor is advisory-only; the user still gates the action if advisor flags concerns. Canonical rules for *when* and *how* to call advisor (substantive-edit boundaries, declare-done points, single-fire guards, conditional triggers) live in `shared/advisor-criteria.md` and are consumed by `/jr-skill-audit`'s `advisor-coverage-reviewer`.
 

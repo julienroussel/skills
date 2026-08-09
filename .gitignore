@@ -15,3 +15,4 @@ ralph-tui*
 .claude/audit-report-*.md
 .claude/precommit-hook-uninstall
 .claude/worktrees/
+jr-skill-audit/cache/

@@ -3,8 +3,10 @@
 **Canonical finding shape** for the lead-synthesized `scope-resolution` finding emitted when a
 skill basename is present in BOTH personal and project scopes. `jr-skill-audit/SKILL.md`'s
 "Shadow detection (lead-side synthesis)" section points here; read this on demand **only when a
-cross-scope collision is detected** (not at Phase 1 Track A — reference material, like
-`edge-cases.md`). The finding routes through Phase 3 (sanity-check + dedup) and Phase 4
+cross-scope collision is detected**, which puts it outside Phase 1 Track A but **not** outside a guard:
+that read site applies non-empty + smoke-parse and aborts `[ABORT — SHARED FILE MISSING]` on failure
+(its anchors are declared there too, which is why they are not restated here). The finding routes
+through Phase 3 (sanity-check + dedup) and Phase 4
 ([Clarify] flow) like any reviewer finding; no Phase 2 reviewer agent is involved.
 
 ## Finding shape

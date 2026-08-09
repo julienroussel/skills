@@ -6,7 +6,7 @@ effort: low
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git -C * ls-files *) Bash(git -C * remote *) Bash(git remote *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(sed *) Bash(test *) Bash([ *) Bash(ls *) Bash(head *) Bash(date *) Bash(printf *) Bash(echo *) Bash(command -v *) Bash(gh auth status *) Bash(glab auth status *) Bash(rtk --version *) Bash(claude mcp list *) Bash(claude --version *) Bash(printenv *) Bash(${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh *) AskUserQuestion Agent ToolSearch
+allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git -C * ls-files *) Bash(git -C * remote *) Bash(git remote *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(sed *) Bash(test *) Bash([ *) Bash(ls *) Bash(pwd) Bash(head *) Bash(date *) Bash(printf *) Bash(echo *) Bash(command -v *) Bash(gh auth status *) Bash(glab auth status *) Bash(rtk --version *) Bash(claude mcp list *) Bash(claude --version *) Bash(printenv *) Bash(${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh *) AskUserQuestion Agent ToolSearch
 disallowed-tools: Write Edit
 ---
 

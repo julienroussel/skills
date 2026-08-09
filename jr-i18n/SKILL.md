@@ -99,6 +99,8 @@ per phase and a cumulative timeline (`Phase 1 ✓ (3s) → Phase 2 ✓ (40s) →
 
 ## Phase 0 — Parse arguments
 
+**Arguments**: $ARGUMENTS
+
 Parse from the invocation:
 - `path` (optional positional) — limit discovery to this directory/catalog. Default: repo root.
 - `--locale=<codes>` — comma-separated target locales to review (default: all discovered non-source).

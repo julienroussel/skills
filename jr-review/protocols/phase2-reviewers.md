@@ -7,10 +7,10 @@
 At Phase 2 entry, the lead agent reads the `CLAUDE_EFFORT` env var (per Claude Code v2.1.133, exposed to the Bash tool). Use this exact Bash invocation — do NOT use the dollar-brace skill-substitution form anywhere in this skill body:
 
 ```bash
-effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=high
+effort="$CLAUDE_EFFORT"; [ -z "$effort" ] && effort=max
 ```
 
-The value resolves to one of `low`, `medium`, `high`, `xhigh`, `max`. If empty (uncommon — Pro/Max users on Opus default to `high` since v2.1.117), the `[ -z ... ]` fallback assigns `high`.
+The value resolves to one of `low`, `medium`, `high`, `xhigh`, `max`. If empty, the `[ -z ... ]` fallback assigns **`max`**, matching this skill's pinned `effort: max` frontmatter — the skills doc states that field "Overrides the session effort level", and the env-vars doc notes `CLAUDE_EFFORT` is "Only set when the current model supports the effort parameter", so an empty read means *not exposed*, never *low effort*. A `high` fallback here silently resolved bare `--converge` to 3 instead of the pinned 5.
 
 **Why the env-var approach (and not skill substitution)**: Claude Code's skill-substitution syntax — the dollar sign, an open brace, `CLAUDE_EFFORT`, a close brace — gets resolved at skill-load time, baking one literal value into the prose. That would break this section's conditional table because every reference would resolve to the same loaded value instead of branching. Reading the env var via Bash at execution time produces a real branchable variable.
 
@@ -21,8 +21,10 @@ Effort tier table (applied as overlays on top of the diff-size selection below):
 | `CLAUDE_EFFORT` | Reviewer cap | Default `--converge` (when bare `--converge` is passed) |
 |--------------------|--------------|---------------------------------------------------------|
 | `low`, `medium`    | Cap at **2** reviewers regardless of diff size. Treat as if `quick` were also passed. | **2** (minimum allowed by `--converge` validation). |
-| `high` (default)   | No change. Dimensions selected per "Scale the swarm" below. | **3** (current behavior). |
+| `high`             | No change. Dimensions selected per "Scale the swarm" below. | **3**. |
 | `xhigh`, `max`     | Allow up to **8** dimensions on Large diffs (was 6); Medium diff allowed 5 (was 4). | **5**. |
+
+No row is marked as the default, because the `[ -z ]` fallback above decides it: an unset `CLAUDE_EFFORT` lands on the `xhigh`, `max` row. Every other row is reached only by the variable's actual value.
 
 The effort overlay applies BEFORE the explicit `quick`/`full` flag override (`quick` and `full` still win — the user is opting in to a specific size). If `--only=` is set, the reviewer cap is the minimum of (effort cap, len(--only list)).
 

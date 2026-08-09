@@ -47,7 +47,7 @@ For each consumer at Phase 1 (Track A in `/jr-audit`, `/jr-review`, `/jr-skill-a
 Abort message wording is **not canonical** — each consumer owns its own. The intent is for the consumer's abort message to carry consumer-specific diagnostic context (which guarantees that consumer's Phase 1 was about to enforce), and the divergence is intentional:
 
 - `/jr-audit` and `/jr-review` emit inline prose listing the specific guarantees their Phase 1 was about to enforce (reviewer boundaries, untrusted-input safety, .gitignore checks, etc.) along with the failing file path.
-- the other consumers (Track-A or single-track) emit the canonical `[ABORT — SHARED FILE MISSING]` marker via `abortReason=shared-file-missing` (see `abort-markers.md`).
+- the other consumers (Track-A or single-track) emit the canonical `[ABORT — SHARED FILE MISSING]` marker via `abortReason="shared-file-missing"` (see `abort-markers.md`). The same marker and reason also cover a consumer's **deferred or on-demand** guarded protocol reads at later phases, not just its Phase 1 batch.
 - `/jr-doctor` does NOT abort. Group D reports each failure as a `/jr-doctor` finding and surfaces a hint to restore the file from git.
 
 If you are adding a new consumer, choose one of these two abort renderings; do not invent a third.

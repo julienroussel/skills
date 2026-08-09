@@ -13,7 +13,7 @@ At program start, before Phase 1:
 
 This is the **single** program-start initialization site — the mirror of `/jr-review`'s `protocols/phase7-cleanup-report.md` "Run-scoped flags initialization", and the reason the two skills' exit-code rules below "must not drift". It is unconditional: the exit-code rules read these values on **every** exit path, but most paths never enter the `--converge` loop or reach an abort/user-continue site — a clean non-converge run reaches Phase 7 having touched none of them (no flag set, and its Phase 3 roll-call appended nothing to `unreported`). Initializing here guarantees the exit-code gate reads a defined `false`/`""`/`0`/`[]` rather than relying on unset-variable semantics.
 
-`/jr-audit` has no `freshEyesMandatory` flag (no fresh-eyes pass — see `../convergence-protocol.md`); it is `/jr-review`-only. `/jr-audit`'s flag-conflict resolution (step 3) currently sets none of these run-scoped flags, so ordering step 2 before step 3 is defensive rather than load-bearing today; keep it so a future conflict rule that latches a flag cannot be clobbered by a later default (the trap `/jr-review` documents at its init site).
+`/jr-audit` has no `freshEyesMandatory` flag (no fresh-eyes pass — see `../convergence-protocol.md`) and no `publicationWithheld` flag (no Phase 8: `/jr-audit` publishes nothing to a forge, so no pre-publication redaction scan can withhold an artifact here). Both are `/jr-review`-only. `/jr-audit`'s flag-conflict resolution (step 3) currently sets none of these run-scoped flags, so ordering step 2 before step 3 is defensive rather than load-bearing today; keep it so a future conflict rule that latches a flag cannot be clobbered by a later default (the trap `/jr-review` documents at its init site).
 
 The `--converge` loop adds only its **own** state (`iteration`, `convergenceStartTime`, `tmpDir`, `allModifiedFiles`, `iterationLog`, `passUnreported`) on top of these — it does NOT re-initialize the flags above (`../convergence-protocol.md` "Initialization").
 
@@ -35,7 +35,7 @@ Phase 7 exits with a **non-zero** status when any of the following occurred duri
 - `userContinueWithSecret=true` (the latched User-continue path, `../../shared/secret-scan-protocols.md`).
 - Any exit-forcing **marker** was rendered — the marker set is owned by `../../shared/abort-markers.md` ("Exit-code contribution").
 
-This list is the single source of truth for `/jr-audit`'s exit code; `abort-markers.md` owns only the marker subset. Mirrors `/jr-review`'s `protocols/phase7-cleanup-report.md` ("Phase 7 exit-code rules"), which carries the same non-marker conditions — the two skills must not drift.
+This list is the single source of truth for `/jr-audit`'s exit code; `abort-markers.md` owns only the marker subset. Mirrors `/jr-review`'s `protocols/phase7-cleanup-report.md` ("Phase 7 exit-code rules"), which carries the same non-marker conditions plus its `/jr-review`-only `publicationWithheld` (the one documented divergence, per the flag note above) — the two skills must not otherwise drift.
 
 **Display**: Output the final progress timeline with all phases and total duration.
 
@@ -82,17 +82,24 @@ Only include sections that have non-empty content. Skip sections that would just
 
 Applied by the lead at Phase 7 immediately after the report file is written (`SKILL.md` → "Save report"), and after any later edit that touches finding text. Redaction itself is specified in `../../shared/display-protocol.md` ("Console output redaction", which covers written report bodies as well as the console); this section verifies that it actually happened.
 
-**Applying the rule is not evidence the rule was applied.** Re-scan the **written file on disk** with the canonical pattern catalog (`../../shared/secret-patterns.md`) and halt on any hit. An instruction the lead skips produces no error, so nothing else catches a silent leak in the one artifact most likely to be copied out of the repo. Empirically observed (2026-07-16): a run detected live credentials at Phase 1, correctly reported them as a `critical`, then **wrote the live password verbatim into the findings register** — caught only incidentally, when the user asked for the report to be copied outside the repo's `.gitignore` protection.
+**Applying the rule is not evidence the rule was applied.** Re-scan the **written file on disk** with the canonical pattern catalog (`../../shared/secret-patterns.md`) and halt on any hit or scan failure. An instruction the lead skips produces no error, so nothing else catches a silent leak in the one artifact most likely to be copied out of the repo. Empirically observed (2026-07-16): a run detected live credentials at Phase 1, correctly reported them as a `critical`, then **wrote the live password verbatim into the findings register** — caught only incidentally, when the user asked for the report to be copied outside the repo's `.gitignore` protection.
 
 ```bash
 # $REPORT is the actual saved path (default .claude/audit-report-YYYY-MM-DD.md, or the --out target)
-grep -nEi "<token-prefix-union from ../../shared/secret-patterns.md>" "$REPORT"
-grep -nEi "<quoted-assignment + env-assignment patterns from ../../shared/secret-patterns.md>" "$REPORT"
+# Capture both: an uncaptured `grep -nEi` prints the matching line, which IS the credential.
+outA=$(grep -nEi -- "<token-prefix-union from ../../shared/secret-patterns.md>" "$REPORT"); ecA=$?
+outB=$(grep -nEi -- "<quoted-assignment + env-assignment patterns from ../../shared/secret-patterns.md>" "$REPORT"); ecB=$?
 ```
 
-Apply the same `grep -Ei` invocation flag and per-line length cap as every other consumer of the catalog (`../../shared/secret-patterns.md` → "Portability and evaluation-time safeguards", "Invocation flag").
+Apply the same `grep -Ei` invocation flag, per-line length cap, and **Scan-status check** as every other consumer of the catalog (`../../shared/secret-patterns.md` → "Portability and evaluation-time safeguards", "Invocation flag"). Two properties of that form are load-bearing here:
 
-**On any hit**: do NOT emit the report path as a completed deliverable. Redact the offending value in the file, re-run the scan until clean, and record the event under item 20 ("Methodology audit trail", above). If a hit cannot be redacted without destroying the finding, halt with `[REPORT REDACTION FAILED]` and exit non-zero rather than emitting the file — the marker is registered in `../../shared/abort-markers.md` under "Markers rendered outside the abortReason mapping".
+- **Capturing `ecA`/`ecB`** is what makes the next rule decidable: a grep that rejects the union exits 2 and prints nothing, so a rule branching on hits alone certifies an unscanned report as clean. grep is the sole command in each capture, so `$?` is grep's own status and no pipeline tail can mask it.
+- **Capturing `outA`/`outB`** is what stops the verification from becoming a second leak. `grep -nEi` writes `<lineno>:<the entire matching line>` to stdout, so an uncaptured invocation republishes the credential into the tool-output block the operator sees, at the one site whose whole purpose is that a secret reached a persisted report. `-n` is retained because the redaction below needs the locations: read them from the `<lineno>:` prefix of `$outA`/`$outB` and never echo the captured text itself (`../../shared/display-protocol.md` "Console output redaction"; the same rule this file states below as preferring `14-char password` over the value).
+
+**Non-emission rule (on any hit, OR on either status above 1)**: do NOT emit the report path as a completed deliverable.
+
+- **On a hit**: redact the offending value in the file, re-run the scan until clean, and record the event under item 20 ("Methodology audit trail", above) as line numbers plus pattern type only. Item 20 is written into this same report, so quoting the matched value there relocates the leak rather than recording it. If a hit cannot be redacted without destroying the finding, halt with `[REPORT REDACTION FAILED]` and exit non-zero rather than emitting the file — the marker is registered in `../../shared/abort-markers.md` under "Markers rendered outside the abortReason mapping".
+- **On a status above 1**: the scan never ran, so the file is **uncertified**, not clean. Re-run once after resolving the cause; if the status stays above 1, halt with `[REPORT REDACTION FAILED]`, cite the exit status, and exit non-zero. Record it under item 20 as well.
 
 **Known gap this does NOT close**: the scan is regex-based, so a secret in a format absent from the catalog (internal hostname, RFC1918 address, customer name, bespoke token shape) passes it. A clean scan means "no *catalogued* pattern present", never "no sensitive content present". When the report quotes a credential file at all, prefer describing the value (`14-char password`) over reproducing it — the cited `file:line` is what the reader acts on.
 
