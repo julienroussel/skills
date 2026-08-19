@@ -73,7 +73,7 @@ Phase 6 — Validating...
 
 ## Console output redaction
 
-**Interactive mode**: Apply the secret pre-scan patterns from `/jr-review` Phase 1 Track B step 7 (the canonical pattern set used by both skills) **line-by-line** to all console output derived from reviewed files, agent responses, validation tool output, finding descriptions, contested finding messages, implementer error messages, or code excerpts. Replace matches with `[REDACTED]`. Line-by-line application bounds regex evaluation time and prevents pathological backtracking on large outputs.
+**Interactive mode**: Apply the secret pre-scan patterns from `secret-patterns.md` ("Token-prefix patterns (regex union)"), the canonical catalog both skills consume — this previously named "`/jr-review` Phase 1 Track B step 7", which no longer holds a pattern table since the catalog was extracted — **line-by-line** to all console output derived from reviewed files, agent responses, validation tool output, finding descriptions, contested finding messages, implementer error messages, or code excerpts. Replace matches with `[REDACTED]`. Line-by-line application bounds regex evaluation time and prevents pathological backtracking on large outputs.
 
 **Headless/CI mode**: Where the skill supports headless/CI mode (currently `/jr-review` only — `/jr-audit` is interactive-only as of this writing), apply the redaction universally to ALL console output, not just content derived from reviewed files. Build logs in CI may be publicly accessible. Skills that add headless support later MUST adopt this universal-redaction rule.
 

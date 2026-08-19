@@ -180,7 +180,14 @@ which the lead receives in its completion notification. The lead prints progress
      "no consequential autonomous action without a checked fact" rule).
 1. Dedupe by `(locale, key)`; sort by severity then confidence then locale.
 
-## Phase 4 — Approval (skipped if --auto-approve)
+## Phase 4 — Approval menu (skipped if --auto-approve)
+
+**`--auto-approve` skips the menu only, NOT the advisor.** The conditional call below fires in
+every mode; `../shared/advisor-criteria.md` ("Auto-approve compatibility") requires a skill
+supporting `--auto-approve` to state this explicitly rather than leave it inferable, and the
+heading previously read "Approval (skipped if --auto-approve)", which on a literal reading
+skipped the advisor too — contradicting the flag doc and the body below. A headless run has no
+human in the loop, so it is the run that least tolerates losing the second opinion.
 
 Call `advisor()` before the menu if total findings ≥ 20 OR one locale holds ≥ 60% of
 findings (skewed-locale signal). Then present findings by tier (critical/high →

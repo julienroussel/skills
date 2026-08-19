@@ -6,7 +6,7 @@ effort: medium
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *) Bash(git commit *) Bash(git push -u origin *) Bash(git push origin HEAD:*) Bash(git push origin *) Bash(git branch *) Bash(git ls-files *) Bash(git clean -fd *) Bash(rm -f -- *) Bash(mktemp *) Bash(git rev-parse *) Bash(git remote get-url *) Bash(git worktree *) Bash(git rev-list *) Bash(git symbolic-ref --short *) Bash(cat *) Bash(awk *) Bash(sed 's@^origin/@@') Bash(gh auth status *) Bash(git log *) Bash(git stash *) Bash(git fetch *) Bash(git merge --ff-only *) Bash(git pull --ff-only *) Bash(git rebase *) Bash(gh repo view *) Bash(gh pr create *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr merge *) Bash(gh pr edit *) Bash(gh pr list *) Bash(gh api *) Bash(glab repo view *) Bash(glab mr create *) Bash(glab mr view *) Bash(glab mr list *) Bash(glab mr merge *) Bash(glab mr update *) Bash(glab ci *) Bash(glab api *) Bash(grep *) Bash(jq *) Bash(wc *) Bash(test *) Bash([ *) Bash(echo *) Bash(printf *) AskUserQuestion Agent advisor
+allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *) Bash(git commit *) Bash(git push -u origin *) Bash(git push origin HEAD:*) Bash(git push origin *) Bash(git branch *) Bash(git ls-files *) Bash(git clean -fd *) Bash(rm -f -- *) Bash(mktemp *) Bash(git rev-parse *) Bash(git remote get-url *) Bash(git worktree *) Bash(git rev-list *) Bash(git symbolic-ref --short *) Bash(cat *) Bash(awk *) Bash(sed 's@^origin/@@') Bash(gh auth status *) Bash(glab auth status *) Bash(git log *) Bash(git stash *) Bash(git fetch *) Bash(git merge --ff-only *) Bash(git pull --ff-only *) Bash(git rebase *) Bash(gh repo view *) Bash(gh pr create *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr merge *) Bash(gh pr edit *) Bash(gh pr list *) Bash(gh api *) Bash(glab repo view *) Bash(glab mr create *) Bash(glab mr view *) Bash(glab mr list *) Bash(glab mr merge *) Bash(glab mr update *) Bash(glab ci *) Bash(glab api *) Bash(grep *) Bash(jq *) Bash(wc *) Bash(test *) Bash([ *) Bash(echo *) Bash(printf *) AskUserQuestion Agent advisor
 ---
 
 <!-- Frontmatter rationale (model/effort/allowed-tools/disallowed-tools): see
@@ -52,6 +52,11 @@ allowed-tools: Read Glob Bash(git status *) Bash(git diff *) Bash(git checkout *
                                           chains, through step 12-multi cleanup). DEFERRED / Pattern C:
                                           grep-checked at Phase 1 for existence + its two anchors, then
                                           Read at Phase 3b entry only when a split is confirmed
+  Skill-local, NEVER read at runtime (maintainer reference, carries no smoke-parse anchor — do NOT
+  add it to the Phase 1 read list above):
+    - protocols/rationale.md            — design rationale behind the rules below; currently the
+                                          Phase 3a "no advisor checkpoint on the default path"
+                                          carve-out and the three mitigations that bound it
   Required tools:
     - Bash, Read, Glob, AskUserQuestion, Agent (split analysis + CI-failure fix), advisor
 -->
@@ -73,7 +78,7 @@ Parse arguments as space-separated tokens. Recognized flags:
 - `--validate`: Run lint/typecheck/test before creating the PR. If any fail, stop and report. Use detected validation commands from `.claude/review-profile.json` if available.
 - `--label <labels>`: Add comma-separated labels to all created PRs. Example: `--label feature,auth`.
 - `--no-overlap-check`: Skip the post-create file-overlap warning (Phase 3a step 11a / Phase 3b step 10a-multi). Use when you know overlap with another open PR is intentional (a deliberate follow-up, a coordinated refactor). The check is informational only — this flag just suppresses the API call and the warning output.
-- `--model=<tier>`: Override the model for **every subagent spawned this run** — split-analysis and CI-fix (`sonnet|opus|haiku|fable`); nested spawns inherit it. Does NOT change the lead (frontmatter applies before argument parsing — run `/model <tier>` first for a uniform run). Compatible with all other flags. Canonical semantics: `../shared/model-override.md`.
+- `--model=<tier>` — `sonnet|opus|haiku|fable`; overrides every subagent spawn (`../shared/model-override.md`). Not the lead: this skill's frontmatter `model:` wins, and a session `/model <tier>` does not work around that.
 - Any remaining text is used as the commit message / PR title.
 
 Examples: `/jr-ship`, `/jr-ship --draft`, `/jr-ship fix login bug --no-split`, `/jr-ship --merge`, `/jr-ship --validate`, `/jr-ship --label feature,v2`, `/jr-ship --merge --no-overlap-check`
@@ -199,7 +204,7 @@ After the above complete:
 2. **Empty check** (skip if `RESUME_MODE=true`): If there are no staged or unstaged changes and no untracked files, stop with "Nothing to ship."
 3. **Branch ancestry check** (skip if `RESUME_MODE=true` — the user is intentionally on a feature branch ahead of base): If the current branch is NOT the base branch AND has commits ahead of the base branch (from `git rev-list`), warn via AskUserQuestion: "You are on branch '${branch}' which is ${N} commits ahead of '${base}'. Shipping from here will include all those commits in the PR. Options: [Continue — include all commits] / [Ship only uncommitted changes] / [Abort]".
    - If the user chooses **Ship only uncommitted changes**: Run `git stash --include-untracked`, `git checkout <base-branch>`, `git stash pop`. If stash pop has conflicts, abort with: "Could not cleanly apply your changes to ${base}. Resolve manually." Continue the flow from the base branch.
-4. **Secret content scan** (skip if `RESUME_MODE=true` — clean tree, no diff to scan): Grep for secret patterns using the canonical regex catalog in `../shared/secret-patterns.md` (loaded at Phase 1), applying that file's **Scan-status check** at the invocation: branch on grep's exit status, routing a status above 1 to the same `[ABORT — GREP -E INCOMPATIBLE]` abort as the smoke probe (quote the status), never to a clean result. **Scan inputs are the tracked diffs AND the untracked files step 8 would stage** — `git diff`, `git diff --cached`, plus the bodies of every path in `git ls-files --others --exclude-standard -z`. The untracked half is not optional: step 8 stages untracked files filtered by a *filename* denylist that matches no content, so a new file with an unremarkable name (`config.ts`, `fixtures/auth.json`) carrying an `AKIA…`/`ghp_…`/`sk-ant-…` value would otherwise be committed and pushed having never been pattern-scanned (`../shared/secret-scan-protocols.md` treats untracked files as a first-class secret-carrying class for exactly this reason). **If the untracked enumeration cannot run** (command denied, `git ls-files` unavailable), halt with `Secret scan incomplete — untracked files were not read` rather than reporting a clean scan: a scan that silently skipped half its inputs is worse than no scan, because step 8 proceeds to stage exactly those files. Apply the **advisory-tier classification** for re-scans per `../shared/secret-scan-protocols.md`: only strict-tier matches trigger the halt; advisory-tier matches (SK / sk- / dapi meeting demotion criteria) are surfaced for review and do NOT block.
+4. **Secret content scan** (skip if `RESUME_MODE=true` — clean tree, no diff to scan): Grep for secret patterns using the canonical regex catalog in `../shared/secret-patterns.md` (loaded at Phase 1), applying that file's **Scan-status check** at the invocation: branch on grep's exit status, routing a status above 1 to the same `[ABORT — GREP -E INCOMPATIBLE]` abort as the smoke probe (quote the status), never to a clean result. **Scan inputs are the tracked diffs AND the untracked files step 8 would stage** — `git diff`, `git diff --cached`, plus the bodies of every path in `git ls-files --others --exclude-standard -z`. The untracked half is not optional: step 8 stages untracked files filtered by a *filename* denylist that matches no content, so a new file with an unremarkable name (`config.ts`, `fixtures/auth.json`) carrying an `AKIA…`/`ghp_…`/`sk-ant-…` value would otherwise be committed and pushed having never been pattern-scanned (`../shared/secret-scan-protocols.md` treats untracked files as a first-class secret-carrying class for exactly this reason). **If the untracked enumeration cannot run** (command denied, `git ls-files` unavailable), halt with `Secret scan incomplete — untracked files were not read` rather than reporting a clean scan: a scan that silently skipped half its inputs is worse than no scan, because step 8 proceeds to stage exactly those files. **Treat ALL matches as strict tier at this pre-scan site — no advisory demotion.** This scan runs on the working-tree diff plus untracked files *before any commit*, so it is a **pre-implementation** site, and `../shared/secret-scan-protocols.md` pins those to all-strict ("At Phase 1 (pre-implementation), ALL pattern matches including `SK`/`sk-`/`dapi` are treated as **strict tier**"); the sibling pre-scan sites in `/jr-audit` and `/jr-review` use this same wording. It previously invoked the advisory tier here, which was wrong twice over: the tier does not apply pre-implementation, and `/jr-ship` defines no demotion criteria, so the undefined branch failed **open** (`do NOT block`) on the one skill that pushes and merges. Advisory-tier classification remains correct at the genuinely post-implementation re-scan in `protocols/ci-failure-handling.md`, which now resolves against the criteria in `../shared/secret-patterns.md`.
 
    **Halt protocol** (mandatory — `/jr-ship` is the highest-blast-radius secret-leak vector in this skill set; warn-only is unsafe before push/PR/merge):
    - **Headless mode** (per `../shared/secret-scan-protocols.md` "Headless/CI detection"): abort unconditionally with non-zero exit, listing the detected pattern types (NOT the matched values). Do NOT proceed to commit/push.
@@ -277,18 +282,10 @@ After the above complete:
 
 #### Phase 3a: Single-PR Flow
 
-**No advisor checkpoint on the default path — deliberate, not an omission.** All four of this
-skill's `advisor()` sites are mode-gated (step 5 multi-PR, step 14 `--merge`, step 11b-multi
-multi-PR + `--merge`, and the CI stuck-loop at its 2-cycle cap), so a default run — no `--merge`,
-splitting not recommended, CI green — reaches step 16 with none of them having fired.
-`../shared/advisor-criteria.md` names "renders a final report after a multi-phase run with no
-advisor checkpoint anywhere" as a declare-done trigger; this site is the documented exception, on
-three mitigations that bound the blast radius: (1) **nothing is merged** — the default path stops
-after CI and leaves the PR open, so a human reviews before anything reaches the base branch;
-(2) the branch and its commits are **fully recoverable** — no history is rewritten and no remote
-ref is force-updated; (3) the **`--merge` path, which is the irreversible one, does gate on
-`advisor()`** at step 14. Do not re-raise this as a missing-advisor finding without first showing
-one of the three mitigations has gone.
+**No advisor checkpoint on the default path — deliberate, not an omission.** Rationale and the three
+mitigations that bound the blast radius: `protocols/rationale.md` "No advisor checkpoint on the
+default path" (maintainer reference, never read at runtime). Do not re-raise as a missing-advisor
+finding without reading it first.
 
 In **resume mode** (`RESUME_MODE=true`), steps 6–11 are SKIPPED — the PR already exists. Jump directly to step 11a (file-overlap check) with `PR_NUMBER=$RESUME_PR_NUMBER` and `BATCH_PR_NUMBERS=[$RESUME_PR_NUMBER]` (the latter excludes the resumed PR from its own open-PR scan, avoiding a spurious self-overlap warning). 11a fetches fresh open-PR state so a resume run days after the original ship surfaces overlaps that appeared in the interim. From there, 11b runs as usual — on a typical resume (`--merge` without `--draft`) it's a no-op and execution proceeds to step 12.
 

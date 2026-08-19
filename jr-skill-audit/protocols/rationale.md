@@ -118,3 +118,36 @@ A line count is a proxy a dense file defeats. This skill's own body carries ~77,
 the skills-doc 500-line tip with a single line to spare, so a budget check keyed on lines
 under-reports its real cost threefold; the compaction budget (first 5,000 tokens of a skill
 retained) is measured in tokens, not lines.
+
+## `frontmatter` tier differential — result (2026-08-14)
+
+*(`SKILL.md` "Model requirements", the `model: "sonnet"` carve-out for `frontmatter`.)*
+
+That passage requires a tier change be validated **by differential**, not by the 25%-rejection rate,
+because an under-powered tier fails as false negatives that never enter that numerator. The
+differential was run: the same dimension, same charter, same ten personal skills, sonnet arm vs
+`--model=opus` arm.
+
+**Result: sonnet 0 findings, opus 3.** But the three are not field-validation misses, and that is the
+finding. Opus independently re-ran every mechanical check — `description` presence 10/10, `effort`
+enum 9/9 legal, listing cap (max 460 chars vs the 1,536 default), `name`-vs-directory 10/10, the
+`disable-model-invocation` → `when_to_use`/`paths` contradiction (unreachable: no target declares
+either field), unknown-key scan, YAML parse via a real parser — and confirmed **all of them clean**.
+The sonnet arm's zero was the correct answer to the charter as written.
+
+What opus found instead was semantic and cross-referential, all of it outside a table lookup:
+a `--model` flag doc prescribing `/model <tier>` as a uniform-run remedy that the `model:` field's
+own semantics defeat (the doc offers `inherit` precisely because a concrete value does *not* keep the
+active model); a `Bash(glab auth status *)` grant missing from `/jr-ship` that exists only as a
+command **derived** from a mandatory forge-translation directive three sections away; and an absent
+optional field (`user-invocable` on a reference-only skill) that a required-fields check cannot see.
+
+**Conclusion: keep `sonnet` for the charter as written; the charter is what is now under-scoped.**
+This repo's frontmatter has been mechanically correct for some time, so the residual defects have
+migrated to the frontmatter *contract* — grants versus the commands a body derives, field semantics
+versus the prose documenting them. A tier justified as "adequate for the charter" therefore
+under-covers what is actually left, and will keep doing so while the mechanical layer stays clean.
+If the charter is broadened to cover the contract, re-run this differential and expect opus to earn
+its cost; while it stays a table lookup, sonnet is right and the dimension is close to exhausted.
+Note the rejection counter would have shown nothing either way — sonnet reported no findings to
+reject — which is exactly the blind spot the passage warns about.

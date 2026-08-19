@@ -54,7 +54,7 @@ Invoke with `grep -Ei`. The `-i` is mandatory — the case-insensitivity is anno
 ## Token-prefix patterns (regex union)
 
 ```
-(AKIA[0-9A-Z]{16}|sk_live_[a-zA-Z0-9]{20,200}|rk_live_[a-zA-Z0-9]{20,200}|sk_test_[a-zA-Z0-9]{20,200}|rk_test_[a-zA-Z0-9]{20,200}|sk-ant-[a-zA-Z0-9_-]{20,200}|sk-[a-zA-Z0-9_-]{20,200}|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|ghs_[a-zA-Z0-9]{36}|ghu_[a-zA-Z0-9]{36}|ghr_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22,200}|xox[bpaes]-[a-zA-Z0-9-]{1,200}|xoxe\.xox[bp]-[a-zA-Z0-9-]{1,200}|-----BEGIN .{0,50} PRIVATE KEY|SG\.[a-zA-Z0-9_-]{1,200}\.[a-zA-Z0-9_-]{1,200}|AIza[0-9A-Za-z_-]{35}|npm_[a-zA-Z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|AccountKey=[a-zA-Z0-9+/=]{44,200}|SK[a-fA-F0-9]{32}|pypi-[A-Za-z0-9_-]{16,200}|sbp_[a-zA-Z0-9]{20,200}|hvs\.[a-zA-Z0-9_-]{24,200}|dop_v1_[a-zA-Z0-9]{43}|dp\.st\.[a-zA-Z0-9_-]{1,200}|dapi[a-fA-F0-9]{32}|shpat_[a-fA-F0-9]{32}|GOCSPX-[a-zA-Z0-9_-]{28}|https://hooks\.slack\.com/services/T[A-Z0-9]{8,15}/B[A-Z0-9]{8,15}/[a-zA-Z0-9]{24}|https://(discord|discordapp)\.com/api/webhooks/[0-9]{1,25}/[a-zA-Z0-9_-]{1,200}|"private_key":[[:space:]]*"-----BEGIN|vc_[a-zA-Z0-9]{24,200}|glpat-[a-zA-Z0-9_-]{20,200}|dckr_pat_[a-zA-Z0-9_-]{20,200}|nfp_[a-zA-Z0-9]{20,200})
+(AKIA[0-9A-Z]{16}|sk_live_[a-zA-Z0-9]{20,200}|rk_live_[a-zA-Z0-9]{20,200}|sk_test_[a-zA-Z0-9]{20,200}|rk_test_[a-zA-Z0-9]{20,200}|sk-ant-[a-zA-Z0-9_-]{20,200}|sk-[a-zA-Z0-9_-]{20,200}|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|ghs_[a-zA-Z0-9]{36}|ghu_[a-zA-Z0-9]{36}|ghr_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22,200}|xox[bpaes]-[a-zA-Z0-9-]{1,200}|xoxe\.xox[bp]-[a-zA-Z0-9-]{1,200}|-----BEGIN .{0,50} PRIVATE KEY|SG\.[a-zA-Z0-9_-]{1,200}\.[a-zA-Z0-9_-]{1,200}|AIza[0-9A-Za-z_-]{35}|npm_[a-zA-Z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|AccountKey=[a-zA-Z0-9+/=]{44,200}|SK[a-fA-F0-9]{32}|pypi-[A-Za-z0-9_-]{16,200}|sbp_[a-zA-Z0-9]{20,200}|hvs\.[a-zA-Z0-9_-]{24,200}|dop_v1_[a-zA-Z0-9]{43}|dp\.st\.[a-zA-Z0-9_-]{1,200}|dapi[a-fA-F0-9]{32}|shpat_[a-fA-F0-9]{32}|GOCSPX-[a-zA-Z0-9_-]{28}|https://hooks\.slack\.com/services/T[A-Z0-9]{8,15}/B[A-Z0-9]{8,15}/[a-zA-Z0-9]{24}|https://(discord|discordapp)\.com/api/webhooks/[0-9]{1,25}/[a-zA-Z0-9_-]{1,200}|"private_key":[[:space:]]*"-----BEGIN|vc_[a-zA-Z0-9]{24,200}|glpat-[a-zA-Z0-9_-]{20,200}|gldt-[a-zA-Z0-9_-]{20,200}|glrt-[a-zA-Z0-9_-]{20,200}|glrtr-[a-zA-Z0-9_-]{20,200}|gloas-[a-zA-Z0-9_-]{20,200}|glptt-[a-zA-Z0-9_-]{20,200}|glagent-[a-zA-Z0-9_-]{20,200}|glimt-[a-zA-Z0-9_-]{20,200}|glsoat-[a-zA-Z0-9_-]{20,200}|glcbt-[a-zA-Z0-9_-]{20,200}|glft-[a-zA-Z0-9_-]{20,200}|glffct-[a-zA-Z0-9_-]{20,200}|glwt-[a-zA-Z0-9_-]{20,200}|dckr_pat_[a-zA-Z0-9_-]{20,200}|nfp_[a-zA-Z0-9]{20,200})
 ```
 
 ## Connection-string variants (apply after the prefix union)
@@ -75,14 +75,34 @@ Invoke with `grep -Ei`. The `-i` is mandatory — the case-insensitivity is anno
 
 Pre-scan sites (`/jr-review` Phase 1 step 7, `/jr-audit` Phase 1 step 6.5) treat **ALL matches as strict tier** — no advisory demotion. Reasons: (a) the user is reviewing their own changes and false-positive tolerance is lower; (b) in headless mode the user explicitly opted into halt-on-detection.
 
-Post-implementation re-scan sites (`/jr-review` Phase 5.6, Phase 6 regression re-scans, Convergence Phase 5.6, Fresh-eyes) apply the **Advisory-tier classification for re-scans** in `secret-scan-protocols.md`. The deterministic demotion criteria for the high-FP-rate patterns (`SK`, `sk-`, `dapi`) are codified there. Escalation conditions (assignment context, config/env file) take precedence over demotion.
+Post-implementation re-scan sites (`/jr-review` Phase 5.6, Phase 6 regression re-scans, Convergence Phase 5.6, Fresh-eyes) apply the **Advisory-tier classification for re-scans** in `secret-scan-protocols.md`. The deterministic demotion criteria for the high-FP-rate patterns (`SK`, `sk-`, `dapi`) are defined in the next section, **here**. Escalation conditions (assignment context, config/env file) take precedence over demotion.
+
+## Deterministic demotion criteria (`SK`, `sk-`, `dapi`)
+
+**This section is the terminus.** Consumers cite **this section by name**; no consumer defines its own variant. A lead improvising them cannot be deterministic, which is the property the tier depends on.
+
+Applies **only** at post-implementation re-scan sites. Pre-scan sites treat all matches as strict (previous section), so this section never runs there.
+
+A match of `SK[a-fA-F0-9]{32}`, `sk-[a-zA-Z0-9_-]{20,200}` or `dapi[a-fA-F0-9]{32}` demotes to advisory **only when ALL FOUR hold**. Any single failure keeps it strict — the list is conjunctive and fails closed, so an unevaluable criterion is a failure, never a pass.
+
+1. **No assignment context.** Within the 40 characters preceding the match on the same line there is no `=` or `:`, and no identifier containing `key`, `secret`, `token`, `auth`, `pass`, or `cred` (case-insensitive). This is the escalation rule in `secret-scan-protocols.md` ("Escalation overrides demotion") evaluated as a precondition; both spellings must agree, so change them together.
+2. **Not a config or environment file.** The containing path does not match `(^|/)\.env` or `\.(env|ini|cfg|conf|toml|properties|yaml|yml)$`, and its basename does not start `config.`, `secrets.` or `credentials.`.
+3. **Not a bare quoted literal.** The match is not the entire content of a single- or double-quoted string (`"<match>"` / `'<match>'`), which is the shape a real credential assignment takes.
+4. **Positive non-credential signal — at least one of:**
+   a. the matched value contains a placeholder token, case-insensitive: `example`, `sample`, `dummy`, `placeholder`, `redacted`, `changeme`, `fake`, `xxxx`, or `test`;
+   b. the variable part is a single repeated character, or is strictly ascending or descending hex (`abcdef…`, `fedcba…`);
+   c. **`SK`/`dapi` only** — a checksum identifier (`md5`, `hash`, `checksum`, `digest`, `etag`, `sha`) appears within the 40 characters preceding the match, i.e. the 32 hex characters are a digest rather than a credential. Note 32 hex characters is **not** a git object id (SHA-1 is 40, SHA-256 is 64), so do not attempt to resolve one with `git cat-file`.
+
+Criterion 4c is `SK`/`dapi`-only because both are `[a-fA-F0-9]{32}` — exactly MD5 width, which is the entire reason they carry a high false-positive rate. `sk-` is not hex-shaped and has no equivalent benign form, so it demotes only via 4a or 4b.
+
+**Advisory is not dismissal.** A demoted match is still surfaced in the Phase 7 report with file path, line number and pattern type (`secret-scan-protocols.md`, "Never silently dismiss"); demotion changes only whether the run halts.
 
 ## Pattern-type enum mapping
 
 When writing `secret-warnings.json` (per `secret-warnings-schema.md`), set `patternType` per the matched sub-pattern. Patterns with no dedicated label fall through to `"other"` and are subject to the `"other"` full-scan fallback in `/jr-review` Phase 7 step 3 (see `jr-review/protocols/secret-warnings-lifecycle.md`).
 
-Dedicated labels: `aws-key` (`AKIA`), `stripe-key` (`sk_live_`/`rk_live_`/`sk_test_`/`rk_test_`), `anthropic-key` (`sk-ant-`), `github-token` (`ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_`/`github_pat_`), `gitlab-token` (`glpat-`), `slack-token` (`xox[bpaes]-`/`xoxe.xox[bp]-`), `pem-private-key` (`BEGIN PRIVATE KEY`), `sendgrid-key` (`SG.`), `google-api-key` (`AIza`), `jwt`, `connection-string-basic-auth`, `connection-string-query-credentials`, `jdbc-credentials`. All others use `"other"`.
+Dedicated labels: `aws-key` (`AKIA`), `stripe-key` (`sk_live_`/`rk_live_`/`sk_test_`/`rk_test_`), `anthropic-key` (`sk-ant-`), `github-token` (`ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_`/`github_pat_`), `gitlab-token` (`glpat-`/`gldt-`/`glrt-`/`glrtr-`/`gloas-`/`glptt-`/`glagent-`/`glimt-`/`glsoat-`/`glcbt-`/`glft-`/`glffct-`/`glwt-`), `slack-token` (`xox[bpaes]-`/`xoxe.xox[bp]-`), `private-key-pem` (`BEGIN PRIVATE KEY`), `sendgrid-key` (`SG.`), `google-api-key` (`AIza`), `jwt`, `connection-string-basic-auth`, `connection-string-query-credentials`, `jdbc-credentials`. All others use `"other"`.
 
 ## Updating this file
 
-Adding a new prefix pattern requires updating, in order: (1) this file's regex union, (2) `secret-warnings-schema.md` `patternType` enum if a new label is introduced, (3) the consumers (`/jr-review` Phase 1 step 7, `/jr-audit` Phase 1 step 6.5, the pre-commit hook patterns file via `/jr-review`'s install path) by re-reading this file. The hook template SHA-256 is hardcoded; updating the patterns file does NOT change the template hash, so no template-hash bump is required.
+Adding a new prefix pattern requires updating, in order: (1) this file's regex union, (2) this file's "Pattern-type enum mapping" list AND the `"other"`-class list in `jr-review/protocols/secret-warnings-lifecycle.md` ("Pattern-type non-absorption rule"), both of which hand-enumerate prefixes rather than deriving them from the union, (3) `secret-warnings-schema.md` `patternType` enum if a new label is introduced, (4) the consumers (`/jr-review` Phase 1 step 7, `/jr-audit` Phase 1 step 6.5, the pre-commit hook patterns file via `/jr-review`'s install path) by re-reading this file. The hook template SHA-256 is hardcoded; updating the patterns file does NOT change the template hash, so no template-hash bump is required.

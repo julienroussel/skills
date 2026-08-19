@@ -157,7 +157,7 @@ All post-implementation secret re-scans (Phase 5.6, Phase 6 regression re-scan, 
 
 **Strict tier** (always halt): all patterns by default.
 
-**Advisory tier** (report in findings but do not halt): specific patterns with high false-positive rates (`SK`, `sk-`, `dapi`) may be demoted to advisory when they meet deterministic demotion criteria defined in each skill's Phase 1 Track B step 7 (the criteria differ slightly between skills based on scope — `/jr-review` reviews diffs, `/jr-audit` reviews full files). Advisory-tier matches are included in the Phase 7 report for human review.
+**Advisory tier** (report in findings but do not halt): specific patterns with high false-positive rates (`SK`, `sk-`, `dapi`) may be demoted to advisory when they meet the deterministic demotion criteria in `secret-patterns.md` ("Deterministic demotion criteria"). Those criteria are **uniform across consumers** — no skill defines its own variant, and none is defined in any skill's Phase 1 pre-scan step. (This previously read "defined in each skill's Phase 1 Track B step 7"; no such definition existed at any consumer, and that step delegated back to `secret-patterns.md`, so the three pointers formed a circle with no terminus. Do not re-introduce a per-skill variant: "deterministic" is the property the tier rests on, and a lead improvising criteria cannot supply it.) Advisory-tier matches are included in the Phase 7 report for human review.
 
 **Halt vs. line-update semantics**:
 - Phase 5.6 / Phase 6 / Convergence 5.6: only **strict-tier matches trigger the halt**. Advisory matches are logged but do not halt.

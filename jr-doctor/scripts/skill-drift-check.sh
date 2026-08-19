@@ -51,12 +51,23 @@ for d in "$HOME"/.claude/skills/*/; do
   # 4. Inline duplication of canonical shared content. Drift if a Group D
   #    smoke-parse anchor appears inline AND the corresponding shared/ ref
   #    is absent. (Anchor + reference together is the canonical pattern.)
+  #    Scans this skill's `protocols/*.md` as well as its SKILL.md: the bodies
+  #    that carry canonical anchors have been moving out of SKILL.md into
+  #    protocols/, and a SKILL.md-only scan loses coverage with every such
+  #    extraction while still reporting green. The reference is required in the
+  #    same file as the anchor, not merely somewhere in the skill — a per-skill
+  #    test would pass for every skill here by construction and so could never
+  #    fail. Checks 8 and 11 already glob `*/protocols/*.md` the same way. The
+  #    marker names the FILE, not the skill, so a hit is actionable.
   check_inline_drift() {
     anchor="$1"; shared_path="$2"
-    if grep -F -- "$anchor" "$skill_md" >/dev/null 2>&1; then
-      grep -E "shared/${shared_path}" "$skill_md" >/dev/null 2>&1 \
-        || echo "WARN_INLINE_DRIFT:$name:${shared_path}"
-    fi
+    for cid_f in "$skill_md" "${d}protocols"/*.md; do
+      [ -f "$cid_f" ] || continue
+      if grep -F -- "$anchor" "$cid_f" >/dev/null 2>&1; then
+        grep -E "shared/${shared_path}" "$cid_f" >/dev/null 2>&1 \
+          || echo "WARN_INLINE_DRIFT:${cid_f#"$HOME"/.claude/skills/}:${shared_path}"
+      fi
+    done
   }
   # Canonical anchor source: ~/.claude/skills/shared/phase1-track-a-protocol.md
   # (Canonical Anchor Table). Each row below corresponds to a row in the
@@ -328,35 +339,111 @@ for f in "$HOME"/.claude/skills/shared/*.md "$HOME"/.claude/skills/*/SKILL.md \
   fi
 done
 
-# 12. Tail-unguarded protocol file (one-shot). A multi-anchor grep-guard only makes a
-#     TRUNCATED body fail if the LAST anchor sits near the end. An anchor in the middle
-#     lets a tail truncation pass while dropping the rest of the procedure — including,
-#     in the shipped case, every irreversible step of a multi-PR flow. Warns when the
-#     last declared anchor first occurs before 60% of the target file.
-#     Only ANCHOR-DECLARATION rows qualify: the text after `<file>.md`: must open with a
-#     backtick or `**`. A prose application line ("Apply `protocols/x.md`: detect ... under
-#     `path`") also carries backticked tokens, and treating its trailing token as an anchor
-#     reports a depth for a guard that was never declared there.
+# 12. Protocol-file anchor guard (one-shot). Two failure modes of the same guard:
+#       a) TAIL-UNGUARDED — a multi-anchor grep-guard only makes a truncated body fail if the
+#          DEEPEST anchor sits near the end. An anchor in the middle lets a tail truncation
+#          pass while dropping the rest of the procedure — including, in the shipped case,
+#          every irreversible step of a multi-PR flow. Warns below 60% of the file.
+#          Depth is the deepest anchor's FIRST occurrence, not the last-declared one:
+#          declaration order is not depth order, and `grep -Fq` is satisfied by the first hit.
+#       b) UNRESOLVABLE — a declared anchor that is renamed away or deleted, or a protocol
+#          file that cannot be read. Both make the consumer skill hard-fail its Phase 1 guard
+#          on EVERY run, so they are the fatal half; the previous version emitted nothing for
+#          either and graded only (a), which is the inverted-consequence grading this fixes.
+#     Extraction: the five swarm skills declare anchors in four different connector shapes, and
+#     a `/jr-ship`-only row pattern left the other 25 protocol files uncovered. The awk
+#     below is shape-agnostic — it tokenises the backticked spans of a line, marks the ones
+#     naming a protocol file of THIS skill, and reads the anchors that follow:
+#       - declaration row  — a short connector (`: `, ` — `, ` — anchors `, ` must contain `)
+#                            straight after the file token; 1+ anchors, so a single-anchor
+#                            guard is covered too.
+#       - prose paragraph  — otherwise the LAST run of 2+ backticked tokens joined by ` AND `
+#                            in that file's span. Last, not first: those paragraphs open with
+#                            a "verify presence: `[ -f ]` the file AND `grep -Eq`" clause that
+#                            is itself an AND-run, and taking the first would grade that.
+#     Only a token that is either shaped `protocols/<x>.md` or followed by a declaration
+#     connector ends the preceding file's span, so a bare cross-reference mid-sentence
+#     ("beside `fix-secret-validate.md`") no longer steals the anchors that follow it.
+#     `^`-prefixed anchors are matched at line start, mirroring the `grep -Eq` the declaring
+#     skill runs — several protocol files quote their own anchors in header prose, and a plain
+#     substring match would report that line-3 quote as the guard depth.
+#     Known gap: a declared file that no longer exists is only reported when the declaration
+#     spells the `protocols/` prefix; a bare-basename declaration of a deleted file cannot be
+#     told from prose. The consumer's own Phase 1 hard-fail still catches that case loudly.
 for f in "$HOME"/.claude/skills/*/SKILL.md; do
   [ -f "$f" ] || continue
-  ta_name=$(basename "$(dirname "$f")")
   ta_dir=$(dirname "$f")
-  grep -oE '`protocols/[a-z0-9-]+\.md`: (`|\*\*)[^|]*' "$f" 2>/dev/null | while read -r ta_row; do
-    ta_file=$(printf '%s' "$ta_row" | sed -n 's/^`\([^`]*\)`:.*/\1/p')
-    ta_full="$ta_dir/$ta_file"
-    [ -f "$ta_full" ] || continue
-    ta_total=$(wc -l < "$ta_full" 2>/dev/null | tr -d ' ')
-    case "$ta_total" in ''|*[!0-9]*) continue ;; esac
-    [ "$ta_total" -gt 40 ] || continue
-    ta_last=$(printf '%s' "$ta_row" | sed 's/^`[^`]*`: //' | grep -oE '`[^`]+`' | tail -1 | sed 's/^`//;s/`$//')
-    [ -n "$ta_last" ] || continue
-    ta_pat=$(printf '%s' "$ta_last" | sed 's/^\^//;s/\\//g')
-    ta_hit=$(grep -nF -- "$ta_pat" "$ta_full" 2>/dev/null | head -1 | cut -d: -f1)
-    case "$ta_hit" in ''|*[!0-9]*) continue ;; esac
-    if [ $((ta_hit * 100 / ta_total)) -lt 60 ]; then
-      echo "WARN_ANCHOR_TAIL_UNGUARDED:$ta_name:$ta_file:$ta_hit/$ta_total"
-    fi
-  done
+  awk -v DIR="$ta_dir" -v NAME="$(basename "$ta_dir")" '
+    function base(t,   b) { b = t; sub(/.*\//, "", b); return b }
+    function isproto(t,   b, p, r) {
+      if (t ~ /(^|\/)protocols\/[a-z0-9-]+\.md$/) return 1
+      b = base(t)
+      if (b !~ /^[a-z0-9-]+\.md$/) return 0
+      p = DIR "/protocols/" b
+      if (p in EX) return EX[p]
+      r = (getline junk < p); close(p)
+      EX[p] = (r >= 0) ? 1 : 0
+      return EX[p]
+    }
+    function emit(m) { if (!(m in SEEN)) { SEEN[m] = 1; print m } }
+    function grade(fil, k, A,   path, l, r, i, tot, pat, anch, deep, hit) {
+      path = DIR "/protocols/" fil
+      tot = 0; r = 0
+      while ((r = (getline l < path)) > 0) {
+        tot++
+        for (i = 1; i <= k; i++) {
+          if (i in hit) continue
+          pat = A[i]; anch = 0
+          if (substr(pat, 1, 1) == "^") { anch = 1; pat = substr(pat, 2) }
+          gsub(/\\/, "", pat)
+          if (anch) { if (index(l, pat) == 1) hit[i] = tot }
+          else      { if (index(l, pat) > 0)  hit[i] = tot }
+        }
+      }
+      close(path)
+      # An unreadable or empty target is the vacuous pass this check exists to close:
+      # report it instead of skipping, exactly as a missing anchor is reported.
+      if (r < 0)    { emit("FAIL_ANCHOR_UNREADABLE:" NAME ":" fil ":unreadable"); return }
+      if (tot == 0) { emit("FAIL_ANCHOR_UNREADABLE:" NAME ":" fil ":empty"); return }
+      deep = 0
+      for (i = 1; i <= k; i++) {
+        if (!(i in hit)) { emit("FAIL_ANCHOR_MISSING:" NAME ":" fil ":" A[i]); return }
+        if (hit[i] > deep) deep = hit[i]
+      }
+      if (tot > 40 && deep * 100 / tot < 60)
+        emit("WARN_ANCHOR_TAIL_UNGUARDED:" NAME ":" fil ":" deep "/" tot)
+    }
+    {
+      line = $0
+      gsub(/\\`/, "\001", line)   # protect a backtick escaped inside an anchor
+      n = 0; rest = line
+      while (match(rest, /`[^`]*`/) > 0) {
+        n++
+        T[n]  = substr(rest, RSTART + 1, RLENGTH - 2)
+        GP[n] = substr(rest, 1, RSTART - 1)
+        rest  = substr(rest, RSTART + RLENGTH)
+      }
+      for (i = 1; i <= n; i++)
+        D[i] = (isproto(T[i]) && (T[i] ~ /protocols\// || (i < n && GP[i+1] ~ /^(: | (—|--) (anchors )?| must contain )$/)))
+      for (i = 1; i <= n; i++) {
+        if (!D[i]) continue
+        q = n + 1
+        for (j = i + 1; j <= n; j++) if (D[j]) { q = j; break }
+        s = 0
+        if (i + 1 < q && GP[i+1] ~ /^(: | (—|--) (anchors )?| must contain )$/) s = i + 1
+        if (!s) {
+          for (j = i + 1; j < q; j++) if (GP[j+1] == " AND " && j + 1 < q) s = j
+          if (s) { while (s > i + 1 && GP[s] == " AND ") s-- }
+        }
+        if (!s) continue
+        e = s; k = 0
+        while (e + 1 < q && GP[e+1] == " AND ") e++
+        for (j = s; j <= e; j++) { a = T[j]; gsub(/\001/, "`", a); k++; A[k] = a }
+        grade(base(T[i]), k, A)
+        for (j = 1; j <= k; j++) delete A[j]
+      }
+    }
+  ' "$f"
 done
 
 # 13. Unresolved canonical pointer (one-shot). Generalises check 9's section test to
@@ -379,3 +466,100 @@ for f in "$HOME"/.claude/skills/*/SKILL.md "$HOME"/.claude/skills/*/protocols/*.
     fi
   done
 done
+
+# 14. isHeadless env-var drift (one-shot). /jr-doctor re-expands the canonical
+#     isHeadless predicate inline, which shared/secret-scan-protocols.md otherwise
+#     forbids ("Defined once here and referenced by name elsewhere — do NOT re-expand
+#     or abbreviate the predicate at individual sites"). The carve-out is real —
+#     /jr-doctor never Reads that file, so it needs an executable copy — but the copy
+#     is drift-prone by construction and nothing detected it: check 4's anchor for
+#     this file is a string jr-doctor does not contain. A CI variable added to the
+#     canonical would silently never reach jr-doctor, and --fix would keep prompting
+#     in an unrecognised CI instead of auto-disabling. Derive BOTH sets at runtime so
+#     the two cannot diverge unnoticed (same technique as check 7's abortReason enum).
+#     Both spellings are extracted on both sides: `$CI` and the braced `${CI}` / `${CI:-}`.
+#     The bare form is what both predicates happen to use today, but the check exists to
+#     catch a FUTURE edit to the canonical, and a maintainer writing the idiomatic guarded
+#     form would otherwise add a variable the extractor cannot see — failing open in the
+#     dangerous direction (missing-in-jr-doctor).
+ih_canon="$HOME/.claude/skills/shared/secret-scan-protocols.md"
+ih_doctor="$HOME/.claude/skills/jr-doctor/SKILL.md"
+if [ ! -f "$ih_canon" ] || [ ! -f "$ih_doctor" ]; then
+  echo "WARN_ISHEADLESS_DRIFT:unparseable:canonical-or-jr-doctor-file-missing"
+else
+  ih_a=$(awk '/isHeadless=\$\(/{f=1} f{print} f && /echo false\)/{exit}' "$ih_canon" 2>/dev/null \
+         | grep -oE '\$\{?[A-Z][A-Z0-9_]*' | tr -d '${' | sort -u)
+  ih_b=$(awk '/is_headless=\$\(/{f=1} f{print} f && /^\)/{exit}' "$ih_doctor" 2>/dev/null \
+         | grep -oE '\$\{?[A-Z][A-Z0-9_]*' | tr -d '${' | sort -u)
+  if [ -n "$ih_a" ] && [ -n "$ih_b" ]; then
+    # Missing from jr-doctor is the dangerous direction: an unrecognised CI is treated
+    # as interactive. The reverse (extra locally) is reported too — it means the
+    # canonical dropped a signal jr-doctor still honours.
+    ih_missing=$(printf '%s\n' "$ih_a" | grep -vxF "$ih_b" | tr '\n' ' ' | sed 's/ *$//')
+    ih_extra=$(printf '%s\n' "$ih_b" | grep -vxF "$ih_a" | tr '\n' ' ' | sed 's/ *$//')
+    [ -n "$ih_missing" ] && echo "FAIL_ISHEADLESS_DRIFT:missing-in-jr-doctor:$ih_missing"
+    [ -n "$ih_extra" ] && echo "WARN_ISHEADLESS_DRIFT:extra-in-jr-doctor:$ih_extra"
+  else
+    echo "WARN_ISHEADLESS_DRIFT:unparseable:one-or-both-predicate-blocks-not-found"
+  fi
+fi
+
+# 15. jr-ship inline anchor-table drift (one-shot). /jr-ship is the ONE consumer that
+#     does not read shared/phase1-track-a-protocol.md at runtime, so it hard-copies
+#     anchor rows and itself declares they "MUST stay in sync with the canonical anchor
+#     table ... or the guard silently goes stale" — with nothing enforcing it. Group D
+#     validates shared FILES against the canonical table, not jr-ship's COPY of it, and
+#     check 4 passes because jr-ship both inlines and references shared/<file>. Derive
+#     both sides at runtime and compare anchor sets per file.
+#     Every skip path emits: the previous version fell through silently on a deleted row, a
+#     typo'd filename and an unparseable canonical row, and /jr-doctor renders a silent check
+#     as a green `✓ jr-ship anchor sync` — a guard certifying a comparison it never made.
+sp_canon="$HOME/.claude/skills/shared/phase1-track-a-protocol.md"
+sp_ship="$HOME/.claude/skills/jr-ship/SKILL.md"
+if [ ! -f "$sp_canon" ] || [ ! -f "$sp_ship" ]; then
+  echo "WARN_SHIP_ANCHOR_UNCOMPARED:setup:canonical-or-skill-file-missing"
+else
+  # (a) Coverage. Every shared file jr-ship READS at Phase 1 must have an inline anchor row.
+  #     Both sides are derived at run time (as in check 7/14), so a row deleted outright — or
+  #     one whose filename is mistyped, which leaves the real file unguarded just the same —
+  #     surfaces here instead of vanishing into the per-row loop's lookup miss below.
+  sp_reads=$(grep -oE '^- Read `\.\./shared/[a-z0-9-]+\.md`' "$sp_ship" 2>/dev/null \
+             | sed 's|^- Read `\.\./shared/||; s/`$//' | sort -u)
+  sp_rows=$(grep -oE '^- `[a-z0-9-]+\.md`: ' "$sp_ship" 2>/dev/null \
+            | sed 's/^- `//; s/`: $//' | sort -u)
+  if [ -z "$sp_reads" ] || [ -z "$sp_rows" ]; then
+    echo "WARN_SHIP_ANCHOR_UNCOMPARED:setup:read-list-or-anchor-list-not-found"
+  else
+    printf '%s\n' "$sp_reads" | while IFS= read -r sp_r; do
+      [ -n "$sp_r" ] || continue
+      printf '%s\n' "$sp_rows" | grep -qxF -- "$sp_r" \
+        || echo "FAIL_SHIP_ANCHOR_ROW_MISSING:$sp_r"
+    done
+  fi
+  # (b) Content. Only bare `<file>.md` rows: a `protocols/<file>.md` row is skill-local and
+  #     has no canonical counterpart, so the `/`-free pattern excludes it by construction.
+  grep -oE '^- `[a-z0-9-]+\.md`: .*' "$sp_ship" 2>/dev/null | while IFS= read -r sp_row; do
+    sp_file=$(printf '%s' "$sp_row" | sed -n 's/^- `\([^`]*\)`:.*/\1/p')
+    [ -n "$sp_file" ] || continue
+    sp_have=$(printf '%s' "$sp_row" | sed 's/^- `[^`]*`: //' \
+              | grep -oE '`[^`]+`' | sed 's/^`//;s/`$//' | sort -u)
+    # Canonical row: | `<file>` | <anchors> |  -> field 3 under FS='|'. Require exactly
+    # 4 fields so a row whose anchors contain an escaped pipe (e.g. reviewer-boundaries)
+    # is skipped rather than mis-split into a false mismatch.
+    sp_want=$(awk -F'|' -v f="$sp_file" '
+      $0 ~ ("^\\| `" f "` \\|") && NF == 4 { print $3 }' "$sp_canon" 2>/dev/null \
+              | grep -oE '`[^`]+`' | sed 's/^`//;s/`$//' | sort -u)
+    if [ -z "$sp_want" ]; then
+      # Nothing to compare against — say which of the two reasons it was, never nothing.
+      if grep -qF -- "| \`$sp_file\` |" "$sp_canon" 2>/dev/null; then
+        echo "WARN_SHIP_ANCHOR_UNCOMPARED:$sp_file:canonical-row-unparseable"
+      else
+        echo "WARN_SHIP_ANCHOR_UNCOMPARED:$sp_file:no-canonical-row"
+      fi
+      continue
+    fi
+    if [ "$sp_have" != "$sp_want" ]; then
+      echo "FAIL_SHIP_ANCHOR_DRIFT:$sp_file"
+    fi
+  done
+fi

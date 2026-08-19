@@ -20,12 +20,16 @@ When `--model=<tier>` is set, **every subagent spawn** in the run passes `model:
 
 ## Lead-model caveat
 
-The flag does NOT change the lead agent's model: frontmatter `model:` is applied when the skill is invoked, before the body parses arguments — no flag can retroactively override it. For a fully-uniform run (lead + subagents), set the session model first, then pass the flag:
+The flag does NOT change the lead agent's model: frontmatter `model:` is applied when the skill is invoked, before the body parses arguments — no flag can retroactively override it.
 
-```
-/model <tier>
-/jr-review --model=<tier>
-```
+**Setting the session model first does NOT work around this — do not advise it.** The skills doc's `model` row states the field is the "Model to use when this skill is active. The override applies for the rest of the current turn", and it offers `inherit` as a *separate* value "to keep the active model". A concrete value therefore **replaces** whatever `/model` selected, for as long as the skill runs: `/model opus` followed by `/jr-review` (frontmatter `model: sonnet`) still runs the lead on sonnet.
+
+For a genuinely uniform run there are only two levers, both deliberate edits rather than session state:
+
+- Edit the skill's frontmatter `model:` to the tier you want, or
+- set it to `inherit`, which makes the lead follow the session model — but note that un-pins a lead tier several skills pin on purpose (see the repo `CLAUDE.md` model-routing convention), so treat it as a design change, not a per-run workaround.
+
+`--model=<tier>` remains the correct and complete mechanism for **subagents**, which is where the judgment-bearing work happens.
 
 ## Advisor model (out of scope for `--model`)
 
