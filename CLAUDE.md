@@ -36,7 +36,24 @@ jr-audit/protocols/                   — skill-local procedures read at Phase 1
                                      smoke-parse guard: phase2-reviewers.md (Phase 2 reviewer-swarm body —
                                      scope/effort/selection/scaling/reviewer instructions/finding format;
                                      anchors: `### Classify scope size` AND `### Finding format`),
-                                     phase7-report.md (Phase 7 cleanup/report body; anchor `False positive rates`),
+                                     phase7-report.md (SPLIT: now only the pre-Phase-1 run-scoped flags
+                                     initialization + the exit-code rules; anchors `Run-scoped flags
+                                     initialization` AND `Exit-code rules`. Deliberately NOT deferred —
+                                     its flags-init is a program-start contract, so a Pattern C move
+                                     would put it out of context at program start),
+                                     phase7-report-body.md (the ~24KB Phase 7 render/persist body split
+                                     out of the above: 18-item enumeration, post-write redaction
+                                     verification, health-score formula, save-audit-history,
+                                     save-health-snapshot, base-anchor temp cleanup; deferred /
+                                     Pattern C — grep-guarded at Phase 1 for `False positive rates` AND
+                                     `Base-anchor temp cleanup` (head+tail), Read at Phase 7 entry),
+                                     finding-validation.md (Phase 3 step 0 + step 0.5 bodies — citation
+                                     sanity-check and claim verification, extracted from two mega-lines
+                                     of 4,088 and 2,467 chars; deferred / Pattern C, line-anchored
+                                     `^## Step 0 — Sanity-check findings` AND `^## Step 0.5 — Verify
+                                     claims`, Read at Phase 3 entry. Step numbers 0 and 0.5 are
+                                     load-bearing: convergence-protocol.md inherits Phase 3 steps by
+                                     number and names both, so they must not be merged),
                                      fix-secret-validate.md (Phase 5.6 secret re-scan + Phase 6 validate-fix
                                      loop bodies; grep-checked at Phase 1 for existence + the two `## Phase`
                                      anchors, then Read at Phase 5 entry; deferred / Pattern C, #66).
@@ -59,8 +76,26 @@ jr-review/scripts/                    — Phase 5 base-commit anchor + symlink-e
 jr-review/templates/                  — canonical pre-commit hook body (pre-commit-secret-guard.sh.tmpl);
                                      read-only; install script verifies its hash.
 jr-review/protocols/                  — skill-local procedures read at Phase 1 Track A under hard-fail +
-                                     smoke-parse guard (mirrors shared/* discipline). Ten files (nine read at
-                                     Phase 1; fix-secret-validate.md is the deferred exception, detailed in its entry below):
+                                     smoke-parse guard (mirrors shared/* discipline). Twelve files: **four** read
+                                     unconditionally at Phase 1 Track A (phase2-reviewers,
+                                     finding-sanity-check, phase7-cleanup-report, phase8-followups),
+                                     two read there conditionally
+                                     (branch-mode.md under --branch, pr-url-mode.md on a URL --pr value), and
+                                     **six** deferred / Pattern C — grep-guarded at Phase 1, body Read at the
+                                     point of use (fix-secret-validate.md, post-fix.md, base-anchor.md and
+                                     pre-commit-hook-offer.md at Phase 5 entry; secret-warnings-lifecycle.md at
+                                     Phase 7 step 3 inside that step's own file-exists condition;
+                                     pr-publication.md at Phase 8 entry, its guard itself conditional on --pr).
+                                     base-anchor / pre-commit-hook-offer / secret-warnings-lifecycle moved from
+                                     eager to deferred: all three are reachable only from Phase 5 or later
+                                     (--pr implies nofix, and neither reaches Phase 5), so ~25 KB of protocol
+                                     body is not loaded at Track A. State the size and the placement, not a
+                                     delta: an exact character count goes stale on the next edit to any of the
+                                     three, and "the always-loaded Track A set" is nowhere pinned, so two
+                                     honest measurements of the same saving disagree. Each pairs a **head AND tail** anchor — a lone
+                                     mid-file anchor passes while the procedure below it is gone, which is the
+                                     deferred-body failure mode.
+                                     Each is detailed in its entry below:
                                      phase2-reviewers.md (Phase 2 body — effort-adaptive breadth,
                                      reviewer selection + swarm scaling, reviewer instructions,
                                      finding format), finding-sanity-check.md (Phase 3 step 0
@@ -84,7 +119,18 @@ jr-review/protocols/                  — skill-local procedures read at Phase 1
                                      line-anchored `^## Phase 5.5 — Simplification pass` AND
                                      `^## Phase 5.55 — Fix verification`, then Read at Phase 5 entry
                                      beside fix-secret-validate.md — Phase 5 is skipped under nofix and
-                                     --pr implies nofix, so those runs never load it; deferred / Pattern C).
+                                     --pr implies nofix, so those runs never load it; deferred / Pattern C),
+                                     pr-publication.md (the Phase 8 PR/MR comment procedure: posted-set
+                                     definition, head-SHA staleness check, existing-discussion dedup across
+                                     PR comments + review threads incl. resolved ones, author-facing ordering
+                                     (blocking first, then file/line), rendering contract, coherence pass,
+                                     body template, confirmation + disclosure. Grep-checked at Phase 1 Track A
+                                     ONLY when --pr is set (line-anchored `^## Posted-set definition` AND
+                                     `^## Comment body template`), then Read at Phase 8 entry — deferred /
+                                     Pattern C. Guarded at Phase 1 rather than Phase 8 because in --pr mode
+                                     the comment is the run's only deliverable, so a Phase 8 discovery would
+                                     waste the whole swarm. Owns the posted set: phase8-followups.md steps
+                                     1-4 are normal-mode-only and are skipped under --pr).
                                      These extractions pull /jr-review to Anthropic's
                                      500-line guideline (518→500, held below 500 with pr-url-mode extracted;
                                      issue #20).
@@ -100,6 +146,11 @@ jr-ship/protocols/                    — skill-local procedures read at Phase 1
                                      (worktree-aware cleanup body — Consent basis + Path A/B,
                                      parameterized by BRANCHES/DELETE_SCRATCH/SUMMARY_STEP; applied
                                      at single-PR step 15 and multi-PR step 12-multi);
+                                     rationale.md (maintainer-only design rationale, NEVER read at
+                                     runtime, no anchor — currently the "no advisor checkpoint on the
+                                     default path" carve-out and its three mitigations, moved out of
+                                     SKILL.md because it instructs nobody at runtime; mirrors
+                                     jr-skill-audit/protocols/rationale.md);
                                      multi-pr-flow.md (the Phase 3b multi-PR body — independent PRs
                                      first, then stacked chains, through step 12-multi cleanup).
                                      DEFERRED / Pattern C: grep-checked at Phase 1 for existence +
@@ -113,7 +164,28 @@ jr-doctor/SKILL.md                    — health-check the user's Claude Code se
                                      (skill drift) runs narrow yes/no factual checks on every SKILL.md
                                      (line count, broken shared/* refs, frontmatter validity, inline
                                      duplication, template SHA-256 drift, refs-cache freshness, abortReason enum drift, harness-claim
-                                     date-stamp staleness >90d, restated-canonical-rule pointer linkage Check 9 #88). Group J (capability probe, default-on;
+                                     date-stamp staleness >90d, restated-canonical-rule pointer linkage Check 9 #88,
+                                     isHeadless env-var drift between the canonical and jr-doctor's own
+                                     inline re-expansion Check 14, and jr-ship's hard-copied anchor-table
+                                     rows vs the Canonical Anchor Table Check 15 — the latter two both
+                                     derive BOTH sides at runtime, like Check 7, so the compared copies
+                                     cannot drift unnoticed). Groups A/B/C/E/F/G/H are ONE call to
+                                     scripts/env-probe.sh (Groups D/I/J are not: D is Read-tool driven,
+                                     I has its own script, J spawns agents); the script reports
+                                     `MARKER: detail` facts and SKILL.md grades them, absence of a marker
+                                     being the pass — but ONLY on a run that emitted the terminal
+                                     `PROBE_COMPLETE:` sentinel; without it the output is a prefix and every
+                                     group past the cut point simply did not run. The canonical 13-pattern
+                                     gitignore list now lives in that script — when /jr-audit or /jr-review
+                                     adds a cache file, update both shared tables AND the script. Coverage is
+                                     decided by `git check-ignore` per pattern (with `core.excludesFile`
+                                     neutralised so it measures the repo, not the user's global ignore file),
+                                     not by matching .gitignore lines as text. jr-doctor's inline `is_headless`
+                                     re-expansion deliberately stays in SKILL.md: Check 14 parses it there.
+jr-doctor/protocols/rationale.md   — maintainer-only design rationale, NEVER read at runtime, no anchor
+                                     (currently the "no advisor call in this skill" carve-out). Mirrors
+                                     jr-ship/protocols/rationale.md and jr-skill-audit/protocols/rationale.md.
+                                     Group J (capability probe, default-on;
                                      --no-probe skips) spawns two throwaway haiku jr-reviewer agents to live-verify the
                                      reviewer→lead reporting channel (issue #70/#73), that a name:d spawn does
                                      not return, and that the lead lacks TaskCreate/TaskList
@@ -134,6 +206,18 @@ jr-skill-audit/protocols/personal-project-scope.md — Track B personal/project 
                                      gitignore exclusion); read at Phase 1 Track A ONLY when `--plugin` is NOT set
                                      (complementary conditional to plugin-scope.md). Anchors: `Scope roots` AND
                                      `Gitignore exclusion`.
+jr-skill-audit/protocols/refs-cache.md — Phase 1 Track C body (gitignore advisory probe on the cache
+                                     path, cache schema, refresh trigger + procedure, content-shape
+                                     assertions, both fallbacks, the per-key usability rule, and the
+                                     per-dimension reviewer excerpt allocation). Read at Track C entry
+                                     under hard-fail + smoke-parse (anchors `Cache schema` AND `Same
+                                     rule per key`). Track C runs every invocation, so this is a
+                                     **headroom + compaction-survival extraction, NOT a token saving** —
+                                     it took SKILL.md from 499 lines (zero headroom under the 500-line
+                                     tip) to 441. This file is now the sole home of that argument: the
+                                     always-loaded copies were cut, since spending runtime context to
+                                     explain that an extraction did not buy runtime context is self-defeating.
+                                     Do not cite the extraction as a cost cut.
 jr-skill-audit/protocols/phase7-report.md — Phase 7 findings-report template (the fenced report layout); DEFERRED,
                                      NOT a Phase 1 Track A read: Read at Phase 7 before rendering, under hard-fail
                                      + smoke-parse there (anchors `Findings Report` AND `Summary: N findings across
@@ -214,7 +298,7 @@ jr-tackle/SKILL.md                    — wrap an ad-hoc in-session task with ri
                                      ask clarifying questions early, smallest viable change, cite
                                      file:line for code claims, advisor before done). In-session
                                      equivalent of bin/tackle's "in plan mode, ultrathink to tackle ..."
-                                     prefill (single source of truth — bin/tackle:19-21 now prefills
+                                     prefill (single source of truth — bin/tackle:20-22 now prefills
                                      "/jr-tackle <verb> <url>" instead of the literal rigor prose).
                                      Scope: file edits only — `/jr-ship` owns all git mutations
                                      (commit/push/PR/MR/merge); /jr-tackle stops at the working-tree-modified
@@ -246,7 +330,13 @@ shared/advisor-criteria.md         — canonical advisor-call rules (when, gatin
                                      ran the skill last)
 shared/secret-patterns.md          — canonical regex catalog for secret detection (token-prefix union,
                                      connection-string variants, quoted/unquoted assignments, POSIX ERE
-                                     constraints, grep -Ei invocation rule). Read by /jr-audit, /jr-review,
+                                     constraints, grep -Ei invocation rule) AND the canonical
+                                     "Deterministic demotion criteria" for the high-FP patterns
+                                     (SK / sk- / dapi). This is the terminus: consumers cite the
+                                     section by name and none defines its own variant, because
+                                     "deterministic" is the property the advisory tier rests on and a
+                                     lead improvising criteria cannot supply it.
+                                     Read by /jr-audit, /jr-review,
                                      /jr-ship secret-scan sites; co-cited with secret-scan-protocols.md
                                      (which owns the halt/continue procedures, not the patterns themselves).
 shared/code-edit-discipline.md     — canonical surgical-changes discipline for code-modifying subagents:
@@ -355,7 +445,7 @@ Usage pattern per file:
 - `untrusted-input-defense.md` — passed verbatim into every reviewer, implementer, simplification, convergence, and fresh-eyes subagent prompt.
 - `gitignore-enforcement.md` — the lead agent applies the protocol at each `.claude/*` write site (cache files, audit reports, suppressions, health snapshots). **`/jr-audit` and `/jr-review` each state the command and the per-path reason ONCE**, in their own "Cache-write security checks" table (Phase 1), and each call-site carries only `Security check (enforced): cache-write protocol for <path>`; a site with a genuine deviation (e.g. `/jr-audit`'s audit-report glob append) states just that deviation. This replaced six near-verbatim restatements per skill; a single table cannot drift the way six copies can. The per-path reasons in both tables are copies of `gitignore-enforcement.md`'s "Why" column — re-sync them when it changes. The prose expansion of warn/append behaviour lives in the shared file only.
 - `display-protocol.md` — the lead agent applies the rules (phase headers, timeline, silent-reviewers, compact tables, redaction) at every console-output site. Skill-specific Phase 4 finding-approval menus and convergence-display variants stay inline in the owning skill.
-- `secret-scan-protocols.md` — referenced at every `isHeadless` evaluation, secret-halt invocation, user-continue site, and advisory-tier classification site. Pattern-specific demotion criteria for `SK`/`sk-`/`dapi` stay inline in `/jr-review` Phase 1 Track B step 7 (scope-specific to diff-mode reviewing).
+- `secret-scan-protocols.md` — referenced at every `isHeadless` evaluation, secret-halt invocation, user-continue site, and advisory-tier classification site. Pattern-specific demotion criteria for `SK`/`sk-`/`dapi` live in `secret-patterns.md` ("Deterministic demotion criteria") and are **uniform across consumers** — no skill defines its own, and none may be described as inline per-skill.
 - `audit-history-schema.md` — referenced at Phase 1 Track A reads (rejection-rate calibration, suppression checks) and Phase 7 step 5 appends. Both `/jr-audit` and `/jr-review` MUST read and write the same schema.
 - `abort-markers.md` — referenced at Phase 7 step 16 to render the correct marker per `abortReason`. Single source of truth for the `abortReason` enum.
 - `secret-warnings-schema.md` — referenced at every `.claude/secret-warnings.json` append. `/jr-review` writes at Phase 5.6, Phase 6 regression re-scan, Convergence Phase 5.6, and Fresh-eyes; `/jr-audit` writes at Phase 5.6 and Phase 6 regression re-scan. Both skills MUST preserve the top-level `consumerEnforcement` value and the rich-wrapper shape across writes — the file is co-written and the previous `/jr-audit` flat-array form is no longer accepted.
@@ -364,10 +454,10 @@ Usage pattern per file:
 - `phase1-track-a-protocol.md` — read at Phase 1 Track A by `/jr-audit`, `/jr-review`, `/jr-skill-audit`, `/jr-i18n` (and at single-track Phase 1 by `/jr-mermaid`) (as a shared file) AND parsed by them for the Canonical Anchor Table that drives the structural smoke-parse. `/jr-doctor` Group D consumes the same canonical at runtime to smoke-parse every shared file (warn-only). Each consumer hardcodes one self-reference anchor (`Canonical Anchor Table`) to break the circularity. Abort message wording is **not canonical** — consumers own it; the file documents that intentional divergence (`/jr-audit` and `/jr-review` use inline prose; the other consumers use the canonical `[ABORT — SHARED FILE MISSING]` marker).
 - `claim-verification.md` — read at Phase 1 Track A by `/jr-audit`, `/jr-review`, `/jr-skill-audit`, `/jr-i18n` (and at single-track Phase 1 by `/jr-mermaid`) and passed to reviewers/translators as context (applied lead-side in `/jr-mermaid`); the lead applies its claim classification + cap/verify at Phase 3 and the no-autonomous-decision-without-a-checked-fact rule at every auto-apply/merge site. Cross-referenced (not Track-A-read) by `/jr-ship`'s CI-fix protocol and `/jr-tackle`'s rigor protocol. `/jr-skill-audit`'s live refs-cache is the reference Tier-2 implementation of the doctrine.
 - `subagent-reporting.md` — read at Phase 1 Track A by `/jr-audit`, `/jr-review`, `/jr-skill-audit`, `/jr-i18n` (the four skills that spawn subagents to produce findings) and inline at Phase 1 by `/jr-ship` (its split-analysis and CI-fix spawns are work-producing too, and both call-sites' zero-return handlers depend on the Subagent-facing block). Its **Spawn rule** is applied at every Agent-spawn site: no `name:` on a work-producing subagent. Its **Subagent-facing block** is passed **verbatim** into every reviewer, translator, and implementer prompt (do not paraphrase the "if you found nothing, say so explicitly" rule — it is what keeps a clean dimension distinguishable from a lost one). Its **Lead-side: reviewer roll-call** runs at Phase 3 step 0.0, numbered so the convergence protocols' by-number step inheritance carries it, and applies again to the Phase 5 implementer dispatch. `UNREPORTED` is load-bearing state that every consumer MUST consume — render it, exit non-zero on it, and let it block every clean-result path (`no findings` / `clean` / `all clear` / `converged = true`); a consumer that computes it and drops it has rebuilt #70 with extra steps. The file also records the verified channel matrix so dead options are not re-proposed; treat it as volatile and re-verify after an upgrade rather than restating its verdicts here.
-- `model-override.md` — read at Phase 1 by `/jr-audit`, `/jr-review`, `/jr-skill-audit`, `/jr-i18n` (at Track A) and `/jr-ship` (inline). The lead applies it at every Agent-spawn call site: when `--model=<tier>` was parsed, the spawn passes `model: "<tier>"` instead of the site's preset (including mechanical default-model sites — the override is total). The lead's own model is out of scope (frontmatter applies before argument parsing; users run `/model <tier>` first for a uniform run).
+- `model-override.md` — read at Phase 1 by `/jr-audit`, `/jr-review`, `/jr-skill-audit`, `/jr-i18n` (at Track A) and `/jr-ship` (inline). The lead applies it at every Agent-spawn call site: when `--model=<tier>` was parsed, the spawn passes `model: "<tier>"` instead of the site's preset (including mechanical default-model sites — the override is total). The lead's own model is out of scope (frontmatter applies before argument parsing). **A session `/model <tier>` does NOT work around that** — a concrete frontmatter `model:` overrides the active model while the skill runs, which is why the doc offers `inherit` as a separate value; the lead tier changes only by editing the field. The old "run `/model <tier>` first for a uniform run" advice was wrong and is retired here and in all five files that carried it.
 - `forge-detection.md` — read at Phase 1 Track A by `/jr-audit` and `/jr-review`; `/jr-ship` reads it inline in Phase 1; `/jr-doctor` Group D smoke-parses it via the anchor table. The lead detects the forge once per run from the `origin` host and translates every `gh`/PR/checks reference to its `glab`/MR/pipeline equivalent per the command-equivalence + terminology tables at each **user-repo** call-site. The **external-authority `gh api` carve-out** is the load-bearing distinction: a `gh api …/contents/…` that fetches an Anthropic/framework doc (claim verification) stays `gh` even on a GitLab repo — only ops on the user's own repo switch. The `bin/` CLIs (`tackle`, `tackle-top`) implement the same detection natively (they can't read `shared/` at runtime). gitlab.com-only hostname heuristic; `CLAUDE_FORGE` env overrides. The `--pr`-consumed glab JSON field names are verified against a live GitLab MR (2026-07-10, `§c`); the rest remain an implementation-time deliverable.
 - `cache-schema-validation.md` — schema-validation rules (binary-availability probe, cache-poisoning guard, same-session shortcut) applied before trusting `.claude/review-profile.json` and `.claude/review-baseline.json`. Read at Phase 1 Track A and applied at every cache-read site by `/jr-audit` and `/jr-review` (the cache co-owners).
-- `secret-patterns.md` — the canonical secret-detection regex catalog, applied at every secret pre-scan / post-implementation re-scan site by `/jr-audit`, `/jr-review`, and `/jr-ship` (inline). The pre-commit hook `/jr-review` installs materializes it into `.claude/secret-hook-patterns.txt` rather than reading this file directly.
+- `secret-patterns.md` — the canonical secret-detection regex catalog **and** the canonical demotion criteria, applied at every secret pre-scan / post-implementation re-scan site by `/jr-audit`, `/jr-review`, and `/jr-ship` (inline). The pre-commit hook `/jr-review` installs materializes it into `.claude/secret-hook-patterns.txt` rather than reading this file directly. Two invariants worth keeping: **pre-scan sites are all-strict** (no advisory demotion — that tier applies only post-implementation, and `/jr-ship`'s step 4 is a pre-scan despite scanning for a push), and the **demotion criteria are uniform across consumers**, never redefined per skill.
 
 ## Skill file anatomy
 
@@ -389,7 +479,7 @@ Each `SKILL.md` has:
 - **Severity rubric** (canonical: `shared/reviewer-boundaries.md`): critical → high → medium → low, with confidence levels certain → likely → speculative. Low-severity findings are dropped unless trivially fixable.
 - **Reviewer dimension boundaries** (canonical: `shared/reviewer-boundaries.md`): Strict ownership of finding categories to prevent duplicates (e.g., silent failures → error-handling-reviewer, not security or typescript). The `simplicity-reviewer` dimension (both skills; conservative, severity-capped at medium) owns within-unit slop — over-engineering, local dead code, redundancy, comments that restate code, defensive code for impossible states — deferring cross-module structure to architecture-reviewer and inaccurate comments to comment-reviewer. It is not file-type-bound (receives all changed/in-scope files) and is diff-scoped in `/jr-review`, scope-wide in `/jr-audit`.
 - **Finding format**: Every reviewer finding must include `file`, `line`, AND a `codeExcerpt` (3 consecutive lines from the cited file, verbatim). Phase 3 step 0 sanity-check reads the cited range and rejects any finding whose excerpt doesn't match — catches line-number AND content hallucinations. Per-reviewer 25% rejection rate escalates to Phase 7 `ACTION REQUIRED`.
-- **Escalation rendering (`ACTION REQUIRED`)**: `/jr-review` and `/jr-audit` render every run escalation routed to `ACTION REQUIRED` (secret-continue, per-reviewer ≥25% rejection/refuted rates, >30%-unverified-fix and unverified-`critical` notes, plus `/jr-review`'s secret-warnings / pre-commit-hook maintenance) under a **mandatory-when-non-empty `Action required` lead-in** at the top of their Phase 7 report body (`jr-review/protocols/phase7-cleanup-report.md`, `jr-audit/protocols/phase7-report.md`) — in `/jr-review`'s compact report as well as the full one (its compact whitelist names it, so `quick`/`nofix` can't drop it). The literal `ACTION REQUIRED` label is retained (NOT converged to `/jr-skill-audit`'s vocabulary) because `shared/secret-scan-protocols.md` behavior 4 reads *"the files listed in the ACTION REQUIRED section"* by name — the label is a load-bearing anchor, not cosmetic. `/jr-skill-audit` **bans** the label (its Naming contract) and uses `Audit integrity` / `Action items` instead, after an incident where it routed *findings* through the label and rendered "ACTION REQUIRED: None" while 28 findings existed; `/jr-review` and `/jr-audit` never route findings through it (findings have Phase 4 approval + the Findings report item), so that conflation cannot recur — the divergence is intentional (issue #74, criterion 3). This rationale is maintainer-read, **not** machine-enforced: `shared-drift-reviewer` polices `shared/*.md`, not this file, so re-converging the label is guarded only by a maintainer reading this bullet first.
+- **Escalation rendering (`ACTION REQUIRED`)**: `/jr-review` and `/jr-audit` render every run escalation routed to `ACTION REQUIRED` (secret-continue, per-reviewer ≥25% rejection/refuted rates, >30%-unverified-fix and unverified-`critical` notes, plus `/jr-review`'s secret-warnings / pre-commit-hook maintenance) under a **mandatory-when-non-empty `Action required` lead-in** at the top of their Phase 7 report body (`jr-review/protocols/phase7-cleanup-report.md`, `jr-audit/protocols/phase7-report-body.md`) — in `/jr-review`'s compact report as well as the full one (its compact whitelist names it, so `quick`/`nofix` can't drop it). The literal `ACTION REQUIRED` label is retained (NOT converged to `/jr-skill-audit`'s vocabulary) because `shared/secret-scan-protocols.md` behavior 4 reads *"the files listed in the ACTION REQUIRED section"* by name — the label is a load-bearing anchor, not cosmetic. `/jr-skill-audit` **bans** the label (its Naming contract) and uses `Audit integrity` / `Action items` instead, after an incident where it routed *findings* through the label and rendered "ACTION REQUIRED: None" while 28 findings existed; `/jr-review` and `/jr-audit` never route findings through it (findings have Phase 4 approval + the Findings report item), so that conflation cannot recur — the divergence is intentional (issue #74, criterion 3). This rationale is maintainer-read, **not** machine-enforced: `shared-drift-reviewer` polices `shared/*.md`, not this file, so re-converging the label is guarded only by a maintainer reading this bullet first.
 - **Claim verification** (canonical: `shared/claim-verification.md`): citation integrity (the `codeExcerpt` sanity-check, above) proves the cited line *exists*; claim verification proves the *claim about it* is true. The lead independently classifies each finding at Phase 3 as **code-internal** (provable from local code — already covered by `codeExcerpt`) or **external-authority** (depends on API deprecation, version behavior, framework rules, CVEs, WCAG/OWASP — the hallucination-prone class), defaulting to external-when-in-doubt (never the reviewer's self-label). For an external-authority claim that local context (pinned versions/types/config) can't settle, the lead **by default** fetches an authoritative source (raw `.md` / `gh api`, never a lone WebFetch — a single WebFetch can fabricate verbatim text) to confirm or refute it (Tier 2; always-on for `/jr-skill-audit`, whose live refs-cache is the reference implementation; `--no-verify-claims` opts out elsewhere): `confirmed` → kept (a checked fact, auto-appliable); `refuted` → rejected under `[REJECTED — CLAIM REFUTED BY SOURCE]`. Only a claim that can't be verified (offline, uncorroborable, or `--no-verify-claims`) is capped to `speculative` and routed to the user (interactive) or deferred + reported (headless), never auto-applied (Tier 1 fallback). Generalizes to the rule: no consequential autonomous action (apply a fix, write a suppression, auto-approve in convergence, merge) without a checked fact.
 - **Fix verification (Phase 5.55)**: After implementers mark findings "addressed", the lead re-reads the cited `file:line` (±5 lines) and confirms the issue described in the finding is no longer present. Classifies each as verified / unverified / moved. Soft flag — informs user, does not auto-revert.
 - **`nofix` mode**: Every skill that implements fixes supports a findings-only mode that skips implementation and validation phases.

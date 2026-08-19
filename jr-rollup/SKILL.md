@@ -15,8 +15,8 @@ disallowed-tools: Write Edit
   trailing `*` would match `bash -c '<anything>'` — arbitrary execution in a skill whose whole
   contract is "read-only, never runs an audit". The `CLAUDE_SKILL_DIR` substitution inside a Bash
   rule (braced form, as in the rule above — named bare throughout this note so the note is not
-  itself substituted) is documented since v2.1.129 (skills doc, "Available string
-  substitutions"). No rule covers step 1's `$HOME` fallback path (`$HOME` is outside the
+  itself substituted) is documented in the skills doc, "Available string
+  substitutions". No rule covers step 1's `$HOME` fallback path (`$HOME` is outside the
   substituted set, so it stays literal): only `CLAUDE_SKILL_DIR` and `CLAUDE_PROJECT_DIR` are
   documented as substituted in `allowed-tools`, so a `Bash($HOME/...)` rule would stay a literal
   `$HOME` string and never match — a grant that silently never fires is worse than no grant. The

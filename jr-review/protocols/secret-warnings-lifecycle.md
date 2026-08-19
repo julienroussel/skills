@@ -46,11 +46,11 @@ Whenever sub-step (c) is invoked (file exists and is readable), unconditionally 
 
 ## Sub-step (c) — Whole-file pattern rescan
 
-When the file exists and is readable, scan the **entire file** (not only the originally recorded line) for the canonical regex corresponding to the entry's `patternType`. Look up the canonical regex in the Phase 1 pattern table (Track B step 7) — NEVER use `patternType` as a literal regex.
+When the file exists and is readable, scan the **entire file** (not only the originally recorded line) for the canonical regex corresponding to the entry's `patternType`. Look up the canonical regex in `../../shared/secret-patterns.md` ("Token-prefix patterns (regex union)" and "Pattern-type enum mapping") — NEVER use `patternType` as a literal regex.
 
 ### `patternType: "other"` — full-scan fallback
 
-When `patternType == "other"` (catch-all enum value for patterns without a dedicated label), scan using the full Phase 1 pre-scan regex union (Track B step 7) — NOT a single canonical sub-pattern. Apply the same decision matrix as for known `patternType` values (no match → remove; match at original line → unchanged; match at different line → update `line`).
+When `patternType == "other"` (catch-all enum value for patterns without a dedicated label), scan using the full pre-scan regex union in `../../shared/secret-patterns.md` ("Token-prefix patterns (regex union)") — NOT a single canonical sub-pattern. Apply the same decision matrix as for known `patternType` values (no match → remove; match at original line → unchanged; match at different line → update `line`).
 
 #### Advisory-tier filter for `"other"` full-scan
 
@@ -60,11 +60,11 @@ To preserve audit-trail integrity across runs where a file's advisory-classifica
 
 #### Pattern-type non-absorption rule
 
-When the full-scan matches a sub-pattern whose dedicated enum label differs from `"other"`, do NOT automatically absorb the match into the existing `"other"` entry. First, check whether the full-scan ALSO finds any match whose pattern has NO dedicated enum label (i.e., a genuinely `"other"`-class pattern such as `npm_`, `pypi-`, `sbp_`, `hvs.`, `dop_v1_`, `dp.st.`, `dapi`, `shpat_`, `GOCSPX-`, `AccountKey=`, `vc_`, `glpat-`, `dckr_pat_`, `nfp_`). Note: `sk-ant-` has the dedicated `anthropic-key` enum and is NOT `"other"`-class.
+When the full-scan matches a sub-pattern whose dedicated enum label differs from `"other"`, do NOT automatically absorb the match into the existing `"other"` entry. First, check whether the full-scan ALSO finds any match whose pattern has NO dedicated enum label (i.e., a genuinely `"other"`-class pattern such as `npm_`, `pypi-`, `sbp_`, `hvs.`, `dop_v1_`, `dp.st.`, `dapi`, `shpat_`, `GOCSPX-`, `AccountKey=`, `vc_`, `dckr_pat_`, `nfp_`). Note: `sk-ant-` has the dedicated `anthropic-key` enum and is NOT `"other"`-class. **Nor are the GitLab prefixes**: `glpat-`, `gldt-`, `glrt-`, `glrtr-`, `gloas-`, `glptt-`, `glagent-`, `glimt-`, `glsoat-`, `glcbt-`, `glft-`, `glffct-` and `glwt-` all carry the dedicated `gitlab-token` label in `../../shared/secret-patterns.md` "Pattern-type enum mapping". `glpat-` was previously listed above as `"other"`-class while simultaneously holding that dedicated label — a contradiction that would route a real GitLab token down the `"other"` full-scan path and mis-label the audit trail. Re-check this list against the canonical label map whenever a prefix is added.
 
 **Decision matrix**:
 
-- **Some `"other"`-class match remains** (at original line or shifted): keep the `"other"` entry; update `line` to the remaining `"other"`-class match if it moved. For each co-occurring dedicated-label match, atomically (i) append a new entry to the current `secret-warnings.json` with the detected specific-label `patternType`, the current `line`, and `detectedAt = now` (apply Phase 5.6's atomic-rename + flock semantics); (ii) if `.claude/secret-hook-patterns.txt` exists and does not already contain the canonical regex for the detected label, append it. Then emit a Phase 7 note: `A different pattern type (<specific-label>) was also detected at <file>:<new-line>. A new entry of the specific type may be created by the next Phase 5.6 re-scan if an implementer modifies this file.` This closes the window where a confirmed secret is invisible to the commit-blocker between now and the next Phase 5.6 re-scan.
+- **Some `"other"`-class match remains** (at original line or shifted): keep the `"other"` entry; update `line` to the remaining `"other"`-class match if it moved. For each co-occurring dedicated-label match, atomically (i) append a new entry to the current `secret-warnings.json` with the detected specific-label `patternType`, the current `line`, and `detectedAt = now` (apply Phase 5.6's atomic-rename + flock semantics); (ii) if `.claude/secret-hook-patterns.txt` exists and does not already contain the canonical regex for the detected label, append it — **Security check (enforced)**: cache-write protocol for `.claude/secret-hook-patterns.txt` (`../SKILL.md` "Cache-write security checks") before that append, per the independent-per-site rule in `../../shared/gitignore-enforcement.md`. Then emit a Phase 7 note: `A different pattern type (<specific-label>) was also detected at <file>:<new-line>. A new entry of the specific type may be created by the next Phase 5.6 re-scan if an implementer modifies this file.` This closes the window where a confirmed secret is invisible to the commit-blocker between now and the next Phase 5.6 re-scan.
 
 - **No `"other"`-class match remains** AND at least one dedicated-label match exists: the original `"other"` pattern has been resolved, but a co-occurring match of a different type is present. Atomically create new entries for each co-occurring dedicated-label match (same two-step append as above — secret-warnings.json entry + patterns-file entry). Only after the new entries are persisted may the `"other"` entry be removed. This ensures the audit trail never has a window where a detected secret is untracked.
 
@@ -76,7 +76,7 @@ This preserves the resolution path for entries whose underlying pattern has no d
 
 For pattern-type-absorbed matches, bypass the acknowledge-status override — absorbed matches do NOT count as "this rescan finds a match" for override purposes. The Phase 7 absorption note is the sole audit record for those matches. A subsequent Phase 5.6 re-scan creating a new entry of the specific type will retrigger the normal acknowledge-status lifecycle if that new entry later becomes `acknowledged`. This prevents (a) sub-step (b)'s re-acknowledge AskUserQuestion from referencing an entry just pruned in the same run and (b) double-reporting the same match as both an override flip AND an absorption note. Newly-created dedicated-label entries participate in normal override lifecycle in future runs; the bypass applies only to the transient absorption event within this run.
 
-If no entry in the pattern table matches the `patternType` value (unknown type — reachable only if schema validation has been weakened or bypassed), mark the warning `unverified` with `ACTION REQUIRED: unknown patternType <value>` and do NOT prune.
+If no entry in `../../shared/secret-patterns.md` "Pattern-type enum mapping" matches the `patternType` value (unknown type — reachable only if schema validation has been weakened or bypassed), mark the warning `unverified` with `ACTION REQUIRED: unknown patternType <value>` and do NOT prune.
 
 ### Decision matrix for known `patternType` values
 
@@ -96,6 +96,8 @@ If NONE of these conditions are met (i.e., the rescan matches at exactly the rec
 When the override DOES fire: reset `status` to `"active"` and surface a new ACTION REQUIRED entry: `Previously acknowledged secret is now confirmed present: <file>:<line>`. Then fall through to the decision matrix above (line update or unchanged). Interactive mode also offers an in-band re-acknowledge path — see sub-step (b)'s "Re-acknowledge prompt for override-flipped entries".
 
 ## Sub-step (d) — Atomic write-back
+
+**Security check (enforced)**: cache-write protocol for the target `.claude/secret-warnings*.json` file (`../SKILL.md` "Cache-write security checks"). This site needs its own check — `../../shared/gitignore-enforcement.md` is explicit that each write site applies the protocol independently and never batches. Phase 7 step 3 runs on every non-abort run where a warnings file exists, **including `nofix`/`quick` runs where Phase 5.6 never executes**, so a tracked or un-gitignored audit trail carried over from a previous run would otherwise be rewritten with no warning at all.
 
 After processing all entries in a given file, write the pruned result back atomically (same atomic-rename + flock requirements as Phase 5.6). Preserve the top-level `consumerEnforcement` field.
 

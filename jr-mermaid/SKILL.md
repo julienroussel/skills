@@ -128,14 +128,25 @@ Validate before trusting the result:
 - **Plan fidelity**: confirm every node/edge in the output traces to the confirmed
   plan and nothing extra was added.
 
-**Declare-done advisor (gated)**: before presenting the final block — and before any `--out`
-write — call `advisor()` once if the diagram is non-trivial (roughly ≥ 8 nodes/edges, OR
+**Order of operations (durability first).** Print the fenced block **first**, then call the
+advisor, then offer any `--out` write. `../shared/advisor-criteria.md` criterion 2 requires the
+deliverable be made durable *before* the advisor call: printing it to the console puts the
+diagram in the transcript, so an interruption mid-call cannot lose the whole plan→generate
+result. Advising first left the generated diagram existing only in lead context. The advisor
+still runs before anything is written to a file, which is the irreversible step it exists to
+gate — so the reorder costs nothing it was protecting.
+
+**1. Present the final fenced block.**
+
+**2. Declare-done advisor (gated)**: after the block is on screen and before any `--out`
+write, call `advisor()` once if the diagram is non-trivial (roughly ≥ 8 nodes/edges, OR
 `--out` will write into a file). Per `../shared/advisor-criteria.md` (declare-done on substantive
 work), the advisor sees the full plan→generate transcript and can catch an invented or dropped
 node before it lands. Skip for a trivial throwaway diagram (the "unconditional advisor on every
-run" anti-pattern). Single call site; no loop.
+run" anti-pattern). Single call site; no loop. If it raises a concrete concern, surface it
+beneath the block before offering the write.
 
-Present the final fenced block. If `--out=<file>` was given, offer to insert it at the
+**3.** If `--out=<file>` was given, offer to insert it at the
 appropriate location — the resulting Write is subject to Claude Code's per-call
 permission prompt, which serves as the explicit user confirmation; if declined, leave
 the block in the response for the user to place manually.

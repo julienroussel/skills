@@ -1,7 +1,7 @@
 .DS_Store
 find-skills
 an-elegant-puzzle/
-ralph-tui*
+herdr/
 .claude/settings.local.json
 .claude/review-profile.json
 .claude/review-baseline.json
@@ -12,6 +12,7 @@ ralph-tui*
 .claude/secret-warnings*.json.corrupt-*
 .claude/secret-hook-patterns.txt
 .claude/audit-history.json
+.claude/health.json
 .claude/audit-report-*.md
 .claude/precommit-hook-uninstall
 .claude/worktrees/

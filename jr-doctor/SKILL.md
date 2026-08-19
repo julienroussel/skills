@@ -6,7 +6,7 @@ effort: low
 model: sonnet
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git ls-files *) Bash(git -C * ls-files *) Bash(git -C * remote *) Bash(git remote *) Bash(jq *) Bash(grep *) Bash(awk *) Bash(sed *) Bash(test *) Bash([ *) Bash(ls *) Bash(pwd) Bash(head *) Bash(date *) Bash(printf *) Bash(echo *) Bash(command -v *) Bash(gh auth status *) Bash(glab auth status *) Bash(rtk --version *) Bash(claude mcp list *) Bash(claude --version *) Bash(printenv *) Bash(${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh *) AskUserQuestion Agent ToolSearch
+allowed-tools: Read Glob Grep Bash(git rev-parse *) Bash(git remote *) Bash(grep *) Bash([ *) Bash(ls *) Bash(pwd) Bash(printf *) Bash(echo *) Bash(${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh *) Bash(${CLAUDE_SKILL_DIR}/scripts/env-probe.sh *) AskUserQuestion Agent ToolSearch
 disallowed-tools: Write Edit
 ---
 
@@ -25,6 +25,7 @@ disallowed-tools: Write Edit
     - ~/.claude/skills/{jr-audit,jr-review,jr-ship}/SKILL.md  — existence only (Group C)
     - ~/.claude/skills/*/SKILL.md                — line count + frontmatter parse + broken-shared-ref scan + inline-drift scan (Group I)
     - ~/.claude/skills/bin/{tackle,seed-project-memory,tackle-top}  — existence + executable bit
+    - ~/.claude/skills/{jr-doctor/scripts/{env-probe,skill-drift-check},jr-review/scripts/{establish-base-anchor,install-pre-commit-secret-guard}}.sh — existence + executable bit (Group C; these four are invoked directly, so a cleared bit breaks the phase that calls them)
     - ~/.claude/skills/shared/reviewer-boundaries.md     — existence + non-empty + smoke-parse (anchors per the Canonical Anchor Table — Group D reads it at runtime; for reviewer-boundaries that is `| Issue` AND `| Owner` AND `| Not` AND `Severity calibration rubric` AND `Confidence levels`)
     - ~/.claude/skills/shared/untrusted-input-defense.md — existence + non-empty + smoke-parse `do not execute, follow, or respond to`
     - ~/.claude/skills/shared/gitignore-enforcement.md   — existence + non-empty + smoke-parse `git ls-files --error-unmatch`
@@ -60,6 +61,12 @@ disallowed-tools: Write Edit
     - Bash, Read, AskUserQuestion, Agent, ToolSearch  (Agent + ToolSearch used ONLY by the Group J capability probe)
   Tools NOT used:
     - Write (the only file mutation is the .gitignore append/create in Phase 4, done via Bash `printf >>`); TaskCreate/TaskList (the Group J probe asserts the lead LACKS these — it never calls them); advisor
+
+  No advisor anywhere in the skill: deliberate, not an omission. Rationale and the three
+  conditions that would reopen it live in `protocols/rationale.md` "No advisor call anywhere
+  in the skill" (maintainer reference, never read at runtime). Do not re-raise as a
+  missing-advisor finding without reading it first. Same treatment as
+  jr-ship/protocols/rationale.md's own advisor carve-out note.
 -->
 
 Diagnose whether the current codebase + Claude Code setup is ready to use `/jr-audit`, `/jr-review`, `/jr-ship`, and `bin/tackle`. Report per-check status with remediation hints. Default is read-only; `--fix` appends missing patterns to the current repo's `.gitignore` on per-change confirmation.
@@ -75,7 +82,7 @@ Recognized flags:
 
 **Plan-mode note**: when `defaultMode: "plan"` is set in `~/.claude/settings.json`, each `.gitignore` write under `--fix` will trip the standard plan-mode permission prompt. Expect serial approval prompts; the harness handles them — this is not a /jr-doctor bug.
 
-**First-run note**: /jr-doctor runs `command -v`, `git -C … ls-files`, `jq`, etc. via Bash. `allowed-tools` has been re-synced in both directions against the commands the body actually issues — unused rules removed, missing ones (`git -C …`, the two `auth status` probes, `rtk`/`claude`/`printenv`, the bundled drift-check script) added — so the first-run prompt surface is much smaller than it was. Any command that still prompts is a genuine grant gap worth fixing rather than accepting. /jr-doctor itself does NOT modify `permissions.allow` (out of scope).
+**First-run note**: `allowed-tools` grants exactly the Bash commands this body still issues, one grant per site: `git rev-parse` and `ls` (Phase 1 repo/scratch probe), `git remote -v` piped to `grep` (Phase 1 `HAS_REMOTE`), `[` and `echo` (Phase 1 presence tests and the headless predicate), `pwd` (Phase 1 `CWD`), `printf` (the Phase 4 `.gitignore` append), and the two bundled scripts. **Everything a script runs internally needs no grant of its own**: `${CLAUDE_SKILL_DIR}/scripts/env-probe.sh` is one Bash invocation whatever `jq`, `awk`, `git ls-files`, `gh auth status`, `claude mcp list` or `printenv` it calls inside. The grants for those were left behind when the probes moved into `scripts/`, and `Bash(awk *)` in particular is arbitrary file-write and command execution, so they are removed rather than kept "just in case" on a publicly installable skill. Any command that still prompts is a genuine grant gap worth fixing rather than accepting. /jr-doctor itself does NOT modify `permissions.allow` (out of scope).
 
 ## Display protocol
 
@@ -84,6 +91,7 @@ Recognized flags:
 - **Indents**: 2 spaces for groups, 4 spaces for expanded checks.
 - **Status markers**: `✓` (pass), `⚠` (warn — informational, non-blocking), `✗` (fail — required item missing).
 - **Never echo `advisorModel` value** to keep transcript logs clean. Report `set` / `missing` only.
+- **Collapse `$HOME` to `~` in every path you print**, wherever it came from: the report header, a repo root, a marker detail (`REPO:`, `GITIGNORE_ABSENT:`, `REPO_QUERY_FAILED:`), a remediation hint. `scripts/env-probe.sh` emits absolute paths because `--fix` needs them; the tilde form is a rendering rule the lead applies. An absolute path under a home directory names its owner, and the mocks in `examples.md` have always shown the collapsed form.
 - **Final summary**: `Summary: N ✓  M ⚠  K ✗   Total: <elapsed>`.
 
 ## Phase 1 — Argument parsing + environment probe
@@ -109,7 +117,7 @@ is_headless=$(
 )
 ```
 
-**Note**: this predicate has no `[ ! -t 0 ]` (no-TTY) term, and **neither does the canonical any more**. `/jr-doctor` dropped it first, because the Claude Code Bash tool runs subprocesses without a TTY, so the test always fires and would incorrectly auto-disable `--fix` in normal interactive use. That reasoning held for every consumer, not just this one, and `../shared/secret-scan-protocols.md` ("There is deliberately no tty condition") now carries it: CI environment variables plus the explicit non-interactive flag are the authoritative signals. This predicate and the canonical are therefore aligned, not divergent — do not re-add the term to either.
+**Note** (canonical: `../shared/secret-scan-protocols.md` "Headless/CI detection"): this is a deliberate **re-expansion** of a predicate that canonical forbids re-expanding at individual sites ("Defined once here and referenced by name elsewhere"). The carve-out is that `/jr-doctor` never Reads that file — Group D only smoke-parses it — so it needs an executable copy rather than a reference. The copy is therefore **drift-prone by construction**: the eleven environment variables below must stay identical to the canonical's list, and a CI variable added there would otherwise never reach this skill (symptom: `--fix` prompting instead of auto-disabling in an unrecognised CI). Group I check #14 now diffs the two lists mechanically so the divergence cannot go unnoticed. This predicate has no `[ ! -t 0 ]` (no-TTY) term, and **neither does the canonical any more**. `/jr-doctor` dropped it first, because the Claude Code Bash tool runs subprocesses without a TTY, so the test always fires and would incorrectly auto-disable `--fix` in normal interactive use. That reasoning held for every consumer, not just this one, and `../shared/secret-scan-protocols.md` ("There is deliberately no tty condition") now carries it: CI environment variables plus the explicit non-interactive flag are the authoritative signals. This predicate and the canonical are therefore aligned, not divergent — do not re-add the term to either.
 
 If `is_headless=yes` AND `--fix` is set AND `--yes` is NOT set: warn `--fix ignored: requires interactive session or --yes` and unset `--fix`.
 
@@ -144,84 +152,52 @@ If `IS_SCRATCH=yes`: append `Inside tackle scratch session (id=<scratch-id-from-
 
 ## Phase 2 — Run all checks (parallel groups)
 
-Dispatch Groups A, B, C, D, E, G, H, I in **one tool-use message**. Group F runs after Phase 1 because it depends on `IN_REPO` and `REPO_ROOT`. Group J (capability probe) also runs after Phase 1 as its own step — it issues `Agent`/`ToolSearch` calls, not the Bash batch — and is skipped when `--no-probe` is set.
+**Groups A, B, C, E, F, G and H are one script call.** Run:
+
+```bash
+${CLAUDE_SKILL_DIR}/scripts/env-probe.sh <REPO_ROOT|none> <yes|no>
+```
+
+**Substitute the two literal values you derived in Phase 1**, e.g. `env-probe.sh ~/some/repo no`. Do NOT write `"$REPO_ROOT"` / `"$IS_TACKLE_WORKTREE"`: each Bash call is a fresh shell, so those variables are empty here and the probe would see no arguments at all. When `IN_REPO=no`, pass the **literal `none`** as the first argument, which is what makes a genuine "not in a git repo" distinguishable from an argument that failed to arrive (the latter emits `REPO: unknown` plus `PROBE_ARGS:`, and Group F's ✗-severity checks are withheld rather than silently skipped).
+
+The script prints `GROUP: <letter>` separators followed by `MARKER: detail` lines, the same report-facts / lead-grades contract as `scripts/skill-drift-check.sh` (Group I). **The script never grades**: every ✓/⚠/✗ below is the lead's, and a condition that passes emits no marker at all — absence is the pass. Marker meanings and hints are tabulated in `${CLAUDE_SKILL_DIR}/examples.md` "Marker semantics"; read it only when a marker actually fires.
+
+**Completeness precondition (check before grading anything).** Absence-is-the-pass is only sound on a run that finished, so the probe's last line is `PROBE_COMPLETE: ok`. If the invocation errors (script missing, exec bit cleared, permission denied) or the output does not contain `PROBE_COMPLETE:`, the run was truncated: report `✗ Environment probe incomplete: Groups A/B/C/E/F/G/H not graded` with the invocation error or last marker seen, and grade **none** of those seven groups. Any marker that did arrive may still be reported as a finding; what is forbidden is reading silence as a pass. This is also the only cover for `env-probe.sh` losing its own executable bit, which its Group C check cannot report from inside itself.
+
+- `PROBE_ARGS: <detail>` → **✗** (caller bug, not an environment fault). The lead built the invocation wrongly; re-issue with the two literals. A `bad worktree flag` detail additionally means `.claude/worktrees/` entries below are reported unsuppressed, so do not grade them until the flag is right.
+
+Dispatch that single call together with Group D (a `Read`-tool check, not Bash) and Group I in **one tool-use message**. Group J (capability probe) runs after Phase 1 as its own step — it issues `Agent`/`ToolSearch` calls — and is skipped when `--no-probe` is set.
+
+The groups below give the **grading rules only**. The probes themselves moved into the script (the skills doc designates `scripts/` as "executed, not loaded" precisely so probe bodies stop costing context on every session); Group I already proved the pattern.
 
 ### Group A — CLI tools
 
-POSIX `command -v` is single-arg; loop:
-
-```bash
-missing_cli=""
-for c in git jq claude rtk wt; do
-  command -v "$c" >/dev/null 2>&1 || missing_cli="$missing_cli $c"
-done
-echo "missing:$missing_cli"
-```
-
-Required: `git`, `jq` (✗ if missing). Recommended: `claude` (warn if missing). Optional: `rtk`, `wt` (warn).
-
-**Forge CLI** (`gh` for GitHub, `glab` for GitLab — at least one is needed; `/jr-ship`, `/jr-review --pr/--branch`, and `tackle` auto-detect per repo per `shared/forge-detection.md`):
-
-```bash
-command -v gh   >/dev/null 2>&1 && echo "gh:yes"   || echo "gh:no"
-command -v glab >/dev/null 2>&1 && echo "glab:yes" || echo "glab:no"
-```
-
-✗ if BOTH are missing (no forge CLI). Otherwise ✓; if only one is present, note that the other is needed only for that host's repos (`gh`→GitHub, `glab`→GitLab).
-
-Additional probes:
-- If `gh` present: `gh auth status 2>&1 | head -3` — warn if not authenticated.
-- If `glab` present: `glab auth status 2>&1 | head -3` — warn if not authenticated (needed for GitLab repos).
-- If `rtk` present: `rtk --version 2>&1 | grep -E "^rtk " >/dev/null` — warn if it's `reachingforthejack/rtk` (lacks `rtk gain` subcommand).
+- `CLI_MISSING: git` or `CLI_MISSING: jq` → **✗** (required).
+- `CLI_MISSING: claude` → **⚠** (recommended). `CLI_MISSING: rtk` / `wt` → **⚠** (optional).
+- `FORGE_CLI: gh=no glab=no` → **✗** (no forge CLI).
+- **Join `FORGE_CLI:` with Group F's `REPO_REMOTE:` before grading either one.** Neither is decidable alone: which CLI a run needs is a property of the repo's host, and one-CLI-present is fine or fatal depending on it.
+  - `REPO_REMOTE: github` with `gh=no` → **✗** (`/jr-ship`, `/jr-review --pr/--branch` and `tackle` cannot run here). Symmetrically `REPO_REMOTE: gitlab` with `glab=no` → **✗**.
+  - `REPO_REMOTE: github` with `gh=yes` → **✓**; a missing `glab` is a note, not a finding, and vice versa.
+  - No `REPO_REMOTE:` line at all (not in a repo, or `REPO: unknown`/`REPO_QUERY_FAILED:`) → **✓ with a note** naming which CLI is absent. There is no repo to decide against, so do not escalate.
+- `GH_AUTH: failed` / `GLAB_AUTH: failed` → **⚠** not authenticated, escalating to **✗** when `REPO_REMOTE:` names that CLI's host. `GH_AUTH: absent` / `GLAB_AUTH: absent` restate `FORGE_CLI:` and are graded through the join above, never waived on their own: the `CLI_MISSING:` loop covers `git jq claude rtk wt` and has never checked `gh` or `glab`.
+- `RTK_VARIANT: unknown` → **⚠** likely `reachingforthejack/rtk`, which lacks the `rtk gain` subcommand.
 
 ### Group B — settings.json
 
-Short-circuit if `SETTINGS_PRESENT=no`: emit `✗ settings.json missing` and skip to Group C.
-
-```bash
-jq empty ~/.claude/settings.json 2>&1                                                  # parseable
-[ -n "$(jq -r '.advisorModel // empty' ~/.claude/settings.json)" ] && echo "set" || echo "missing"
-jq -r '.enabledPlugins["worktrunk@worktrunk"] // "missing"' ~/.claude/settings.json
-jq -r '.permissions.allow // [] | map(select(. == "Edit(.claude/**)" or . == "Write(.claude/**)")) | length' ~/.claude/settings.json
-jq -r '.permissions.defaultMode // "missing"' ~/.claude/settings.json
-```
-
-Required: parseable, `advisorModel` set, `permissions.allow` count ≥ 2 (✗ on fail).
-Recommended: `worktrunk` plugin enabled (warn).
-Preference: `defaultMode = "plan"` (warn if different).
+- `SETTINGS: absent` → **✗** settings.json missing. `SETTINGS: unparseable` → **✗**. `SETTINGS: no-jq` → **?** unknown, NOT a fault of the file: `jq` is not on `PATH`, so nothing about settings.json was read. Hint: `brew install jq`; Group A already reports `CLI_MISSING: jq`. On all three paths the script emits none of the fields below and a `HOOK_WIRING: unchecked` marker in place of the four hook probes — it will not grade a file it could not read, so do NOT report hooks as unwired on any of them.
+- `ADVISOR_MODEL: missing` → **✗** (required).
+- `PERM_MISSING: <rule>` → **✗**, one marker per missing rule, naming it. Both `Edit(.claude/**)` and `Write(.claude/**)` are required; each is tested for independently, so two copies of one rule can no longer stand in for the pair.
+- `PLUGIN_WORKTRUNK: missing` → **⚠** (recommended).
+- `DEFAULT_MODE:` anything other than `plan` → **⚠** (preference).
 
 ### Group C — skills installed + shared files + tackle/docs (single Bash)
 
-```bash
-for f in jr-audit/SKILL.md jr-review/SKILL.md jr-ship/SKILL.md \
-         bin/tackle bin/seed-project-memory bin/tackle-top \
-         shared/reviewer-boundaries.md shared/untrusted-input-defense.md shared/gitignore-enforcement.md \
-         docs/worktree-architecture.md; do
-  [ -e ~/.claude/skills/$f ] || echo "MISSING: $f"
-done
-[ -x ~/.claude/skills/bin/tackle ] || echo "NOT_EXECUTABLE: bin/tackle"
-[ -x ~/.claude/skills/bin/seed-project-memory ] || echo "NOT_EXECUTABLE: bin/seed-project-memory"
-[ -x ~/.claude/skills/bin/tackle-top ] || echo "NOT_EXECUTABLE: bin/tackle-top"
-# Repo-local native agent types jr-reviewer/jr-implementer (replaced the agent-teams plugin dep).
-# -e follows the symlink, so a dangling ~/.claude/agents link (target missing) still reports MISSING_AGENT.
-for a in jr-reviewer jr-implementer; do
-  [ -e ~/.claude/agents/$a.md ] || echo "MISSING_AGENT: ~/.claude/agents/$a.md"
-done
-# jr-reviewer must stay read-only: no Write/Edit tools (/jr-i18n's no-write rests on this). A native
-# subagent with NO tools: line inherits ALL tools (incl. Write/Edit), so a missing tools: line must FAIL,
-# not pass silently. Scan only the YAML frontmatter (between the first two `---`) so a body mention of
-# "Write/Edit" can't false-fire; catch the inline `tools: …` form and a YAML `- Write`/`- Edit` list item.
-if [ -e ~/.claude/agents/jr-reviewer.md ]; then
-  fm=$(awk 'NR==1 && /^---/{f=1; next} f && /^---/{exit} f' ~/.claude/agents/jr-reviewer.md)
-  if ! printf '%s\n' "$fm" | grep -qE '^tools:'; then
-    echo "AGENT_NOT_READONLY: jr-reviewer has no 'tools:' line (a subagent with no tools list inherits ALL tools, incl. Write/Edit)"
-  elif printf '%s\n' "$fm" | grep -qE '^tools:.*(Write|Edit)|^[[:space:]]*-[[:space:]]*(Write|Edit)([[:space:]]|$)'; then
-    echo "AGENT_NOT_READONLY: jr-reviewer tools: grants Write/Edit"
-  fi
-fi
-```
-
-Missing jr-audit/jr-review/jr-ship/SKILL.md → ✗. Missing tackle/seed-project-memory/tackle-top/docs → warn (only relevant to tackle workflows). Non-executable bin/* → warn. `MISSING_AGENT` (jr-reviewer/jr-implementer not resolvable at `~/.claude/agents/`) → ✗: the reviewer/implementer swarms in /jr-audit, /jr-review, /jr-i18n, /jr-skill-audit cannot spawn without them; run the README install, then restart Claude Code so the new agents dir is watched. `AGENT_NOT_READONLY` → ✗: jr-reviewer must exclude Write/Edit (/jr-i18n's no-write property depends on it).
+- `FILE_MISSING: jr-audit/SKILL.md` / `jr-review/SKILL.md` / `jr-ship/SKILL.md` → **✗**.
+- `FILE_MISSING:` for `bin/tackle`, `bin/seed-project-memory`, `bin/tackle-top`, `docs/worktree-architecture.md` or any `shared/*` → **⚠** (only relevant to tackle workflows).
+- `NOT_EXECUTABLE: bin/*` → **⚠**.
+- `FILE_MISSING:` or `NOT_EXECUTABLE:` for any `<skill>/scripts/*.sh` → **✗** with hint `chmod +x ~/.claude/skills/<path>`. These four are invoked **directly**, not through an interpreter, so a cleared bit takes out the phase that calls them: `jr-doctor/scripts/env-probe.sh` (Groups A/B/C/E/F/G/H), `jr-doctor/scripts/skill-drift-check.sh` (Group I), `jr-review/scripts/establish-base-anchor.sh` (Phase 5 base anchor) and `jr-review/scripts/install-pre-commit-secret-guard.sh` (Phase 5.6). `env-probe.sh` cannot report its own cleared bit; that case surfaces as the failed invocation covered by the completeness precondition above.
+- `MISSING_AGENT:` (jr-reviewer/jr-implementer not resolvable at `~/.claude/agents/`) → **✗**: the reviewer/implementer swarms in /jr-audit, /jr-review, /jr-i18n, /jr-skill-audit cannot spawn without them. Hint: run the README install, then restart Claude Code so the new agents dir is watched. The probe uses `-e`, which follows symlinks, so a dangling `~/.claude/agents` link still reports missing.
+- `AGENT_NOT_READONLY:` → **✗**: jr-reviewer must exclude Write/Edit (/jr-i18n's no-write property depends on it). Two distinct causes, both fatal — **no `tools:` line at all** (a native subagent without one inherits ALL tools including Write/Edit, so silence must fail, not pass) and **`tools:` granting a file-writing tool**, which the marker names: `Write`, `Edit`, `MultiEdit` or `NotebookEdit`, in the inline, YAML-list or flow-sequence form. The probe scans only the frontmatter, so a body mention of "Write/Edit" cannot false-fire, and it compares whole tool names, so `TodoWrite` (a built-in that writes no repo file) does not either.
 
 ### Group D — shared file smoke-parse (canonical-driven)
 
@@ -238,108 +214,43 @@ On smoke-parse failure: emit `✗ shared/<file> smoke-parse failed: missing '<su
 
 ### Group E — hooks + memory dir (single Bash)
 
-```bash
-for h in no-claude-attribution cbm-code-discovery-gate cbm-session-reminder; do
-  [ -x ~/.claude/hooks/$h ] || echo "MISSING: $h"
-done
-[ -d ~/.claude/projects ] || echo "MISSING: ~/.claude/projects"
-```
+- `HOOK_MISSING: <name>` (hook absent or not executable at `~/.claude/hooks/`) → **⚠**.
+- `PROJECTS_DIR_MISSING:` → **⚠**.
+- `HOOK_NOT_WIRED: <name>` → **⚠**. All wiring checks are warn-only — missing wiring degrades the setup but doesn't block /jr-audit, /jr-review or /jr-ship.
+- `HOOK_WIRING: unchecked` → **?** unknown, and it **suppresses the whole `Hooks wired` row**: render `? Hooks wired (not checked, see Group B)` and never `✓ Hooks wired (4/4)`. The four probes did not run, so their silence carries nothing.
 
-Verify hooks are wired in `settings.json`. Use `jq -r` + stdout-empty checks (NOT `jq -e`, which exits non-zero on no-match and would abort the batched call):
-
-```bash
-[ -n "$(jq -r '.hooks.PreToolUse[]? | select(.matcher | test("Bash")) | .hooks[].command | select(. == "rtk hook claude")' ~/.claude/settings.json)" ] || echo "NOT_WIRED: rtk hook claude"
-[ -n "$(jq -r '.hooks.PreToolUse[]? | select(.matcher | test("Bash")) | .hooks[].command | select(. == "~/.claude/hooks/no-claude-attribution")' ~/.claude/settings.json)" ] || echo "NOT_WIRED: no-claude-attribution"
-[ -n "$(jq -r '.hooks.PreToolUse[]? | select(.matcher | test("Read")) | .hooks[].command | select(. == "~/.claude/hooks/cbm-code-discovery-gate")' ~/.claude/settings.json)" ] || echo "NOT_WIRED: cbm-code-discovery-gate"
-[ -n "$(jq -r '.hooks.SessionStart[]? | .hooks[].command | select(. == "~/.claude/hooks/cbm-session-reminder")' ~/.claude/settings.json)" ] || echo "NOT_WIRED: cbm-session-reminder"
-```
-
-The `?` after `[]` suppresses jq errors when an array is missing entirely. All wiring checks are warn-only — missing wiring degrades the user's setup but doesn't block /jr-audit/jr-review/jr-ship.
+The probe uses `jq -r` + stdout-empty checks rather than `jq -e` (which exits non-zero on no-match), and `[]?` to suppress errors when an array is missing entirely. It emits **no** `HOOK_NOT_WIRED:` markers at all when settings.json is absent, unparseable, or unreadable for want of `jq` — Group B already graded that, and reporting four unwired hooks off an unreadable file would be four false findings. The three states the report must keep apart are **wired** (no marker of either kind), **not wired** (`HOOK_NOT_WIRED:`) and **not checked** (`HOOK_WIRING: unchecked`); collapsing the third into the first is what made an unreadable settings.json certify 4/4.
 
 ### Group F — per-repo checks (skipped if `IN_REPO=no`)
 
 If not in a repo: emit one line `Not in a git repo — skipping per-repo checks` and skip Group F.
 
-```bash
-[ -f "$REPO_ROOT/CLAUDE.md" ]                                                          # required for /jr-audit, /jr-review Phase 1
-[ -d "$REPO_ROOT/.claude" ]                                                            # warn — created on first run if missing
-[ -f "$REPO_ROOT/.gitignore" ]                                                         # warn — informs --fix
-git -C "$REPO_ROOT" remote -v | grep -qE 'github\.com|gitlab\.com'                       # warn — required for /jr-ship and /jr-review --pr/--branch (gh→GitHub, glab→GitLab; forge auto-detected)
-```
+The script emits exactly one `REPO:` line, and it says which of three things happened. `REPO: none` is a genuine skip (the lead passed the literal `none`). `REPO: <path>` runs the group. `REPO: unknown` means the first argument never arrived: **not** a skip, so report `✗ Repo checks not run: probe called without a repo argument` and re-issue the call rather than rendering the "not in a git repo" banner.
 
-**Tracked-cache scan** — single batched `git ls-files` for literal paths, separate calls for globs:
+- `REPO_MISSING: CLAUDE.md` → **✗** (required for /jr-audit and /jr-review Phase 1). `REPO_MISSING: .claude` → **⚠** (created on first run). `REPO_MISSING: .gitignore` → **⚠** (informs `--fix`).
+- `REPO_REMOTE: github` / `gitlab` → the repo's forge host; grade it jointly with Group A's `FORGE_CLI:` per the join stated there. `REPO_REMOTE: none` → **⚠** — a `github.com`/`gitlab.com` remote is required for /jr-ship and /jr-review `--pr`/`--branch`.
+- `REPO_QUERY_FAILED: <detail>` → **✗** `Repo checks could not run`. It **invalidates every git-derived Group F fact**, not just the one that failed: `REPO_REMOTE:`, `TRACKED_CACHE:`, `GITIGNORE_ABSENT:` and `GITIGNORE_MISSING_PATTERN:` are all suppressed, partial or meaningless after it, so never render `✓ Gitignore coverage`, a clean tracked-cache row, or the Group A forge join on a run that emitted it. Usually a `REPO_ROOT` that is not a git work tree.
+- `TRACKED_CACHE: <path>` → **✗** with hint `git rm --cached <path> && add to .gitignore`. Manual: /jr-doctor does NOT auto-untrack. Pass `yes` as the script's second argument inside a tackle worktree — it then suppresses `.claude/worktrees/` entries, which are expected there.
+- `GITIGNORE_ABSENT: <path>` → **⚠**, and no per-pattern markers follow (one finding, not thirteen).
+- `GITIGNORE_MISSING_PATTERN: <pattern>` → each is a **fixable issue** (see Phase 4). Report by name. Absence of all thirteen (on a run with no `REPO_QUERY_FAILED:`) is `✓ Gitignore coverage`, however the repo spells its rules.
 
-```bash
-git -C "$REPO_ROOT" ls-files -- \
-  .claude/review-profile.json .claude/review-baseline.json .claude/review-config.md \
-  .claude/audit-history.json .claude/health.json .claude/secret-warnings.json
-git -C "$REPO_ROOT" ls-files -- '.claude/audit-report-*.md'
-git -C "$REPO_ROOT" ls-files -- '.claude/secret-warnings-*.json'
-git -C "$REPO_ROOT" ls-files -- '.claude/worktrees/'
-```
+**Where the canonical pattern list lives.** The thirteen patterns are in `scripts/env-probe.sh` (Group F), a deliberate verbatim copy of the canonical set — the "Sites that apply this protocol" table in `shared/gitignore-enforcement.md` plus its "Ancillary files" table. Runtime parsing of those tables was considered and rejected as fragile. **When /jr-audit or /jr-review adds a cache file or ancillary artifact, update both shared tables AND the list in the script.**
 
-Any non-empty stdout names a tracked cache file → ✗ with hint `git rm --cached <path> && add to .gitignore` (manual; /jr-doctor does NOT auto-untrack).
-
-If `IS_TACKLE_WORKTREE=yes`: suppress the `.claude/worktrees/` warning (worktree files are expected here).
-
-**Gitignore coverage** — if `$REPO_ROOT/.gitignore` exists, read it and check coverage. The canonical pattern set is:
-
-```
-.claude/review-profile.json
-.claude/review-baseline.json
-.claude/review-config.md
-.claude/audit-history.json
-.claude/health.json
-.claude/audit-report-*.md
-.claude/secret-warnings.json
-.claude/secret-warnings-*.json
-.claude/secret-hook-patterns.txt
-.claude/secret-warnings*.json.tmp
-.claude/secret-warnings*.json.lock
-.claude/secret-warnings*.json.corrupt-*
-.claude/worktrees/
-```
-
-**Intentional duplication** (not drift): this list is a deliberate verbatim copy of the canonical set — the "Sites that apply this protocol" table in `shared/gitignore-enforcement.md` plus its "Ancillary files" table. Runtime parsing of those tables was considered and rejected as fragile. When `/jr-audit` or `/jr-review` adds a cache file or ancillary artifact, update both shared tables AND this list.
-
-Coverage is satisfied if EITHER:
-- A literal `.claude/` or `.claude/*` line exists (covers everything below `.claude/`), OR
-- Each canonical pattern above has a matching gitignore line.
-
-Note: `.claude/secret-warnings*.json` (single line, no dash) covers both `.claude/secret-warnings.json` and `.claude/secret-warnings-*.json`. Treat it as covering both patterns. The `.claude/secret-warnings*.json.tmp`, `.claude/secret-warnings*.json.lock`, and `.claude/secret-warnings*.json.corrupt-*` patterns are NOT covered by `.claude/secret-warnings*.json` — they have a different terminal segment. Each must be present (or covered by a broader `.claude/` rule) independently.
-
-Report missing patterns by name; each missing pattern is a fixable issue (see Phase 4).
+**How coverage is decided.** Per pattern, by `git check-ignore` on a concrete path that pattern must match, not by matching lines in `.gitignore`. git is the only thing that knows all five blanket spellings (`.claude/`, `.claude/*`, `.claude/**`, `/.claude/`, bare `.claude`), that `.claude/secret-warnings*.json` covers the plain and dashed forms but not the `.tmp`/`.lock`/`.corrupt-*` variants, and that a later `!.claude/secret-warnings.json` re-includes that path under `.claude/*`. **In scope** is the repo's own `.gitignore`, the protection a collaborator inherits on clone; `core.excludesFile` is neutralised for the query and `.git/info/exclude` is a known accepted gap, because a rule that lives only on this machine does not stop the next contributor committing the file. So a pattern can be reported missing here while a bare `git check-ignore` in your shell says the path is ignored: that difference is the point, not a bug.
 
 ### Group G — codebase-memory-mcp probe (best-effort)
 
-```bash
-if command -v claude >/dev/null 2>&1; then
-  claude mcp list 2>&1 | grep -qE "codebase-memory(-mcp)?" && echo "configured" || echo "not configured"
-else
-  echo "unable to probe (claude CLI not found)"
-fi
-```
+Always warn-only.
 
-Always warn-only. Hint when not configured: `Recommended for /jr-audit, /jr-review structural queries; see https://github.com/anthropics/codebase-memory-mcp`.
+- `MCP_CBM: configured` → **✓**.
+- `MCP_CBM: not-configured` → **⚠**. Hint: `Recommended for /jr-audit, /jr-review structural queries; see https://github.com/anthropics/codebase-memory-mcp`.
+- `MCP_CBM: unprobeable (<reason>)` → **⚠**, quoting the reason. Either the `claude` CLI is not on PATH (Group A already reports that as `CLI_MISSING: claude`) or `claude mcp list` hit its 15s bound.
+
+`claude mcp list` is the script's only network call: it contacts every configured MCP server and can spawn `npx`, measured at 6.6s of an 8.0s run. It is therefore emitted **last**, after Group H, so an unreachable server cannot delay or truncate a group that needs no network, including the `CLAUDE_VERSION:` line the report header wants. It is bounded by `timeout`/`gtimeout` where either exists; base macOS userland ships neither (both come with homebrew coreutils), so on such a machine the call is unbounded and the ordering is the whole mitigation. Group G still renders in report section 4; emission order and report order are independent.
 
 ### Group H — Claude Code runtime (env vars + version)
 
-```bash
-echo "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-<unset>}"
-echo "CLAUDE_CODE_NO_FLICKER=${CLAUDE_CODE_NO_FLICKER:-<unset>}"
-echo "CLAUDECODE=${CLAUDECODE:-<unset>}"
-
-if command -v claude >/dev/null 2>&1; then
-  claude --version 2>&1 | head -1
-fi
-
-# Optional tunables — print only if explicitly set so the report stays compact
-for v in BASH_DEFAULT_TIMEOUT_MS BASH_MAX_TIMEOUT_MS MCP_TIMEOUT MCP_TOOL_TIMEOUT \
-         MAX_THINKING_TOKENS MAX_MCP_OUTPUT_TOKENS CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY \
-         DISABLE_TELEMETRY DISABLE_AUTOUPDATER CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC; do
-  val=$(printenv "$v" 2>/dev/null) && [ -n "$val" ] && echo "TUNABLE: $v=$val"
-done
-```
+The script emits `ENV: <VAR>=<value>` (or `=<unset>`) for the four named vars (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, `CLAUDE_CODE_NO_FLICKER`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`), `CLAUDE_VERSION: <version>` when the `claude` CLI is present, and one `TUNABLE: <VAR>=<value>` line per explicitly-set optional tunable — unset tunables stay silent so the report stays compact.
 
 **Rendering rule** (lead applies to the printed `TUNABLE:` lines):
 - If 0 `TUNABLE:` lines → emit `ℹ Optional tunables       (all defaults)` + the inline teaser block.
@@ -370,7 +281,7 @@ Run the bundled drift script and parse the marker lines on stdout:
 "${CLAUDE_SKILL_DIR}/scripts/skill-drift-check.sh" 2>&1
 ```
 
-The script implements all nine checks (line count, broken shared refs, frontmatter contradictions, inline drift, template hash, refs cache freshness, abortReason enum drift, harness-claim staleness, canonical-rule linkage) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
+The script implements all fifteen checks (1 line count, 2 broken shared refs, 3 frontmatter contradictions, 4 inline drift, 5 template hash, 6 refs cache freshness, 7 abortReason enum drift, 8 harness-claim staleness, 9 canonical-rule linkage, 10 guard-mode mismatch, 11 malformed harness-claim marker, 12 tail-unguarded protocol file, 13 unresolved canonical pointer, 14 isHeadless env-var drift, 15 jr-ship anchor-table drift) and emits one marker line per finding. See `scripts/skill-drift-check.sh` directly for the implementation; the marker contract below is what /jr-doctor parses.
 
 #### Marker semantics
 
@@ -386,7 +297,7 @@ for the markers a given run actually emits.
 
 #### Display rollup
 
-- Render one rollup line: `Skill drift (X/Y)` where Y is the number of skills iterated and X is the number passing all 5 per-skill checks. The one-shot checks (template hash, refs cache, abort-reason enum, harness-claim markers, canonical-rule linkage) render as their own rows below the rollup — green inline (`✓ Template hash`, `✓ Refs cache`, `✓ Abort-reason enum`, `✓ Harness-claim freshness`, `✓ Canonical-rule linkage`) or expanded with a hint on warning/failure.
+- Render one rollup line: `Skill drift (X/Y)` where Y is the number of skills iterated and X is the number passing all 5 per-skill checks. The one-shot checks (template hash, refs cache, abort-reason enum, harness-claim markers, canonical-rule linkage, isHeadless drift, jr-ship anchor drift) render as their own rows below the rollup — green inline (`✓ Template hash`, `✓ Refs cache`, `✓ Abort-reason enum`, `✓ Harness-claim freshness`, `✓ Canonical-rule linkage`, `✓ isHeadless sync`, `✓ jr-ship anchor sync`) or expanded with a hint on warning/failure.
 - On any warning/failure, expand inline with the skill name + first failing check per skill (4-space indent), matching the existing `Group D` and `Group F` expansion style.
 - All findings are warn or fail — **never auto-fixable**. /jr-doctor reports; humans refactor (or run `/jr-skill-audit --refresh-refs` for the refs-cache case).
 
