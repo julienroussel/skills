@@ -290,9 +290,6 @@ jr-mermaid/SKILL.md                — generate a Mermaid diagram from a written
                                      review dimension (which reviews existing diagrams in a diff).
 codebase-memory/SKILL.md           — personal cheat-sheet for the optional codebase-memory-mcp
                                      integration (decision matrix, edge types, Cypher examples)
-find-skills/SKILL.md               — discover and install agent skills from the open ecosystem when
-                                     the user asks "how do I do X" / "is there a skill for X" / wants
-                                     to extend Claude Code capabilities
 jr-tackle/SKILL.md                    — wrap an ad-hoc in-session task with rigor instructions
                                      (ultrathink, verify findings against current sources or advisor(),
                                      ask clarifying questions early, smallest viable change, cite
